@@ -26,7 +26,7 @@ describe("TranscriptWriter", () => {
       { type: "token", text: "Opening the inbox" },
       { type: "step_start", tool: "navigate" },
       { type: "step", tool: "navigate", summary: "Navigated successfully", ok: true },
-      { type: "usage", input: 10, output: 4 },
+      { type: "usage", input: 10, output: 4, contextTokens: 10 },
       { type: "done", summary: "Two unread invoices." },
     ]);
 

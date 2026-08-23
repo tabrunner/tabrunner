@@ -250,7 +250,10 @@ export default defineBackground(() => {
         case "inject": {
           // Only meaningful mid-run; the panel routes idle-time input to `run`.
           const run = getActiveRun();
-          if (run?.owner === "panel") run.injectedQueue.push({ id: msg.id, text: msg.text });
+          if (run?.owner === "panel") {
+            run.injectedQueue.push({ id: msg.id, text: msg.text });
+            sendSteers(run);
+          }
           break;
         }
 
@@ -259,6 +262,7 @@ export default defineBackground(() => {
           if (run?.owner !== "panel") break;
           const i = run.injectedQueue.findIndex((q) => q.id === msg.id);
           if (i >= 0) run.injectedQueue.splice(i, 1);
+          sendSteers(run);
           break;
         }
 
@@ -269,7 +273,18 @@ export default defineBackground(() => {
           // The gate is answered — a mid-run replan is a fresh ask and gets its
           // own notification, so release the one-buzz-per-park hold.
           notifiedPlanFor = null;
-          if (getActiveRun()?.owner === "panel") answerPlanApproval(msg.approved, msg.feedback);
+          const answering = getActiveRun();
+          if (answering?.owner === "panel") {
+            answerPlanApproval(msg.approved, msg.feedback);
+            // Every panel showing the thread has the card up, so every one of
+            // them has to learn it was answered — the panel that clicked
+            // disarms its own, the rest would sit on a settled question.
+            broadcast(answering.conversationId, {
+              type: "plan_answered",
+              approved: msg.approved,
+              ...(msg.feedback ? { feedback: msg.feedback } : {}),
+            });
+          }
           break;
         }
 
@@ -298,13 +313,23 @@ export default defineBackground(() => {
           // at start, so its live band had no tab chip and no way back to the
           // page. Re-send it from the board: the band is then whole either way,
           // which is what lets the run strip stop repeating it.
-          await sendDrivingTo(port);
+          await sendDrivingTo(port, msg.conversationId);
           // Re-arm a plan the panel was closed on. The approval card lives only
           // in panel memory, so a run parked while the panel was away — which
           // is every run whose notification the user just clicked — would come
           // back unanswerable: a question on screen with no way to say yes.
           const parked = getActiveRun();
-          if (parked?.owner === "panel" && (await getActiveId()) === parked.conversationId) {
+          // The asking panel names its own thread when it knows it — on a
+          // conversation switch, the one ask whose answer must be about where
+          // THIS panel just moved. At connect it does not yet (the stored id is
+          // still resolving), and the shared slot is what it is about to load.
+          const showing = msg.conversationId ?? (await getActiveId());
+          if (parked?.owner === "panel" && showing === parked.conversationId) {
+            // What the run has spent so far. A panel that opened mid-run — the
+            // pill's click, the notification's — has seen no deltas, so without
+            // this its gauge falls back to the number the LAST run stamped on
+            // the conversation and reports a fresh run as nearly full.
+            send(port, { type: "usage", ...parked.usage });
             if (parked.planApproval) {
               send(port, { type: "plan_approval", ...parked.planApproval.ask });
             }
@@ -321,7 +346,7 @@ export default defineBackground(() => {
         case "compact": {
           // The worker owns transcript writes, so it owns this: the panel can
           // close mid-summarization and the summary still lands.
-          const conversationId = await getActiveId();
+          const conversationId = msg.conversationId;
           if (!conversationId) {
             send(port, {
               type: "compact_failed",
@@ -476,6 +501,23 @@ function send(port: chrome.runtime.Port, msg: PanelMessage) {
 }
 
 /**
+ * The steers still waiting, to every panel on the thread.
+ *
+ * The queue lives in the worker but its cards live in the panel, and a steer
+ * typed in one window used to show only there — the other windows learned of it
+ * a whole tool call later, when the loop consumed it, so their user could
+ * neither see nor take back a message already committed. The worker's copy is
+ * authoritative and the panel applies it wholesale, so this just has to be sent
+ * whenever it moves.
+ */
+function sendSteers(run: {
+  conversationId: string;
+  injectedQueue: { id: string; text: string }[];
+}) {
+  broadcast(run.conversationId, { type: "queued_steers", items: [...run.injectedQueue] });
+}
+
+/**
  * A run event to every open panel, stamped with the thread it belongs to.
  *
  * The side panel is per-window and Chrome draws one per window, so the panel
@@ -495,10 +537,10 @@ function broadcast(conversationId: string, event: Event) {
  * panel's own open conversation: the chip belongs to the band, and the band
  * only speaks for the thread on screen.
  */
-async function sendDrivingTo(port: chrome.runtime.Port): Promise<void> {
+async function sendDrivingTo(port: chrome.runtime.Port, showing?: string): Promise<void> {
   const running = currentBoard().running;
   if (!running || running.tabId === undefined) return;
-  if (running.conversationId !== (await getActiveId())) return;
+  if (running.conversationId !== (showing ?? (await getActiveId()))) return;
   try {
     const tab = await chrome.tabs.get(running.tabId);
     send(port, {

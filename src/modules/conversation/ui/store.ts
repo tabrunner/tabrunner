@@ -584,7 +584,6 @@ export const useConversationStore = create<ConversationState>((set, get) => {
   };
 
   const handleEvent = (event: Event) => {
-    const s = get();
     if (closeOnFirstEvent) {
       // Never close on something the user still has to see: an immediate
       // failure, or a replan that re-opens the gate before the panel is gone.
@@ -744,12 +743,33 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         break;
       }
 
-      case "usage":
+      case "plan_answered":
+        // Answered somewhere — here, or in another window. The panel that
+        // clicked has already disarmed its own card (which is what keeps a
+        // double-click from answering the NEXT gate); this is how the others
+        // learn, and it settles the walk-away for all of them at once.
         set({
-          usage: { input: s.usage.input + event.input, output: s.usage.output + event.output },
-          // Not cumulative: this turn's input IS how full the window is right
-          // now, and it drops back down when the run folds its own history.
-          ...(event.input > 0 ? { contextTokens: event.input } : {}),
+          planApproval: null,
+          planApproved: event.approved,
+          // Only a revision replans. A bare rejection ends the run, and saying
+          // "Revising the plan…" would promise a card that is never coming.
+          replanning: !event.approved && event.feedback !== undefined,
+        });
+        // The note the plan went back with, drawn wherever the card was. The
+        // panel that sent it persisted it; this is display only, so it reaches
+        // the windows that were watching without writing the transcript twice.
+        if (event.feedback) pushDisplay(makeMsg("user", event.feedback));
+        break;
+
+      case "usage":
+        // Running totals, so this sets rather than adds — which is also what
+        // lets one of these bring a panel that joined mid-run fully up to date.
+        set({
+          usage: { input: event.input, output: event.output },
+          // A different measurement, not a slice of the one above: the last
+          // turn's input IS how full the window is right now, and it drops back
+          // down when the run folds its own history.
+          ...(event.contextTokens > 0 ? { contextTokens: event.contextTokens } : {}),
         });
         break;
 
@@ -1171,7 +1191,18 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       resumeAfterCompact = opts?.resume
         ? (get().messages.findLast((m) => m.role === "user")?.id ?? null)
         : null;
-      post({ type: "compact" });
+      // Which transcript to fold is named, not left to the shared slot: with a
+      // panel open in every window that slot is whatever the last one opened,
+      // and the wrong conversation would get summarized.
+      const target = get().activeId;
+      if (target === null) {
+        // A thread with no first message yet has nothing to fold — the same
+        // answer the worker gave when it resolved this from the slot itself.
+        set({ compacting: false });
+        pushDisplay(makeMsg("step", i18n.t("commands.compact.nothing")));
+        return;
+      }
+      post({ type: "compact", conversationId: target });
     },
 
     // One slot: a command parked twice is still one thing waiting, and the
@@ -1339,7 +1370,11 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       set({ planApproval: null, planApproved: false, replanning: true });
       // The note is a user message like any other: the transcript shows what
       // the plan was sent back with, and the next run reads it as history.
-      void pushMsg(makeMsg("user", note));
+      // Persisted here, drawn from the plan_answered echo — every panel showing
+      // the thread had the card, so every one of them draws the answer, and
+      // only the panel that sent it writes.
+      const id = get().activeId;
+      if (id) void appendMessageTo(id, makeMsg("user", note));
     },
 
     newConversation: () => {
@@ -1349,14 +1384,14 @@ export const useConversationStore = create<ConversationState>((set, get) => {
 
     openConversation: (id) => {
       if (get().activeId === id) return;
-      void setActiveConversation(id).then(() => {
-        // The slot write must land first: the worker scopes its answer to it.
-        // A parked plan gate and the driven-tab chip re-arm only on a fresh
-        // query, so without this, switching back to a parked conversation
-        // shows "waiting for your approval" with the card gone — and typed
-        // text would queue behind a run that cannot move.
-        post({ type: "query_run" });
-      });
+      void setActiveConversation(id);
+      // Named, not left to the slot: a parked plan gate and the driven-tab chip
+      // re-arm only on a fresh query, so without this, switching back to a
+      // parked conversation shows "waiting for your approval" with the card
+      // gone — and typed text would queue behind a run that cannot move. The id
+      // rides along because with a panel open in every window, the slot can be
+      // pointed somewhere else between this write and the worker reading it.
+      post({ type: "query_run", conversationId: id });
       set({ ...resetRun(), messages: [], activeId: id });
       void getMessages(id).then((messages) => {
         // A switch that raced this read wins — never paint a stale transcript.

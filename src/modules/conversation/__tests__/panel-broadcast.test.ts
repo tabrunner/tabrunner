@@ -146,6 +146,70 @@ describe("adopting a run this panel did not dispatch", () => {
     expect(useConversationStore.getState().status).toBe("idle");
   });
 
+  it("takes the run's spend from one absolute usage event", () => {
+    useConversationStore.setState({
+      board: boardRun("c1"),
+      // What the LAST run left behind.
+      usage: { input: 40_000, output: 900 },
+      contextTokens: 24_300,
+    });
+    // A panel that opened mid-run saw no deltas; query_run answers with totals.
+    port.fireMessage({
+      type: "usage",
+      input: 12_000,
+      output: 340,
+      contextTokens: 8_100,
+      conversationId: "c1",
+    });
+
+    const s = useConversationStore.getState();
+    // Set, not added to what was already there.
+    expect(s.usage).toEqual({ input: 12_000, output: 340 });
+    // The window's occupancy is the last turn's input, not the running total.
+    expect(s.contextTokens).toBe(8_100);
+  });
+
+  it("drops the gate's card when another window answers it", () => {
+    useConversationStore.setState({
+      board: boardRun("c1"),
+      status: "running",
+      planApproval: { steps: ["Open the console", "Copy the key"], current: 0, reapproval: false },
+      planApproved: false,
+    });
+    // Approved in the other window — this panel posted nothing.
+    port.fireMessage({ type: "plan_answered", approved: true, conversationId: "c1" });
+
+    const s = useConversationStore.getState();
+    expect(s.planApproval).toBeNull();
+    // The gate is behind the run here too, so the walk-away unlocks.
+    expect(s.planApproved).toBe(true);
+    expect(s.replanning).toBe(false);
+  });
+
+  it("says 'revising' for a revision and stays quiet for a plain rejection", () => {
+    useConversationStore.setState({
+      board: boardRun("c1"),
+      status: "running",
+      planApproval: { steps: ["a"], current: 0, reapproval: false },
+    });
+    port.fireMessage({ type: "plan_answered", approved: false, conversationId: "c1" });
+    // A bare rejection ends the run — promising a revised card would be a lie.
+    expect(useConversationStore.getState().replanning).toBe(false);
+
+    useConversationStore.setState({
+      planApproval: { steps: ["a"], current: 0, reapproval: false },
+    });
+    port.fireMessage({
+      type: "plan_answered",
+      approved: false,
+      feedback: "skip step b",
+      conversationId: "c1",
+    });
+    const s = useConversationStore.getState();
+    expect(s.replanning).toBe(true);
+    expect(s.messages.at(-1)).toMatchObject({ role: "user", content: "skip step b" });
+  });
+
   it("does not revive a settled panel on a straggler", () => {
     // The board is already clear — the run released its slot.
     port.fireMessage({

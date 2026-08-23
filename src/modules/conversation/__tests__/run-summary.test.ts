@@ -24,8 +24,10 @@ const lastRunOf = async (id: string) =>
 describe("last-run summary", () => {
   it("stamps the conversation with the run's span and tokens when it ends", async () => {
     await replay("run-sum", [
-      { type: "usage", input: 10, output: 4 },
-      { type: "usage", input: 5, output: 2 },
+      // Running totals, as start-run emits them — the second turn's own input
+      // was 5, which is what `contextTokens` carries and `lastInput` keeps.
+      { type: "usage", input: 10, output: 4, contextTokens: 10 },
+      { type: "usage", input: 15, output: 6, contextTokens: 5 },
       { type: "done", summary: "All set." },
     ]);
 

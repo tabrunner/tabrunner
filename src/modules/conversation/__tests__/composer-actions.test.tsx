@@ -12,6 +12,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { setI18n } from "react-i18next";
 import { i18n } from "@/i18n";
+import { getMessages } from "../conversations";
 import { ChatInput } from "../ui/ChatInput";
 import { HelpDialog } from "../ui/HelpDialog";
 import { setHelpOpen } from "../ui/help-open";
@@ -121,6 +122,7 @@ describe("the parked plan gate", () => {
       runStartedAt: Date.now(),
       planApproval: { steps: ["a"], current: 0, reapproval: false },
       draft: "isso",
+      activeId: "gate-note",
     });
     const h = await render(<ChatInput />);
     // The composer names where the text goes — never "add to the running task",
@@ -137,10 +139,16 @@ describe("the parked plan gate", () => {
     expect(st.planApproval).toBeNull();
     // The band switches to "Revising the plan…" until the new card arrives.
     expect(st.replanning).toBe(true);
-    // The note lands as a user message — the transcript shows what the plan
-    // was sent back with.
-    expect(st.messages.some((m) => m.role === "user" && m.content === "isso")).toBe(true);
     expect(st.draft).toBe("");
+    // The note lands as a user message — the transcript shows what the plan was
+    // sent back with. Written, not painted: every panel showing the thread had
+    // the card, so the worker's plan_answered echo is what draws it in each of
+    // them (plan-stop.test.ts covers that half).
+    await vi.waitFor(async () =>
+      expect(await getMessages("gate-note")).toContainEqual(
+        expect.objectContaining({ role: "user", content: "isso" }),
+      ),
+    );
     await unmount(h);
   });
 });

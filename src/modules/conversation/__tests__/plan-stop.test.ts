@@ -141,9 +141,15 @@ describe("plan approval prompt", () => {
       approved: false,
       feedback: "skip step b",
     });
+    expect(useConversationStore.getState().planApproval).toBeNull();
+
+    // The note is drawn from the worker's echo, not by the panel that sent it:
+    // every window showing the thread had the card, so every one draws the
+    // answer — while only the sender writes it to the transcript.
+    port.fireMessage({ type: "plan_answered", approved: false, feedback: "skip step b" });
     const state = useConversationStore.getState();
-    expect(state.planApproval).toBeNull();
     expect(state.messages.at(-1)).toMatchObject({ role: "user", content: "skip step b" });
+    expect(state.replanning).toBe(true);
   });
 
   it("flags the revision window and clears it when the revised plan arrives", async () => {

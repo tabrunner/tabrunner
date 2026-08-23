@@ -365,7 +365,16 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
               );
             });
           },
-          onUsage: (input, output) => emit({ type: "usage", input, output }),
+          onUsage: (input, output) => {
+            // Accumulated here rather than by each consumer: this is the one
+            // adapter turning loop callbacks into events, so it is the one
+            // place that can answer "what has this run spent" to a panel that
+            // arrived late. The panel and the transcript writer both just set.
+            run.usage.input += input;
+            run.usage.output += output;
+            if (input > 0) run.usage.contextTokens = input;
+            emit({ type: "usage", ...run.usage });
+          },
           onError: (message, kind) => {
             runFailed = true;
             // An unclassified provider failure is the signal that a provider

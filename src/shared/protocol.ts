@@ -47,15 +47,31 @@ export type Command =
    * model replans with the changes, and the revised plan is asked about again.
    */
   | { type: "plan_approval"; approved: boolean; feedback?: string }
-  /** Ask what an external agent is doing in the browser — answered with run_active. */
-  | { type: "query_run" }
+  /**
+   * Ask what is live: an external agent in the browser (answered with
+   * run_active), and — for the thread this panel is showing — its driven tab,
+   * its spend, a parked plan gate and the steers still waiting.
+   *
+   * `conversationId` is optional because of when this is first sent: `attach()`
+   * fires it before `connect()`'s stored-id read has resolved, so at that point
+   * the panel does not yet know its own thread. Absent, the worker falls back
+   * to the shared slot, which is what a panel opening now is about to load
+   * anyway. A conversation switch names it — that is the ask whose answer must
+   * be about the thread THIS panel just moved to, not whatever another window
+   * pointed the slot at.
+   */
+  | { type: "query_run"; conversationId?: string }
   /**
    * Summarize the conversation so far and append the summary to its transcript,
    * so later runs replay the summary instead of a budget-trimmed slice of the
    * raw messages. The worker does the work: it owns transcript persistence, and
    * the panel may close before a summarization call comes back.
+   *
+   * The thread is named, never resolved from the shared slot: which transcript
+   * gets folded is routing, and with a panel open in every window that slot is
+   * whatever the last one of them opened.
    */
-  | { type: "compact" }
+  | { type: "compact"; conversationId: string }
   /** Heartbeat — receiving it resets the worker's idle timer during long silences */
   | { type: "ping" };
 
@@ -157,6 +173,15 @@ export type Event =
   | ({ type: "step" } & StepPayload)
   | ({ type: "plan" } & PlanPayload)
   | ({ type: "plan_approval" } & PlanApprovalPayload)
+  /**
+   * The gate was answered — by whichever panel clicked. The card is armed in
+   * every panel showing the thread, so the answer has to reach every one of
+   * them too: without this the windows that did not click keep a prompt for a
+   * question already settled, which is what a second window used to show for
+   * the rest of the run. `feedback` is a revision's note, rendered wherever the
+   * card was (the panel that sent it persists it — this only draws it).
+   */
+  | { type: "plan_answered"; approved: boolean; feedback?: string }
   /** A queued message was inserted into the conversation at a tool boundary */
   | { type: "injected"; id: string; text: string }
   /**
@@ -169,7 +194,15 @@ export type Event =
   | { type: "queued_steers"; items: { id: string; text: string }[] }
   /** The submitted run is waiting in the serial queue — position is 1-based. */
   | { type: "run_queued"; id: string; position: number }
-  | { type: "usage"; input: number; output: number }
+  /**
+   * The run's token spend SO FAR — running totals, not this turn's delta.
+   * Absolute because a panel that opened mid-run has missed every delta and
+   * would otherwise dress a live run in the last one's numbers; one of these
+   * answers it completely, which is what `query_run` re-sends. `contextTokens`
+   * is a different measurement riding along: the last turn's input, i.e. how
+   * full the model's window is, which cumulative `input` cannot say.
+   */
+  | { type: "usage"; input: number; output: number; contextTokens: number }
   /** kind is the classified provider failure — the bubble then shows its own lead line, no generic hint */
   | {
       type: "error";

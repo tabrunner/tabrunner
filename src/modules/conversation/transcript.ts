@@ -250,9 +250,13 @@ export class TranscriptWriter {
         break;
 
       case "usage":
-        this.usage.input += event.input;
-        this.usage.output += event.output;
-        if (event.input > 0) this.lastInput = event.input;
+        // Running totals, not a delta — the event carries the run's whole
+        // spend, so this sets rather than adds. `contextTokens` is the last
+        // turn's input, which is the occupancy RunSummary.lastInput means;
+        // cumulative input would report a short thread as several windows full
+        // and turn the gauge red on nothing.
+        this.usage = { input: event.input, output: event.output };
+        if (event.contextTokens > 0) this.lastInput = event.contextTokens;
         break;
 
       case "driving":

@@ -18,6 +18,14 @@ export interface ActiveRun {
   /** Messages typed mid-run, drained by the loop at each tool boundary. */
   injectedQueue: { id: string; text: string }[];
   /**
+   * What this run has spent, kept here for the same reason the parked plan is:
+   * a panel that opens mid-run has seen none of the deltas, and without this
+   * the only number it could show is the PREVIOUS run's, stamped on the
+   * conversation at the last run's end. `contextTokens` is the last turn's
+   * input — how full the window is, which the cumulative input cannot say.
+   */
+  usage: { input: number; output: number; contextTokens: number };
+  /**
    * A parked plan-approval prompt — resolved by the panel's plan_approval
    * command. `feedback` rides along on a revision request (a "no" that keeps
    * the run). The steps are kept, not just the resolver: a panel that closed
@@ -59,6 +67,7 @@ export function acquireRun(conversationId: string, owner: RunOwner): AcquireResu
     owner,
     controller: new AbortController(),
     injectedQueue: [],
+    usage: { input: 0, output: 0, contextTokens: 0 },
   };
   active = run;
   log.debug("run acquired", { conversationId, owner });

@@ -69,14 +69,17 @@ beforeEach(() => {
 afterEach(() => useConversationStore.getState().disconnect());
 
 describe("openConversation", () => {
-  it("re-asks what is live, and only after the slot write lands", async () => {
+  it("re-asks what is live, naming the thread it just switched to", async () => {
     useConversationStore.getState().connect();
     port.fake.postMessage.mockClear(); // the connect's own query_run
 
     useConversationStore.getState().openConversation("c1");
 
     await vi.waitFor(() => expect(queryRuns()).toHaveLength(1));
-    // The worker reads the slot to scope its answer — it must already say c1.
+    // Named on the command, not left to the shared slot: a panel open in
+    // another window can point that slot elsewhere between the write and the
+    // worker reading it, and the answer would be about the wrong thread.
+    expect(queryRuns()[0]).toEqual({ type: "query_run", conversationId: "c1" });
     expect(await getActiveId()).toBe("c1");
   });
 
