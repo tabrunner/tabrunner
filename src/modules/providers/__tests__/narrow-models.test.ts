@@ -33,6 +33,17 @@ describe("narrowModels", () => {
     expect(narrowModels(models, "gpt").shown[0]?.id).toBe("gpt-5.4");
   });
 
+  it("matches words anywhere, in any order, across id and name", () => {
+    const models: ModelInfo[] = [
+      { id: "meta/muse-spark-1.2-contributor", name: "Meta: Muse Spark 1.2 Contributor" },
+    ];
+    // Words out of order, mid-name, and split across the id and the name.
+    expect(narrowModels(models, "contributor muse").shown).toHaveLength(1);
+    expect(narrowModels(models, "spark 1.2").shown).toHaveLength(1);
+    expect(narrowModels(models, "meta muse").shown).toHaveLength(1);
+    expect(narrowModels(models, "spark missing").shown).toHaveLength(0);
+  });
+
   it("reports an empty match instead of silently showing everything", () => {
     const { shown, matched } = narrowModels(list(20), "nothing-like-this");
     expect(shown).toHaveLength(0);

@@ -23,20 +23,23 @@ export interface NarrowedModels {
 }
 
 /**
- * The rows an expanded provider group draws: substring-filtered on both the
- * display name and the wire id (a user who knows "sonnet-4-5" and a user who
- * knows "Claude Sonnet" both find it), then capped.
+ * The rows an expanded provider group draws: word-filtered on the display name
+ * and the wire id — every whitespace-separated word must appear somewhere in
+ * either (a user who knows "sonnet-4-5", one who knows "Claude Sonnet", and
+ * one who types "sonnet 4.5" or "contributor muse" all find it), then capped.
  */
 export function narrowModels(
   models: ModelInfo[],
   query: string,
   cap = MODEL_ROW_CAP,
 ): NarrowedModels {
-  const q = query.trim().toLowerCase();
-  const matched = q
-    ? models.filter(
-        (m) => m.id.toLowerCase().includes(q) || (m.name ?? "").toLowerCase().includes(q),
-      )
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matched = words.length
+    ? models.filter((m) => {
+        const id = m.id.toLowerCase();
+        const name = (m.name ?? "").toLowerCase();
+        return words.every((w) => id.includes(w) || name.includes(w));
+      })
     : models;
   return {
     shown: matched.slice(0, cap),
