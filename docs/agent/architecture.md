@@ -192,6 +192,12 @@ via the abort listener so the loop never hangs. The parked steps are kept on the
 beside the resolver: the card lives only in panel memory, so a panel that closed and came
 back (exactly what clicking the away notification does) re-arms it from the worker's
 `query_run` answer — otherwise the notification led to a question with no way to say yes.
+The card is up in **every** panel showing the thread, and any of them can answer it. The
+answer therefore has to travel the same way: `plan_answered` (broadcast from the worker's
+command handler) is what drops the card and settles the walk-away in the windows that did
+not click, which otherwise sat on a settled question for the rest of the run. The panel
+that clicked still disarms its own card first — that local guard is what keeps a
+double-click, or a second window answering a beat late, from resolving the NEXT gate.
 Mid-run replans
 re-ask only when the model says the update deviates from what was approved
 (`deviates_from_approved`, a required arg on the plan call) — and not even then when the
@@ -232,7 +238,10 @@ answer field (the placeholder says so, like ask_user does), because a queued ste
 never land — a parked run has no tool boundary ahead — so typed text sends the plan back
 and the card keeps only the one-click verdicts. The gate's arming lives only in panel
 memory, so the worker re-sends it on every `query_run`: port connect, and each panel
-conversation switch, both scoped to the active slot. A parked approval fires the same away-only OS notification as ask_user
+conversation switch. The switch names its conversation on the command, because with a
+panel open in every window the shared slot is whatever the last one of them opened;
+connect leaves it unnamed and the worker falls back to that slot, which is what a panel
+opening now is about to load anyway. A parked approval fires the same away-only OS notification as ask_user
 (`tabrunner-plan`), since the user has usually tabbed away by the time a replan asks
 again. **Parked speaks "waiting", never "working"**: while the loop sits on an answer the
 driven tab's pulsing favicon and badge settle into the still "?" (`waitAgentIndicator` —
@@ -490,7 +499,20 @@ routing input — a pill or notification click can re-point it between "New chat
 and the first keystroke, and an append that resolved it would file the fresh opener under
 the thread the user just left (the "conversation switched itself" bug). The `run` command
 carries the adopted conversation id for the same reason: the run files where its task
-message landed, not wherever the slot happens to point when the worker handles it.
+message landed, not wherever the slot happens to point when the worker handles it. So does
+`compact`, whose whole job is naming a transcript, and so does the `query_run` a
+conversation switch sends.
+
+The slot is what every panel **follows**. Chrome draws one side panel per window; they are
+separate documents sharing this one key, so a thread opened in any of them is the thread
+all of them are on — without the watch, a notification click re-pointed the slot and only a
+panel that happened to be closed at the time ever noticed (`sidePanel.open()` is a no-op on
+one already up). Following makes that bug reachable from another window, which is why
+`sendTask` holds the follow off between Enter and the stored message: for those few
+milliseconds this panel's thread is fixed, or a slot moved during the tab query files the
+user's message under the thread they just left. The follow also leaves the composer alone —
+losing half a typed message because another window changed the subject is worse than a
+draft outliving its thread.
 Every write is read-modify-write and the panel fires them from an event stream, so
 appends/replaces are **serialized** on one promise chain — concurrent
 appends otherwise read the same array and the last write wins. `sendTask` **awaits** its
@@ -534,8 +556,14 @@ undefined instead of guessing, and is what anything the USER reads must call —
 gauge draws a bar and a "24.3k / 200k" ratio only when the window was measured or published,
 and otherwise shows the token count alone. A percentage computed against a guessed
 denominator is a statistic nobody verified, and the user would act on it. The count itself is
-the last turn's real input (`usage`), persisted as `RunSummary.lastInput` so a reopened panel
-still knows — cumulative `input` sums every turn and cannot say how full the context is. The
+the last turn's real input, persisted as `RunSummary.lastInput` so a reopened panel
+still knows — cumulative `input` sums every turn and cannot say how full the context is. Both
+ride the same `usage` event, which carries the run's **running totals** rather than a per-turn
+delta: `input`/`output` are what the run has spent, `contextTokens` is that last turn's input,
+and a consumer sets rather than accumulates. Absolute because a panel that opened mid-run has
+seen none of the deltas — `query_run` answers with the totals and that is enough — and
+`contextTokens` is spelled out rather than inferred, because inferring it from a cumulative
+`input` reports a short thread as several windows full and turns the gauge red on nothing. The
 gauge is also the compact button: red inside the reserve, the number has stopped being
 information and become an instruction, and an instruction with nothing to press is a dead
 end. The fold is append-only, so a stray click costs one short model call and no history.

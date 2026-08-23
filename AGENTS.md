@@ -109,7 +109,8 @@ never reach the service-worker bundle.
 - `conversation/` — stored conversations, message types, chat UI. A conversation owns the
   engine it runs on (`ConversationMeta.engine`, pinned at its first run) — so a picker change
   this afternoon cannot re-point the 9am schedule, and a reopened chat still runs what it
-  always ran. The worker owns transcript
+  always ran, and every window's panel is on that same conversation (the panel follows the
+  shared `active-conversation` slot). The worker owns transcript
   persistence (`TranscriptWriter`); the panel store only renders. Whenever a run ends without
   a summary of its own — an error, or a user stop — the writer appends a deterministic progress
   note (`progress-note.ts`), so the work still reaches the next run's history. That note is
@@ -190,6 +191,17 @@ never reach the service-worker bundle.
 | ------------------------------- | -------------------------------------------- | -------------------------------------------------- |
 | `wxt/utils/storage` + `watch()` | Settings, provider configs, conversations    | Cross-context pub/sub, zero messaging code         |
 | Port (`runtime.connect`)        | Token deltas, step events, run/stop commands | Streaming; an open Port keeps the MV3 worker alive |
+
+Chrome draws **one side panel per window**, each its own document with its own store and
+its own Port, so a run's events are broadcast to every open panel, stamped with the
+conversation they are about (`PanelMessage` in `shared/protocol.ts`). Every panel showing
+the thread is a live subscriber — identical events in, identical state out; one showing
+another thread drops the stamp, and an unstamped message is a reply to that panel's own
+command. A panel that did not dispatch the run **adopts** the stream (panel-owned runs
+only: a schedule or bridge run sends a panel nothing and follows through the transcript
+refetch, which adopting would switch off). What stays per-window is what belongs to the
+window: the composer draft, `lastRun` — which is how "did THIS panel dispatch the run in
+flight" gets answered, and therefore which one auto-closes on walk-away — and scroll.
 
 Conversations: a `conversations` metadata index + one `conversation:<id>` key per transcript;
 writes are serialized on one promise chain; the transcript is the model's per-conversation
