@@ -129,6 +129,19 @@ describe("following the conversation another window opened", () => {
     });
   });
 
+  it("asks nothing when the other window opened a chat that does not exist yet", () => {
+    port.fake.postMessage.mockClear();
+
+    useConversationStore.getState().followActive(null);
+
+    expect(useConversationStore.getState().activeId).toBeNull();
+    // An id-less query falls back to the shared slot, which the New Chat behind
+    // this may not have cleared yet — the answer could arm the old thread's card.
+    expect(port.fake.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "query_run" }),
+    );
+  });
+
   it("keeps the half-typed message — another window changed the subject, not the user", () => {
     useConversationStore.setState({ draft: "check the invoice tot", collapseDisabled: true });
 

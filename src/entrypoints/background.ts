@@ -1,7 +1,12 @@
 import { initI18n, i18n } from "@/i18n";
 import { startAgentRun, MEMORY_KEEPALIVE_ALARM } from "@/modules/agent/start-run";
 import { recoverInterrupted } from "@/modules/walkthrough";
-import { getActiveRun, releaseRun, answerPlanApproval } from "@/modules/agent/active-runs";
+import {
+  getActiveRun,
+  releaseRun,
+  answerPlanApproval,
+  type ActiveRun,
+} from "@/modules/agent/active-runs";
 import {
   cancelQueued,
   currentBoard,
@@ -502,10 +507,7 @@ function send(port: chrome.runtime.Port, msg: PanelMessage) {
  * authoritative and the panel applies it wholesale, so this just has to be sent
  * whenever it moves.
  */
-function sendSteers(run: {
-  conversationId: string;
-  injectedQueue: { id: string; text: string }[];
-}) {
+function sendSteers(run: ActiveRun) {
   broadcast(run.conversationId, { type: "queued_steers", items: [...run.injectedQueue] });
 }
 

@@ -176,12 +176,6 @@ export interface ConversationState {
 }
 
 /**
- * Is a run working on THIS conversation — ours in flight, or one the board
- * reports here after a reopen? The composer's steering, /stop and the deferral
- * gate all ask the same question, and a panel that reopened onto its own
- * background run reads `status` idle, so the board half is not optional.
- */
-/**
  * The engine pick in force for the thread the panel is showing: what that
  * conversation is pinned to, or — before its first message gives it an id —
  * what the picker chose while waiting. Undefined means nothing is pinned and
@@ -195,11 +189,27 @@ export function pinOf(s: ConversationState): ConversationEngine | undefined {
   return s.conversations.find((c) => c.id === s.activeId)?.engine;
 }
 
+/**
+ * The board's record of a run live on the thread this panel is showing — the
+ * run that is HERE without being ours to stream. `status` cannot answer this:
+ * a panel that reopened onto its own background run reads idle, and so does
+ * every panel showing a schedule's or the bridge's run, which broadcast to no
+ * panel at all. Four surfaces asked it in the same breath (the walk-away, the
+ * band, the composer, Esc-to-stop) and each kept its own copy of the question.
+ *
+ * A selector over stored values only: it hands back the board's own entry or
+ * nothing — never a fresh object, which would re-render every consumer on
+ * every unrelated store change.
+ */
+export function boardRunHere(s: ConversationState): RunBoard["running"] {
+  return s.activeId !== null && s.board.running?.conversationId === s.activeId
+    ? s.board.running
+    : undefined;
+}
+
+/** Is a run working on THIS conversation — ours in flight, or the board's? */
 export function runsHere(s: ConversationState): boolean {
-  return (
-    s.status === "running" ||
-    (s.activeId !== null && s.board.running?.conversationId === s.activeId)
-  );
+  return s.status === "running" || boardRunHere(s) !== undefined;
 }
 
 let port: chrome.runtime.Port | null = null;
@@ -254,9 +264,7 @@ function makeMsg(role: Message["role"], content: string, extra?: Partial<Message
  * Nothing about where it runs travels with it: every run works the tab the user
  * is on, and the retry is a fresh send with a fresh answer to that.
  */
-export function retryTargetFrom(
-  messages: Message[],
-): { task: string; images?: string[] } | null {
+export function retryTargetFrom(messages: Message[]): { task: string; images?: string[] } | null {
   const last = messages.findLast((m) => m.role === "user");
   if (!last) return null;
   return {
@@ -1040,6 +1048,42 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     return p;
   };
 
+  /**
+   * Point the panel at a thread. Three callers reach this — the user opening
+   * one, the user starting a fresh one, and another window doing either — and
+   * they must land identically, or two panels on the same conversation would
+   * hold different state for it.
+   *
+   * `keepComposer` is the whole difference between a switch the user made and
+   * one made for them: see `followActive`. Everything else a switch clears is
+   * `resetRun`'s list.
+   */
+  const showConversation = (id: string | null, keepComposer = false) => {
+    const { draft, pastedTexts, collapseDisabled } = get();
+    set({
+      ...resetRun(),
+      ...(keepComposer ? { draft, pastedTexts, collapseDisabled } : {}),
+      messages: [],
+      activeId: id,
+    });
+    // A fresh chat has nothing to ask about, and asking anyway would be worse
+    // than useless: with no id the worker falls back to the shared slot, which
+    // the `setActiveConversation(null)` behind this has not necessarily cleared
+    // yet — so the answer could arm a plan card for the thread just left.
+    if (id === null) return;
+    // Named, not left to the slot: a parked plan gate and the driven-tab chip
+    // re-arm only on a fresh query, so without this, switching back to a parked
+    // conversation shows "waiting for your approval" with the card gone — and
+    // typed text would queue behind a run that cannot move. The id rides along
+    // because with a panel open in every window, the slot can be pointed
+    // somewhere else between the write behind this and the worker reading it.
+    post({ type: "query_run", conversationId: id });
+    void getMessages(id).then((messages) => {
+      // A switch that raced this read wins — never paint a stale transcript.
+      if (get().activeId === id) set({ messages });
+    });
+  };
+
   return {
     messages: [],
     conversations: [],
@@ -1392,7 +1436,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
 
     newConversation: () => {
       void setActiveConversation(null);
-      set({ ...resetRun(), messages: [], activeId: null });
+      showConversation(null);
     },
 
     followActive: (id) => {
@@ -1403,31 +1447,13 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       // outlives the thread it was started on. `sending` holds it off entirely
       // (see the flag) — that window is where a moved slot does real damage.
       if (sending || get().activeId === id) return;
-      // Everything a switch resets, then the composer's three put back.
-      const { draft, pastedTexts, collapseDisabled } = get();
-      set({ ...resetRun(), draft, pastedTexts, collapseDisabled, messages: [], activeId: id });
-      post({ type: "query_run", ...(id !== null ? { conversationId: id } : {}) });
-      if (id === null) return;
-      void getMessages(id).then((messages) => {
-        if (get().activeId === id) set({ messages });
-      });
+      showConversation(id, true);
     },
 
     openConversation: (id) => {
       if (get().activeId === id) return;
       void setActiveConversation(id);
-      // Named, not left to the slot: a parked plan gate and the driven-tab chip
-      // re-arm only on a fresh query, so without this, switching back to a
-      // parked conversation shows "waiting for your approval" with the card
-      // gone — and typed text would queue behind a run that cannot move. The id
-      // rides along because with a panel open in every window, the slot can be
-      // pointed somewhere else between this write and the worker reading it.
-      post({ type: "query_run", conversationId: id });
-      set({ ...resetRun(), messages: [], activeId: id });
-      void getMessages(id).then((messages) => {
-        // A switch that raced this read wins — never paint a stale transcript.
-        if (get().activeId === id) set({ messages });
-      });
+      showConversation(id);
     },
 
     // No optimistic set: the index watch already feeds `conversations`, and one

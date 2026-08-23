@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { runsHere, useConversationStore } from "./store";
+import { boardRunHere, runsHere, useConversationStore } from "./store";
 import { pendingAskId } from "./ask-gate";
 import { toAttachment } from "./image";
 import { recallStep, sentMessages } from "./history-recall";
@@ -135,9 +135,7 @@ export function ChatInput() {
     const at = s.board.queue.findIndex((q) => q.id === s.queuedRun?.id);
     return at >= 0 ? at + 1 : s.queuedRun.position;
   });
-  const boardRunHere = useConversationStore(
-    (s) => s.activeId !== null && s.board.running?.conversationId === s.activeId,
-  );
+  const boardRun = useConversationStore(boardRunHere);
   const deferred = useConversationStore((s) => s.deferred);
   const cancelDeferred = useConversationStore((s) => s.cancelDeferred);
   const bridgeActive = useConversationStore((s) => s.bridgeActive);
@@ -585,7 +583,7 @@ export function ChatInput() {
           or a paste hint already makes the footer tall, and the run band carries
           the tip while working (under the same eviction rule). Both concern a
           run about to start, so both go quiet once one is live. */}
-      {!(running || (boardRunHere && !bridgeActive)) &&
+      {!(running || (boardRun && !bridgeActive)) &&
         (pageBlocked ? (
           <p className="line-clamp-2 text-[11px] text-neutral-500 dark:text-neutral-400">
             {t("chat.restrictedPageHint")}

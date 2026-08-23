@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { runsHere, useConversationStore } from "./store";
+import { boardRunHere, runsHere, useConversationStore } from "./store";
 import { DrivenTabChip } from "./DrivenTabChip";
 import { PlanMark } from "./PlanMark";
 import { ContextGauge } from "./ContextGauge";
@@ -43,11 +43,7 @@ export function RunStatus() {
   // startedAt drives the elapsed clock; the plan peek reads the transcript as
   // of reopen, not a stream); the index row keeps the summary of the run that
   // ended while the panel was away, retired by the next user message.
-  const boardRun = useConversationStore((s) =>
-    s.activeId !== null && s.board.running?.conversationId === s.activeId
-      ? s.board.running
-      : undefined,
-  );
+  const boardRun = useConversationStore(boardRunHere);
   const stop = useConversationStore((s) => s.stop);
   const lastRun = useConversationStore(
     (s) => s.conversations.find((c) => c.id === s.activeId)?.lastRun,
@@ -128,15 +124,14 @@ export function RunStatus() {
     // that ended while the panel was closed stands in — same band either way.
     // A live error marks the band failed: "Done" over a 429 reads as a lie.
     //
-    // The TOKENS come from the writer whenever it has stamped them, even on the
-    // path where the panel has its own. `usage` is summed from the events this
-    // panel received, and a panel receives none while it is closed — so a run
-    // dispatched to the background (which closes the panel at the plan gate by
-    // design) or one the panel reconnected into reports whatever fraction of the
-    // turns it happened to witness, as if it were the whole run. The elapsed
-    // clock does not have this problem: it is anchored to the board's real
-    // startedAt, which is why a band could read "3m 25s · 15.9k" for a run whose
-    // last turn alone sent 15.6k.
+    // The TOKENS come from the writer whenever it has stamped them; `usage`
+    // stands in for the tick between the settle and that stamp landing. Both
+    // say the same thing now — `usage` is the run's running total, kept on the
+    // worker's run slot and re-sent whole on `query_run`, so a panel that
+    // joined mid-run (a pill click, a notification, a second window) holds the
+    // same figure as the one that dispatched. It used to be this panel's own
+    // sum of the deltas it happened to witness, which is how a band could read
+    // "3m 25s · 15.9k" for a run whose last turn alone sent 15.6k.
     const finished =
       runStartedAt !== null && runEndedAt !== null
         ? {

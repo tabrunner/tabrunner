@@ -10,6 +10,7 @@ import {
   TitleInput,
   HelpDialog,
   useConversationStore,
+  boardRunHere,
 } from "@/modules/conversation/ui";
 import { Onboarding, useProvidersStore } from "@/modules/providers/ui";
 import { initSkillsCatalog, SkillDraftDialog } from "@/modules/skills/ui";
@@ -55,9 +56,7 @@ export default function App() {
   // on this conversation after a reopen (status is idle then, but the Stop is
   // real). The same condition ChatInput calls "steering".
   const stopReady = useConversationStore(
-    (s) =>
-      (s.status === "running" && !s.queuedRun) ||
-      (s.activeId !== null && s.board.running?.conversationId === s.activeId),
+    (s) => (s.status === "running" && !s.queuedRun) || boardRunHere(s) !== undefined,
   );
   // Until the first message names the conversation the header says "New chat" —
   // never a blank row.

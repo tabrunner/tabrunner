@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useConversationStore, pinOf } from "./store";
+import { useConversationStore, pinOf, boardRunHere } from "./store";
 import type { ConversationState } from "./store";
 import { isRestrictedUrl } from "@/modules/browser";
 import { engineProvider } from "@/modules/providers/engine";
@@ -58,11 +58,7 @@ export function useWalkAway(): { live: boolean; ready: boolean } {
   // Selecting only the plan message (reference-stable until rewritten) keeps
   // this from re-rendering on every unrelated message churn mid-run.
   const plan = useConversationStore((s) => s.messages.findLast((m) => m.role === "plan"));
-  const boardRun = useConversationStore((s) =>
-    s.activeId !== null && s.board.running?.conversationId === s.activeId
-      ? s.board.running
-      : undefined,
-  );
+  const boardRun = useConversationStore(boardRunHere);
 
   // This panel's own run when it has one; the board's record of the run it
   // reopened into otherwise — but never a bridge session's: that client owns
