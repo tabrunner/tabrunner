@@ -25,11 +25,20 @@ Rules:
 const TITLE_TIMEOUT_MS = 30_000;
 
 /**
- * Re-titles a conversation the first-line heuristic titled badly — but only
- * when the user has not named it themselves, which is what makes this safe to
- * fire-and-forget: a stored title still equal to the derived one is provably
- * untouched, so the comparison at write time (not a flag at read time) is what
- * protects a rename, even one that raced this call.
+ * Re-titles a conversation the first-line heuristic titled badly. Called after
+ * every run with that run's task; the stored title decides the rest, and it
+ * answers two questions at once:
+ *
+ * - Is this the task that NAMED the thread? Only the opening message ever sets
+ *   a title (`appendTo` fills a blank one and never overwrites), so a stored
+ *   title equal to what this task derives is that message and no other. Asking
+ *   storage is what keeps this correct no matter when the caller's transcript
+ *   read happened — a panel or bridge run stores its user message before the
+ *   run starts, so counting the transcript's user turns can never tell an
+ *   opening task from a follow-up.
+ * - Has the user named it themselves? A rename breaks that same equality, so
+ *   the comparison at write time (not a flag at read time) protects it, even
+ *   from a rename that raced this call.
  *
  * One cheap call, no thinking, shaped exactly like memory extraction. Never
  * fires on a title that already says the task — `isPartialTitle` is false when
@@ -37,16 +46,16 @@ const TITLE_TIMEOUT_MS = 30_000;
  */
 export async function maybeAutoTitle(
   conversationId: string,
-  firstTask: string,
+  task: string,
   config: ResolvedProviderConfig,
   signal: AbortSignal,
 ): Promise<void> {
   try {
     // Nothing to improve when the first line already IS the task.
-    if (!isPartialTitle(firstTask)) return;
+    if (!isPartialTitle(task)) return;
     if (signal.aborted) return;
 
-    const derived = conversationTitle(firstTask);
+    const derived = conversationTitle(task);
     // Only retitle a conversation still wearing what this message derived. If a
     // later task re-derived the title, or a rename replaced it, hands off.
     const row = (await listConversations()).find((c) => c.id === conversationId);
@@ -60,7 +69,7 @@ export async function maybeAutoTitle(
     const bounded = AbortSignal.any([signal, AbortSignal.timeout(TITLE_TIMEOUT_MS)]);
     const messages: ChatMessage[] = [
       { role: "system", content: TITLE_SYSTEM },
-      { role: "user", content: truncateTo(firstTask, 2_000) },
+      { role: "user", content: truncateTo(task, 2_000) },
     ];
     let title = "";
     for await (const delta of titler.stream(messages, [], bounded)) {

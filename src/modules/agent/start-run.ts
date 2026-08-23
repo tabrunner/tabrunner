@@ -137,9 +137,6 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     const continuation = hasPendingQuestion(transcript) ? thread.tabs[0] : undefined;
     const target = await resolveRunTab(opts, continuation, thread);
 
-    // The auto-titler's one shot: this task opens the conversation. Counted
-    // from the transcript read above, before this run's own message lands.
-    const firstTask = transcript.some((m) => m.role === "user") ? undefined : task;
     if ("error" in target) {
       emit({ type: "error", message: target.error });
       return { ok: true };
@@ -383,43 +380,47 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
           },
         },
       });
-      // Memory is a background nicety: after a finished run, one cheap extra call
-      // distills the durable facts the agent never got around to remembering.
-      // Fire-and-forget — best-effort, a failed extraction never fails the run.
-      // But not unprotected: the board's keepalive alarm clears the moment this
-      // run lets go of its slot, the panel has long closed itself, and an MV3
-      // worker with nothing pending is killed mid-fetch — the extraction (and
-      // the memory write) dies with it. A dedicated alarm holds the worker up
-      // until the call settles; background.ts clears a stale one at boot.
+      // Two background niceties after a finished run: one cheap call distills
+      // the durable facts the agent never got around to remembering, another
+      // names a conversation the first line titled badly. Fire-and-forget —
+      // best-effort, neither failure touches the run. But not unprotected: the
+      // board's keepalive alarm clears the moment this run lets go of its slot,
+      // the panel has long closed itself, and an MV3 worker with nothing pending
+      // is killed mid-fetch — the call (and its write) dies with it. A dedicated
+      // alarm holds the worker up until both settle; background.ts clears a
+      // stale one at boot.
       if (!run.controller.signal.aborted && resolvedProvider) {
         void chrome.alarms.create(MEMORY_KEEPALIVE_ALARM, { periodInMinutes: 0.5 });
         // Where the run ended is where its lessons belong — the extraction gets
         // the driven tab's final URL as its site hint. Tab-died tolerance
         // mirrors persistDrivenTabFor; the lookup rides the chain so the
         // teardown below never waits on it.
-        const extractionProvider = resolvedProvider;
-        void chrome.tabs
+        const backgroundProvider = resolvedProvider;
+        const extraction = chrome.tabs
           .get(drivenTabId)
           .then((t) => t.url)
           .catch(() => undefined)
           .then((finalUrl) =>
-            extractAndRemember(extractionProvider, wire, run.controller.signal, finalUrl),
-          )
-          .finally(() => {
-            void chrome.alarms.clear(MEMORY_KEEPALIVE_ALARM);
-          });
-        // The first task's one-line title may be a fragment ("hey" off a
-        // two-line message) — one cheap call names it for real. Same keepalive
-        // umbrella as memory: it rides this run's hold on the worker, and a
-        // failed call leaves the derived title standing.
-        if (firstTask) {
-          void chrome.alarms.create(MEMORY_KEEPALIVE_ALARM, { periodInMinutes: 0.5 });
-          void maybeAutoTitle(conversationId, firstTask, resolvedProvider, run.controller.signal)
-            .catch(() => {})
-            .finally(() => {
-              void chrome.alarms.clear(MEMORY_KEEPALIVE_ALARM);
-            });
-        }
+            extractAndRemember(backgroundProvider, wire, run.controller.signal, finalUrl),
+          );
+        // The task's one-line title may be a fragment ("hey" off a two-line
+        // message) — one cheap call names it for real. Passed unconditionally:
+        // whether this task is the one that named the thread is a question
+        // about the STORED title, not about the transcript (which already holds
+        // this run's own user message by the time the run reads it), and
+        // maybeAutoTitle answers it against storage.
+        const titling = maybeAutoTitle(
+          conversationId,
+          task,
+          backgroundProvider,
+          run.controller.signal,
+        );
+        // One keepalive for both, cleared only once both have settled — two
+        // `finally`s on one alarm name meant the quicker call pulled the
+        // worker's hold out from under the slower one.
+        void Promise.allSettled([extraction, titling]).finally(() => {
+          void chrome.alarms.clear(MEMORY_KEEPALIVE_ALARM);
+        });
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
