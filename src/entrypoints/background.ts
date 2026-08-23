@@ -14,6 +14,7 @@ import {
 import type { RunBoard } from "@/modules/agent/run-queue";
 import { appendMessageTo, getActiveId, getConversationMeta } from "@/modules/conversation";
 import { setActiveConversation } from "@/modules/conversation/conversations";
+import { panelPorts } from "@/modules/conversation/panel-ports";
 import { TranscriptWriter } from "@/modules/conversation/transcript";
 import { hideAgentIndicator, refreshAgentIndicator, syncActionBadge } from "@/modules/browser";
 import {
@@ -40,14 +41,6 @@ import { isScheduleAlarm } from "@/modules/schedule";
 import { onScheduleAlarm, runScheduleNow, startScheduler } from "@/modules/schedule/scheduler";
 
 const log = createLogger("bg");
-/**
- * Every open panel — an external agent starting work must reach them all —
- * mapped to the window it lives in (its `hello`, undefined until that lands).
- * The window matters: notifications are gated on whether the user can see the
- * panel, and "a panel is open" plus "a window is focused" can be two facts
- * about two different windows.
- */
-const panelPorts = new Map<chrome.runtime.Port, number | undefined>();
 /** Wakes the worker through long provider silences while a run is up and the
  *  panel (whose ping does this when open) is closed. */
 const KEEPALIVE_ALARM = "tabrunner-run-keepalive";
@@ -205,7 +198,6 @@ export default defineBackground(() => {
               owner: "panel",
               task: msg.task,
               images: msg.images,
-              thisPage: msg.thisPage,
               emit: (event) => {
                 writer.apply(event);
                 broadcast(conversationId, event);

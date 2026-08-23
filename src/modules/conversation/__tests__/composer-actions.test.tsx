@@ -2,7 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 // The composer's two behaviors: the morph button (one slot — ↑ Send/Queue
 // whenever there's text, ■ Stop only while steering with an empty input) and
-// the run-target control, which is a two-state preference while idle and
+// the run-mode control, which is a two-state preference while idle and
 // becomes the walk-away action ("Run in background") while a run of this
 // panel's own is live. Plus the run band's plan peek, which unfolds the steps
 // it had to hide. Same createRoot+act seam as chat-input-slash.test.tsx.
@@ -16,7 +16,7 @@ import { getMessages } from "../conversations";
 import { ChatInput } from "../ui/ChatInput";
 import { HelpDialog } from "../ui/HelpDialog";
 import { setHelpOpen } from "../ui/help-open";
-import { RunTargetToggle } from "../ui/RunTargetToggle";
+import { RunModeToggle } from "../ui/RunModeToggle";
 import { RunStatus } from "../ui/RunStatus";
 import { useConversationStore } from "../ui/store";
 import type { RunSummary } from "../conversations";
@@ -60,7 +60,7 @@ beforeEach(() => {
     draft: "",
     pastedTexts: [],
     collapseDisabled: false,
-    runTarget: "thisPage",
+    runMode: "foreground",
     status: "idle",
     usage: { input: 0, output: 0 },
     runStartedAt: null,
@@ -153,7 +153,7 @@ describe("the parked plan gate", () => {
   });
 });
 
-describe("run target: a preference while idle, the walk-away while running", () => {
+describe("run mode: a preference while idle, the walk-away while running", () => {
   const toggleButton = (h: Harness) => {
     const btn = h.container.querySelector("button");
     if (!btn) throw new Error("no toggle");
@@ -165,10 +165,10 @@ describe("run target: a preference while idle, the walk-away while running", () 
       messages: [{ id: "m1", role: "plan", content: "", steps: ["a"], timestamp: 1000 }],
     });
     const close = vi.spyOn(window, "close").mockImplementation(() => {});
-    const h = await render(<RunTargetToggle />);
-    expect(toggleButton(h).textContent).toBe("This page");
+    const h = await render(<RunModeToggle />);
+    expect(toggleButton(h).textContent).toBe("In foreground");
     await click(toggleButton(h));
-    expect(useConversationStore.getState().runTarget).toBe("background");
+    expect(useConversationStore.getState().runMode).toBe("background");
     expect(close).not.toHaveBeenCalled();
     await unmount(h);
   });
@@ -180,7 +180,7 @@ describe("run target: a preference while idle, the walk-away while running", () 
       planApproved: true,
     });
     const close = vi.spyOn(window, "close").mockImplementation(() => {});
-    const h = await render(<RunTargetToggle />);
+    const h = await render(<RunModeToggle />);
     expect(toggleButton(h).textContent).toBe("Run in background");
     // A trigger, not a switch: the live action dresses in brand, the idle
     // preference stays ghost.
@@ -188,7 +188,7 @@ describe("run target: a preference while idle, the walk-away while running", () 
     await click(toggleButton(h));
     expect(close).toHaveBeenCalledTimes(1);
     // An act on the run in flight, not a vote on where the next one goes.
-    expect(useConversationStore.getState().runTarget).toBe("thisPage");
+    expect(useConversationStore.getState().runMode).toBe("foreground");
     await unmount(h);
   });
 
@@ -199,7 +199,7 @@ describe("run target: a preference while idle, the walk-away while running", () 
       planApproval: { steps: ["a"], current: 0, reapproval: false },
     });
     const close = vi.spyOn(window, "close").mockImplementation(() => {});
-    const h = await render(<RunTargetToggle />);
+    const h = await render(<RunModeToggle />);
     expect(toggleButton(h).disabled).toBe(true);
     await click(toggleButton(h));
     expect(close).not.toHaveBeenCalled();

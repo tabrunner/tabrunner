@@ -30,7 +30,7 @@
     "allSettings": "All settings →",
     "reportIssue": "Report an issue →",
     "defaultStartUrl": "Fallback start page",
-    "defaultStartUrlHint": "A background task starts on the page you're looking at. When Chrome blocks that page — chrome:// or the Web Store — it opens here instead.",
+    "defaultStartUrlHint": "A task starts on the page you're looking at. When Chrome blocks that page — chrome:// or the Web Store — it opens here instead.",
     "showWidget": "Floating status widget",
     "showWidgetHint": "A small floating indicator on your tabs while a task runs or waits in line.",
     "backgroundTasks": "Background tasks",
@@ -527,11 +527,11 @@
       "cancelledQueued": "Took your task out of the queue — nothing was started."
     },
     "background": {
-      "description": "Toggle where the next task runs — this page, or background",
-      "current": "Next task runs: {{target}}.",
+      "description": "Toggle whether the next task runs in the foreground or in the background",
+      "current": "Next task runs: {{mode}}.",
       "invalid": "No setting called “{{value}}” — pick on or off.",
-      "nowBackground": "Next task runs in the background — the panel closes once you approve the plan, and the task carries on without you.",
-      "nowThisPage": "Next task runs on this page — it drives the tab you're looking at while you watch."
+      "nowBackground": "Next task runs in the background — the panel closes once you approve the plan, and nothing moves your screen after that. Same tab either way.",
+      "nowForeground": "Next task runs in the foreground — the panel stays open and the run brings a tab it switches to forward."
     },
     "effort": {
       "description": "Set reasoning effort — none, low, medium, high, max, or default",
@@ -586,7 +586,10 @@
       "running": "Compacting the chat…",
       "nothing": "Nothing to compact yet — this chat is still short enough to replay in full.",
       "busy": "A task is working — compact once it finishes.",
-      "failed": "Couldn't compact — {{message}}"
+      "failed": "Couldn't compact — {{message}}",
+      "cancel": "Cancel",
+      "cancelHint": "Stop summarizing — Esc",
+      "cancelled": "Compaction cancelled — nothing was folded."
     },
     "help": {
       "description": "Show every shortcut and command"
@@ -618,8 +621,8 @@
   "context": {
     "used": "{{used}} context",
     "usedOf": "{{used}} / {{window}}",
-    "tooltip": "Context: the last turn sent {{used}} of the model's {{window}} window — click to summarize the chat and free some up",
-    "tooltipUnknown": "Context: the last turn sent {{used}}. This model's window size isn't known, so there's no percentage to show — click to summarize the chat and free some up"
+    "tooltip": "Context: the last turn sent {{used}} of the model's {{window}} window — /compact summarizes the chat to free some up",
+    "tooltipUnknown": "Context: the last turn sent {{used}}. This model's window size isn't known, so there's no percentage to show — /compact summarizes the chat to free some up"
   },
   "indicator": {
     "driving": "TabRunner is controlling this tab",
@@ -725,12 +728,12 @@
     "bridgeDriving": "{{client}} is driving your browser",
     "bridgeStopTitle": "Stops the task and hands the browser back",
     "background": "In background",
-    "thisPage": "This page",
-    "targetAria": "Next task runs: {{target}}",
+    "foreground": "In foreground",
+    "modeAria": "Next task runs: {{mode}}",
     "backgroundNow": "Run in background",
     "backgroundNowTitle": "Close the panel and let this task finish on its own — it never moves your screen. Reopen any time to watch.",
     "backgroundNowGated": "Approve the plan first — closing now would leave the approval waiting on a notification.",
-    "targetTitle": "“This page” keeps the chat open so you can watch; “In background” closes the panel and works unattended without ever moving your screen — flipping mid-task applies at once (once the plan is approved)"
+    "modeTitle": "“In foreground” keeps the panel open so you can watch, and the run brings a tab it switches to forward; “In background” closes the panel once you approve the plan and never moves your screen. Both drive the tab you're on — flipping mid-task applies at once (once the plan is approved)"
   },
   "queue": {
     "position": "Queued · #{{position}}",
@@ -754,7 +757,7 @@
     "label": "Tip",
     "escStop": "Esc stops the running task — anything already typed is sent as the next one.",
     "historyRecall": "Press ↑ any time to walk back through what you've sent — ↓ comes forward, draft and all.",
-    "thisPage": "The task works the tab you're looking at — “In background” closes the panel once the plan is approved.",
+    "foreground": "Every task works the tab you're looking at — “In background” just closes the panel.",
     "queueSteer": "You can keep typing while a task runs — the message queues and steers it between steps.",
     "pasteImage": "Paste a screenshot straight into the composer — the agent can see it.",
     "pasteCollapse": "A long pasted text folds into a neat token — the full text still reaches the agent.",

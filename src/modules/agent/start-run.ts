@@ -3,6 +3,7 @@ import { buildConversationHistory, runAgentLoop } from ".";
 import { extractAndRemember } from "@/modules/memory";
 import { createRecorder } from "@/modules/walkthrough/recorder";
 import { maybeAutoTitle } from "@/modules/conversation/title";
+import { isPanelOpen } from "@/modules/conversation/panel-ports";
 import {
   clearAgentWait,
   createDriver,
@@ -73,10 +74,10 @@ export interface StartRunOptions {
   images?: string[];
   /** Where a background run's tab starts — wins over the default start URL. */
   url?: string;
-  /** Drive the user's current tab with the panel left open — the default; the
-   *  "background" toggle drives the same tab but closes the panel after plan
-   *  approval. */
-  thisPage?: boolean;
+  /** Work the tab the user is looking at instead of opening one. Implied for a
+   *  panel run (see resolveRunTab) and set by an MCP client asking for the
+   *  foreground — nobody else has a current tab worth adopting. */
+  adoptCurrentTab?: boolean;
   /** Streams run events to the client — the panel port or the bridge's WS. */
   emit: (event: Event) => void;
   /** The run ended on an ask_user question; the client may want to react
@@ -159,10 +160,6 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       return { ok: true };
     }
     const { tab, opened, adopted } = target;
-    // "this page" returns bare — it's the same drive as adoption, just with the
-    // panel left open, so it carries the same whose-tab semantics: the plan
-    // rejection path hands the tab back whichever mode drove it.
-    const onUsersTab = adopted === true || opts.thisPage === true;
     if (!tab.id) {
       emit({ type: "error", message: i18n.t("errors.noActiveTab") });
       return { ok: true };
@@ -205,12 +202,11 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       drivenTabId: () => drivenTabId,
     });
     const driver = createDriver(tab.id, {
-      // Only a watched run may follow its own switches — "this page" leaves the
-      // panel open so the user can follow the work, and the driver keeps the
-      // follow on screen only while they're still on the tab being left. A
-      // background run (adopted or in a tab of its own) re-targets in silence:
-      // "trabalhando sozinho" must never move the user's screen.
-      activateOnSwitch: opts.thisPage === true,
+      // A run follows its own switches on screen only while somebody is there
+      // to watch — asked live, so the moment the panel closes the run stops
+      // moving the user's screen. Nobody watching, nothing moves: that is what
+      // walking away buys, whether it was chosen at send time or mid-run.
+      activateOnSwitch: isPanelOpen,
       onSwitch: (info) => {
         void hideAgentIndicator(drivenTabId);
         drivenTabId = info.id;
@@ -300,10 +296,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         history: history.length > 0 ? history : undefined,
         contextWindow,
         previousTabs: previousTabs.length > 0 ? previousTabs : undefined,
-        mode: {
-          background: opts.thisPage !== true,
-          ...(onUsersTab ? { adopted: true } : {}),
-        },
+        mode: adopted ? "adopted" : "own",
         ...(tab.url ? { startUrl: tab.url } : {}),
         drainInjected: () => run.injectedQueue.splice(0, run.injectedQueue.length),
         signal: run.controller.signal,
@@ -499,7 +492,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // glanced at is not where the conversation now lives.
       if (planRejected && opened) {
         await discardRunTab(tab.id);
-      } else if (planRejected && onUsersTab) {
+      } else if (planRejected && adopted) {
         // "No, don't touch this" names no outcome. Nothing is unfiled: the gate
         // means a first-plan rejection happens before any grouping, and after a
         // mid-run replan the strip holds real work. Just put it away.
@@ -596,11 +589,13 @@ function isBlankPage(url: string | undefined): boolean {
 }
 
 /**
- * Where the run drives. "this page" keeps the direct semantics — the window's
- * active tab, refused early when injection could never reach it, given a moment
- * to finish loading.
+ * Where the run drives — ONE answer, whether the user is watching or has walked
+ * away. Foreground and background are the same run: the toggle decides whether
+ * the panel stays open, never which tab the work happens on. Two resolutions
+ * would make the toggle a hidden second setting, which is exactly what "this
+ * page" used to read like.
  *
- * The default panel run adopts that same tab: the state the task is about — the
+ * A panel run adopts the tab the user is on: the state the task is about — the
  * half-filled form, the search results, the scrolled thread — lives there and
  * nowhere else, and re-visiting its url in a fresh tab would both lose it and
  * open a second live session the site may read as a bot. So the run takes the
@@ -610,52 +605,35 @@ function isBlankPage(url: string | undefined): boolean {
  * be on.
  *
  * Only when there is no page to adopt — a blank/new-tab page, a page Chrome
- * forbids, an MCP client (nowhere near a browser), or an explicit target URL —
- * does the run open a tab of its own, on the start-page preference. It opens
- * inactive and is never brought forward: this path serves background runs, and
- * "background" means the user's screen never moves — the badge and the widget
- * say the work exists, and the panel's chip is the way to look at it.
+ * forbids, an MCP client (nowhere near a browser, unless it asked for the
+ * foreground), or an explicit target URL — does the run open a tab of its own,
+ * on the start-page preference. It opens inactive and is never brought forward.
  *
- * No run moves the user's screen at send time, in any mode: a continuation
- * reuses its tab in place, a this-page run is already on it, and the watched
- * follow (the driver bringing a switched-to tab forward) holds only while the
- * user is still sitting on the tab being left. The sidebar is the watch
- * surface; the chip and the notification click are how the user looks at the
- * tab — the run never decides that for them. An MCP client's run is never
- * revealed either: nobody is at the browser, and reaching over to raise Chrome
- * over the editor they ARE looking at is the hijack this all avoids.
+ * No run moves the user's screen at send time: a continuation reuses its tab in
+ * place, an adopted run is already on it, and the follow (the driver bringing a
+ * switched-to tab forward) needs an open panel and the user still sitting on the
+ * tab being left. The sidebar is the watch surface; the chip and the
+ * notification click are how the user looks at the tab — the run never decides
+ * that for them. An MCP client's run is never revealed either: nobody is at the
+ * browser, and reaching over to raise Chrome over the editor they ARE looking
+ * at is the hijack this all avoids.
  */
 async function resolveRunTab(
   opts: StartRunOptions,
   continuation: LastTab | undefined,
   thread: ThreadTabs,
 ): Promise<RunTab | { error: string }> {
-  if (opts.thisPage) {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return { error: i18n.t("errors.noActiveTab") };
-    if (isRestrictedUrl(tab.url)) return { error: i18n.t("errors.restrictedPage") };
-    try {
-      if (tab.status === "loading") await waitForLoad(tab.id, 10_000);
-    } catch (e) {
-      return { error: e instanceof Error ? e.message : String(e) };
-    }
-    // No grouping at send time — the user may just be passing through this tab.
-    // The thread's strip is only resolved so the run's first action joins it.
-    const threadGroupId = await liveThreadGroup(thread, tab);
-    return { tab, ...(threadGroupId !== undefined ? { threadGroupId } : {}) };
-  }
-
   const reused = await reuseContinuationTab(continuation, thread);
   if (reused) return reused;
 
-  // The background-mode panel run works the tab the user is looking at — the
-  // state the task is about (the half-filled form, the search results, the
-  // scrolled thread) lives there and only there. Re-visiting its url in a fresh
-  // tab would answer about a cold copy, and open a second live session the site
-  // may read as a bot. Adoption takes the tab as-is; the run reads it and
-  // proposes a plan before any action tool is unlocked, so "don't touch this
-  // draft" is a plan rejection, not a fork.
-  const adopt = opts.owner === "panel" && !opts.url;
+  // A panel run works the tab the user is looking at — the state the task is
+  // about (the half-filled form, the search results, the scrolled thread) lives
+  // there and only there. Re-visiting its url in a fresh tab would answer about
+  // a cold copy, and open a second live session the site may read as a bot.
+  // Adoption takes the tab as-is; the run reads it and proposes a plan before
+  // any action tool is unlocked, so "don't touch this draft" is a plan
+  // rejection, not a fork. A URL names its own page, so it never adopts.
+  const adopt = !opts.url && (opts.owner === "panel" || opts.adoptCurrentTab === true);
   if (adopt) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id && tab.url && !isBlankPage(tab.url) && !isRestrictedUrl(tab.url)) {

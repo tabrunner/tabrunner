@@ -8,7 +8,7 @@ import { recallStep, sentMessages } from "./history-recall";
 import { caretVisualLine } from "./caret-line";
 import { useEngine, useQueueBusy, useRestrictedPage } from "./hooks";
 import { expandText, insertToken, linesOf, nextToken, shouldCollapse } from "./paste-collapse";
-import { RunTargetToggle } from "./RunTargetToggle";
+import { RunModeToggle } from "./RunModeToggle";
 import { SlashMenu } from "./SlashMenu";
 import { openHelp } from "./help-open";
 import { COMMANDS, executeSlash, runSlash, slashItems } from "./slash-commands";
@@ -115,12 +115,11 @@ export function ChatInput() {
   const revisePlan = useConversationStore((s) => s.revisePlan);
   const queued = useConversationStore((s) => s.queued);
   const queueBusy = useQueueBusy();
-  // Chrome forbids extensions on chrome:// and Web Store pages, so "this page"
-  // has nothing to drive there — the send still works (it opens a tab of its
-  // own), and the footnote says so before a word is typed rather than after.
-  const restrictedPage = useRestrictedPage();
-  const runTarget = useConversationStore((s) => s.runTarget);
-  const pageBlocked = restrictedPage && runTarget === "thisPage";
+  // Chrome forbids extensions on chrome:// and Web Store pages, so a run has
+  // nothing to adopt there — the send still works (it opens a tab of its own),
+  // and the footnote says so before a word is typed rather than after. True in
+  // either mode: the page the run works never depended on the toggle.
+  const pageBlocked = useRestrictedPage();
   const sendTask = useConversationStore((s) => s.sendTask);
   const { provider: engineProvider, setEngine } = useEngine();
   const queueMessage = useConversationStore((s) => s.queueMessage);
@@ -597,7 +596,7 @@ export function ChatInput() {
           !pastedTexts.some((p) => text.includes(p.token)) && <TipLine />
         ))}
       {/* One card, two tenants: the bare input on top, a footer row below with
-          the run target and the engine picker on the left and the morph button
+          the run mode and the engine picker on the left and the morph button
           on the right — so the textarea never shares its width with a button
           column. */}
       <div className="relative rounded-xl border border-neutral-300 transition-colors focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500 dark:border-neutral-600">
@@ -636,7 +635,7 @@ export function ChatInput() {
           onBlur={onComposerBlur}
         />
         <div className="flex items-center gap-1 px-1.5 pb-1.5">
-          <RunTargetToggle />
+          <RunModeToggle />
           <EnginePicker provider={engineProvider} onPick={setEngine} />
           {pastedTexts.some((p) => text.includes(p.token)) && (
             <p

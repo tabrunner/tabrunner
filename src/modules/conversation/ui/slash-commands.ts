@@ -177,16 +177,16 @@ export const COMMANDS: readonly SlashCommand[] = [
     descriptionKey: "commands.background.description",
     takesArg: true,
     candidates: () => [
-      { value: "off", label: i18n.t("run.thisPage") },
+      { value: "off", label: i18n.t("run.foreground") },
       { value: "on", label: i18n.t("run.background") },
     ],
-    current: () => (useConversationStore.getState().runTarget === "background" ? "on" : "off"),
+    current: () => (useConversationStore.getState().runMode === "background" ? "on" : "off"),
     run: (arg) => {
       const store = useConversationStore.getState();
       if (!arg) {
         note(
           i18n.t("commands.background.current", {
-            target: i18n.t(store.runTarget === "thisPage" ? "run.thisPage" : "run.background"),
+            mode: i18n.t(store.runMode === "foreground" ? "run.foreground" : "run.background"),
           }) + nextTaskSuffix(),
         );
         return;
@@ -195,16 +195,16 @@ export const COMMANDS: readonly SlashCommand[] = [
         note(i18n.t("commands.background.invalid", { value: arg }));
         return;
       }
-      const next = arg === "on" ? "background" : "thisPage";
-      store.setRunTarget(next);
-      // The suffix is not decoration here: sendTask reads runTarget at send
-      // time, so mid-run this would otherwise read as having just moved the
-      // live run off the page the user is watching it work.
+      const next = arg === "on" ? "background" : "foreground";
+      store.setRunMode(next);
+      // The suffix is not decoration here: the flip applies to the next send,
+      // so mid-run this would otherwise read as having just walked away from
+      // the run the user is watching.
       note(
         i18n.t(
           next === "background"
             ? "commands.background.nowBackground"
-            : "commands.background.nowThisPage",
+            : "commands.background.nowForeground",
         ) + nextTaskSuffix(),
       );
     },

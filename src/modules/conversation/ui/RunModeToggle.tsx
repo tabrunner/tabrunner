@@ -4,7 +4,7 @@ import { useWalkAway } from "./hooks";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 
-/** Two states of the same tab: panel open (you watch) or closed (you walk away). */
+/** Two windows, the far one whole — the work carries on behind what you're doing. */
 function BackgroundIcon() {
   return (
     <Icon>
@@ -14,20 +14,26 @@ function BackgroundIcon() {
   );
 }
 
-/** One page with an arrow into it — the run drives what you're looking at. */
-function ThisPageIcon() {
+/** The same pair, mirrored: the near window whole — the work is in front of you. */
+function ForegroundIcon() {
   return (
     <Icon>
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M12 7v8m-3.5-3.5L12 15l3.5-3.5" />
+      <rect x="3" y="8" width="13" height="13" rx="2" />
+      <path d="M8 8V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-3" />
     </Icon>
   );
 }
 
 /**
- * Where the run drives, as the composer card's left anchor. Two states, so a
- * click flips it — no popup for one bit of information. The current mode is the
- * label (self-explanatory); the tooltip says what the other mode does.
+ * Whether the next run happens in front of you or behind you, as the composer
+ * card's left anchor. Two states, so a click flips it — no popup for one bit of
+ * information. The current mode is the label (self-explanatory); the tooltip
+ * says what the other mode does.
+ *
+ * It says nothing about which page, because the answer never differed: every
+ * run works the tab you're on. What the toggle sets is whether the panel stays
+ * open once you approve the plan — and, with it, whether the run may bring a
+ * tab it switches to forward.
  *
  * Once a run of this panel's own is live the question is settled — it is
  * already on its tab, and nothing a toggle says can move it. So the control
@@ -36,12 +42,12 @@ function ThisPageIcon() {
  * on a notification — the tooltip says so rather than leaving a dead grey
  * button. It goes back to being a preference the moment the run ends.
  */
-export function RunTargetToggle() {
+export function RunModeToggle() {
   const { t } = useTranslation();
-  const runTarget = useConversationStore((s) => s.runTarget);
-  const setRunTarget = useConversationStore((s) => s.setRunTarget);
+  const runMode = useConversationStore((s) => s.runMode);
+  const setRunMode = useConversationStore((s) => s.setRunMode);
   const { live, ready } = useWalkAway();
-  const thisPage = runTarget === "thisPage";
+  const foreground = runMode === "foreground";
 
   if (live) {
     return (
@@ -50,7 +56,7 @@ export function RunTargetToggle() {
         variant="quiet-brand"
         size="sm"
         disabled={!ready}
-        // Deliberately no setRunTarget: this is an act on the run in flight,
+        // Deliberately no setRunMode: this is an act on the run in flight,
         // not a vote on where the next one goes — so it dresses as the action
         // it is (brand, pressable), not the preference it was a second ago.
         onClick={() => window.close()}
@@ -63,7 +69,7 @@ export function RunTargetToggle() {
     );
   }
 
-  const flip = () => setRunTarget(thisPage ? "background" : "thisPage");
+  const flip = () => setRunMode(foreground ? "background" : "foreground");
 
   return (
     <Button
@@ -71,14 +77,14 @@ export function RunTargetToggle() {
       variant="ghost"
       size="sm"
       onClick={flip}
-      aria-label={t("run.targetAria", {
-        target: thisPage ? t("run.thisPage") : t("run.background"),
+      aria-label={t("run.modeAria", {
+        mode: foreground ? t("run.foreground") : t("run.background"),
       })}
-      title={t("run.targetTitle")}
+      title={t("run.modeTitle")}
       className="flex shrink-0 items-center gap-1.5 hover:text-neutral-900 dark:hover:text-neutral-100"
     >
-      {thisPage ? <ThisPageIcon /> : <BackgroundIcon />}
-      <span className="truncate">{thisPage ? t("run.thisPage") : t("run.background")}</span>
+      {foreground ? <ForegroundIcon /> : <BackgroundIcon />}
+      <span className="truncate">{foreground ? t("run.foreground") : t("run.background")}</span>
     </Button>
   );
 }

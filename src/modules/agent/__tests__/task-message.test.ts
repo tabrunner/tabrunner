@@ -41,9 +41,9 @@ describe("buildTaskMessage", () => {
     expect(message).toContain("any of them");
   });
 
-  it("tells a background run it has a tab of its own", () => {
+  it("tells a run in a tab of its own to stay out of the user's", () => {
     const message = buildTaskMessage("book the flight", '- heading "Flights"', {
-      mode: { background: true },
+      mode: "own",
     });
 
     expect(message).toContain("tab of your own");
@@ -52,7 +52,7 @@ describe("buildTaskMessage", () => {
 
   it("tells an adopted run it drives the user's tab and must plan before acting", () => {
     const message = buildTaskMessage("book the flight", '- heading "Flights"', {
-      mode: { background: true, adopted: true },
+      mode: "adopted",
     });
 
     expect(message).not.toContain("tab of your own");
@@ -60,10 +60,8 @@ describe("buildTaskMessage", () => {
     expect(message).toContain("propose a plan before any action");
   });
 
-  it("says nothing about tabs when the run drives the user's own page", () => {
-    const message = buildTaskMessage("book the flight", '- heading "Flights"', {
-      mode: { background: false },
-    });
+  it("says nothing about tabs when the run's own tab is unknown", () => {
+    const message = buildTaskMessage("book the flight", '- heading "Flights"', {});
 
     expect(message).not.toContain("tab of your own");
     expect(message).not.toContain("driving the user's current tab");
@@ -74,7 +72,7 @@ describe("buildTaskMessage", () => {
   // "keep checking until X" loop is supposed to end.
   it("names the schedule a scheduled run fired from", () => {
     const message = buildTaskMessage("check the delivery", '- heading "Orders"', {
-      mode: { background: true },
+      mode: "own",
       scheduleId: "sched-42",
     });
 
@@ -84,7 +82,7 @@ describe("buildTaskMessage", () => {
 
   it("says nothing about schedules for an ordinary run", () => {
     const message = buildTaskMessage("check the delivery", '- heading "Orders"', {
-      mode: { background: true },
+      mode: "own",
     });
 
     expect(message).not.toContain("scheduled task firing on its own");

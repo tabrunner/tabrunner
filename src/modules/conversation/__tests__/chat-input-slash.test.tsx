@@ -71,7 +71,7 @@ beforeEach(() => {
     messages: [],
     draft: "",
     pastedTexts: [],
-    runTarget: "thisPage",
+    runMode: "foreground",
     status: "idle",
     queued: [],
     queuedRun: null,

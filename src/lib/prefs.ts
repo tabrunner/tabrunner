@@ -29,18 +29,21 @@ export const widgetResetV1 = defineItem<boolean>("widgetResetV1", false);
  *  very next boundary. */
 export const tipsEnabled = defineItem<boolean>("tipsEnabled", true);
 
-/** Where a submitted task drives — the user's current page ("thisPage", the
- *  default, with the panel open) or the same tab with the panel closed after
- *  plan approval ("background"). Both drive the tab you're on; the only
- *  difference is whether you watch or walk away. */
-export type RunTarget = "background" | "thisPage";
+/** How a submitted task runs relative to you: "foreground" (the default) keeps
+ *  the panel open so you watch it work, and the run brings a tab it switches to
+ *  forward; "background" closes the panel once you approve the plan and never
+ *  moves your screen again. Nothing else differs — the run itself is identical,
+ *  same tab, same tools, same plan gate. The stored key is new as of the
+ *  rename: the old "runTarget" said "this page", which named the one thing that
+ *  never changed. */
+export type RunMode = "background" | "foreground";
 
 /** The toggle's last choice, kept across runs and panel opens. A working mode
  *  is a habit, not a per-run decision: someone dispatching background tasks all
  *  afternoon should not re-flip it after every run (and after every error, which
  *  is when re-flipping is most annoying). Lives here rather than in the panel
  *  store so the choice survives the panel closing itself. */
-export const runTargetPref = defineItem<RunTarget>("runTarget", "thisPage");
+export const runModePref = defineItem<RunMode>("runMode", "foreground");
 
 /** Documented runs — the `document` tool is offered to the model only while this
  *  is on. On by default: the tool costs nothing until the user asks for a

@@ -30,7 +30,7 @@
     "allSettings": "Todas as configurações →",
     "reportIssue": "Relatar um problema →",
     "defaultStartUrl": "Página inicial alternativa",
-    "defaultStartUrlHint": "Uma tarefa em segundo plano começa na página que você está vendo. Quando o Chrome bloqueia essa página — chrome:// ou a Web Store — ela abre aqui.",
+    "defaultStartUrlHint": "Uma tarefa começa na página que você está vendo. Quando o Chrome bloqueia essa página — chrome:// ou a Web Store — ela abre aqui.",
     "showWidget": "Widget flutuante de status",
     "showWidgetHint": "Um indicador flutuante nas suas abas enquanto uma tarefa roda ou espera na fila.",
     "backgroundTasks": "Tarefas em segundo plano",
@@ -527,11 +527,11 @@
       "cancelledQueued": "Tirei sua tarefa da fila — nada chegou a começar."
     },
     "background": {
-      "description": "Alterna onde a próxima tarefa roda — nesta página ou em segundo plano",
-      "current": "A próxima tarefa roda: {{target}}.",
+      "description": "Alterna se a próxima tarefa roda em primeiro ou em segundo plano",
+      "current": "A próxima tarefa roda: {{mode}}.",
       "invalid": "Não existe uma opção chamada “{{value}}” — escolha on ou off.",
-      "nowBackground": "A próxima tarefa roda em segundo plano — o painel fecha quando você aprova o plano, e a tarefa continua sem você.",
-      "nowThisPage": "A próxima tarefa roda nesta página — ela dirige a aba que você está vendo enquanto você acompanha."
+      "nowBackground": "A próxima tarefa roda em segundo plano — o painel fecha quando você aprova o plano, e nada mexe na sua tela depois disso. Mesma aba, de todo jeito.",
+      "nowForeground": "A próxima tarefa roda em primeiro plano — o painel fica aberto e a tarefa traz para a frente a aba que ela abrir."
     },
     "effort": {
       "description": "Define o esforço de raciocínio — none, low, medium, high, max ou default",
@@ -586,7 +586,10 @@
       "running": "Compactando a conversa…",
       "nothing": "Nada para compactar ainda — esta conversa ainda cabe inteira no replay.",
       "busy": "Uma tarefa está em andamento — compacte quando ela terminar.",
-      "failed": "Não deu para compactar — {{message}}"
+      "failed": "Não deu para compactar — {{message}}",
+      "cancel": "Cancelar",
+      "cancelHint": "Parar de resumir — Esc",
+      "cancelled": "Compactação cancelada — nada foi resumido."
     },
     "help": {
       "description": "Mostra todos os atalhos e comandos"
@@ -618,8 +621,8 @@
   "context": {
     "used": "{{used}} de contexto",
     "usedOf": "{{used}} / {{window}}",
-    "tooltip": "Contexto: o último turno enviou {{used}} da janela de {{window}} do modelo — clique para resumir a conversa e liberar espaço",
-    "tooltipUnknown": "Contexto: o último turno enviou {{used}}. O tamanho da janela deste modelo não é conhecido, então não há porcentagem a mostrar — clique para resumir a conversa e liberar espaço"
+    "tooltip": "Contexto: o último turno enviou {{used}} da janela de {{window}} do modelo — use /compact para resumir a conversa e liberar espaço",
+    "tooltipUnknown": "Contexto: o último turno enviou {{used}}. O tamanho da janela deste modelo não é conhecido, então não há porcentagem a mostrar — use /compact para resumir a conversa e liberar espaço"
   },
   "indicator": {
     "driving": "O TabRunner está controlando esta aba",
@@ -725,12 +728,12 @@
     "bridgeDriving": "{{client}} está controlando seu navegador",
     "bridgeStopTitle": "Interrompe a tarefa e devolve o navegador",
     "background": "Em segundo plano",
-    "thisPage": "Esta página",
-    "targetAria": "A próxima tarefa roda: {{target}}",
+    "foreground": "Em primeiro plano",
+    "modeAria": "A próxima tarefa roda: {{mode}}",
     "backgroundNow": "Rodar em segundo plano",
     "backgroundNowTitle": "Fecha o painel e deixa esta tarefa terminar sozinha — ela nunca mexe na sua tela. Reabra quando quiser acompanhar.",
     "backgroundNowGated": "Aprove o plano primeiro — fechar agora deixaria a aprovação presa em uma notificação.",
-    "targetTitle": "“Esta página” deixa a conversa aberta para você acompanhar; “Em segundo plano” fecha o painel e segue trabalhando sozinho, sem tirar a tela de você — trocar durante a tarefa já vale (com o plano aprovado)"
+    "modeTitle": "“Em primeiro plano” mantém o painel aberto para você acompanhar, e a tarefa traz para a frente a aba que ela abrir; “Em segundo plano” fecha o painel quando você aprova o plano e nunca mexe na sua tela. As duas dirigem a aba em que você está — trocar durante a tarefa já vale (com o plano aprovado)"
   },
   "queue": {
     "position": "Na fila · nº {{position}}",
@@ -754,7 +757,7 @@
     "label": "Dica",
     "escStop": "Esc interrompe a tarefa em execução — o que você já digitou é enviado como a próxima.",
     "historyRecall": "Pressione ↑ para percorrer o que você já enviou — ↓ avança de novo, com rascunho e tudo.",
-    "thisPage": "A tarefa age na aba que você está vendo — “Em segundo plano” fecha o painel após a aprovação do plano.",
+    "foreground": "Toda tarefa age na aba que você está vendo — “Em segundo plano” só fecha o painel.",
     "queueSteer": "Digite enquanto a tarefa roda — a mensagem entra na fila e a orienta entre os passos.",
     "pasteImage": "Cole uma captura de tela direto no campo — o agente consegue vê-la.",
     "pasteCollapse": "Um texto longo colado vira um token compacto — o texto completo ainda chega ao agente.",

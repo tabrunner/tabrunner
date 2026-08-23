@@ -143,7 +143,7 @@ describe("following the conversation another window opened", () => {
   });
 
   it("stands aside while a send is in flight", async () => {
-    useConversationStore.setState({ runTarget: "background" });
+    useConversationStore.setState({ runMode: "background" });
     const send = useConversationStore.getState().sendTask("book the flights");
     // The slot moves mid-send — the message must still land where it was aimed.
     useConversationStore.getState().followActive("c9");

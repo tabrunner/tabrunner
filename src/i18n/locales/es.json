@@ -30,7 +30,7 @@
     "allSettings": "Toda la configuración →",
     "reportIssue": "Reportar un problema →",
     "defaultStartUrl": "Página de inicio alternativa",
-    "defaultStartUrlHint": "Una tarea en segundo plano empieza en la página que estás viendo. Cuando Chrome bloquea esa página — chrome:// o la Web Store — se abre aquí.",
+    "defaultStartUrlHint": "Una tarea empieza en la página que estás viendo. Cuando Chrome bloquea esa página — chrome:// o la Web Store — se abre aquí.",
     "showWidget": "Widget flotante de estado",
     "showWidgetHint": "Un indicador flotante en tus pestañas mientras una tarea corre o espera en cola.",
     "backgroundTasks": "Tareas en segundo plano",
@@ -527,11 +527,11 @@
       "cancelledQueued": "Saqué tu tarea de la cola — no se llegó a iniciar nada."
     },
     "background": {
-      "description": "Alterna dónde corre la próxima tarea — esta página o segundo plano",
-      "current": "La próxima tarea corre: {{target}}.",
+      "description": "Alterna si la próxima tarea corre en primer o en segundo plano",
+      "current": "La próxima tarea corre: {{mode}}.",
       "invalid": "No hay una opción llamada “{{value}}” — elige on u off.",
-      "nowBackground": "La próxima tarea corre en segundo plano — el panel se cierra cuando apruebas el plan, y la tarea sigue sin ti.",
-      "nowThisPage": "La próxima tarea corre en esta página — maneja la pestaña que estás viendo mientras miras."
+      "nowBackground": "La próxima tarea corre en segundo plano — el panel se cierra cuando apruebas el plan, y nada mueve tu pantalla después de eso. La misma pestaña en cualquier caso.",
+      "nowForeground": "La próxima tarea corre en primer plano — el panel queda abierto y la tarea trae al frente la pestaña a la que cambia."
     },
     "effort": {
       "description": "Fija el esfuerzo de razonamiento — none, low, medium, high, max o default",
@@ -586,7 +586,10 @@
       "running": "Compactando el chat…",
       "nothing": "Nada que compactar todavía — este chat aún cabe entero en el replay.",
       "busy": "Hay una tarea en curso — compacta cuando termine.",
-      "failed": "No se pudo compactar — {{message}}"
+      "failed": "No se pudo compactar — {{message}}",
+      "cancel": "Cancelar",
+      "cancelHint": "Dejar de resumir — Esc",
+      "cancelled": "Compactación cancelada — no se resumió nada."
     },
     "help": {
       "description": "Muestra todos los atajos y comandos"
@@ -618,8 +621,8 @@
   "context": {
     "used": "{{used}} de contexto",
     "usedOf": "{{used}} / {{window}}",
-    "tooltip": "Contexto: el último turno envió {{used}} de la ventana de {{window}} del modelo — haz clic para resumir el chat y liberar espacio",
-    "tooltipUnknown": "Contexto: el último turno envió {{used}}. No se conoce el tamaño de ventana de este modelo, así que no hay porcentaje que mostrar — haz clic para resumir el chat y liberar espacio"
+    "tooltip": "Contexto: el último turno envió {{used}} de la ventana de {{window}} del modelo — usa /compact para resumir el chat y liberar espacio",
+    "tooltipUnknown": "Contexto: el último turno envió {{used}}. No se conoce el tamaño de ventana de este modelo, así que no hay porcentaje que mostrar — usa /compact para resumir el chat y liberar espacio"
   },
   "indicator": {
     "driving": "TabRunner está controlando esta pestaña",
@@ -725,12 +728,12 @@
     "bridgeDriving": "{{client}} está controlando tu navegador",
     "bridgeStopTitle": "Detiene la tarea y devuelve el navegador",
     "background": "En segundo plano",
-    "thisPage": "Esta página",
-    "targetAria": "La próxima tarea corre: {{target}}",
+    "foreground": "En primer plano",
+    "modeAria": "La próxima tarea corre: {{mode}}",
     "backgroundNow": "Ejecutar en segundo plano",
     "backgroundNowTitle": "Cierra el panel y deja que esta tarea termine sola — nunca mueve tu pantalla. Vuelve a abrirlo cuando quieras verla.",
     "backgroundNowGated": "Aprueba el plan primero — cerrar ahora dejaría la aprobación esperando en una notificación.",
-    "targetTitle": "“Esta página” deja el chat abierto para que lo veas; “En segundo plano” cierra el panel y sigue trabajando solo, sin mover tu pantalla — cambiar durante la tarea se aplica al momento (con el plan aprobado)"
+    "modeTitle": "“En primer plano” deja el panel abierto para que la veas, y la tarea trae al frente la pestaña a la que cambia; “En segundo plano” cierra el panel cuando apruebas el plan y nunca mueve tu pantalla. Ambas manejan la pestaña en la que estás — cambiar durante la tarea se aplica al momento (con el plan aprobado)"
   },
   "queue": {
     "position": "En cola · n.º {{position}}",
@@ -754,7 +757,7 @@
     "label": "Consejo",
     "escStop": "Esc detiene la tarea en curso — lo que ya escribiste se envía como la siguiente.",
     "historyRecall": "Pulsa ↑ cuando quieras para recorrer lo que ya enviaste — ↓ vuelve con tu borrador.",
-    "thisPage": "La tarea actúa en la pestaña que estás viendo — “En segundo plano” cierra el panel tras aprobar el plan.",
+    "foreground": "Toda tarea actúa en la pestaña que estás viendo — “En segundo plano” solo cierra el panel.",
     "queueSteer": "Puedes seguir escribiendo mientras la tarea corre — el mensaje se encola y la orienta entre pasos.",
     "pasteImage": "Pega una captura de pantalla directamente en el campo — el agente puede verla.",
     "pasteCollapse": "Un texto largo pegado se pliega en un token compacto — el texto completo igual llega al agente.",

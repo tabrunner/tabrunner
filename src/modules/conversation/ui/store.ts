@@ -31,11 +31,11 @@ import { closingSummary } from "../transcript";
 import { toolVerbKey } from "./tool-labels";
 import type { PastedText } from "./paste-collapse";
 import { isRestrictedUrl } from "@/modules/browser";
-import { runTargetPref } from "@/lib/prefs";
+import { runModePref } from "@/lib/prefs";
 import { engineOf, engineProvider } from "@/modules/providers/engine";
 import { useProvidersStore } from "@/modules/providers/ui";
 import type { ConversationEngine } from "@/modules/providers/types";
-import type { RunTarget } from "@/lib/prefs";
+import type { RunMode } from "@/lib/prefs";
 
 export interface ConversationState {
   messages: Message[];
@@ -63,9 +63,9 @@ export interface ConversationState {
   replanning: boolean;
   /** This panel's own last dispatch — labels the queued chip, and tells a
    *  dispatch-and-forget approval (panel auto-closes) from a hand-opened one. */
-  lastRun: { task: string; images?: string[]; thisPage?: boolean } | null;
+  lastRun: { task: string; images?: string[]; background?: boolean } | null;
   /** Where the next submitted task drives — background tab or this page. */
-  runTarget: RunTarget;
+  runMode: RunMode;
   /** Id of the in-flight tool's live row (never persisted) */
   pendingStepId: string | null;
   /** Id of this run's plan card — updates rewrite it rather than stacking copies */
@@ -155,7 +155,7 @@ export interface ConversationState {
    */
   setEngine: (patch: Partial<ConversationEngine>, thisChatOnly?: boolean) => void;
   setDraft: (text: string) => void;
-  setRunTarget: (target: RunTarget) => void;
+  setRunMode: (target: RunMode) => void;
   /** Stash a collapsed paste's content behind its token. */
   addPastedText: (entry: PastedText) => void;
   /** Fresh draft after a send — the fold is fair game again. */
@@ -220,9 +220,9 @@ let unwatchActive: (() => void) | null = null;
 let sending = false;
 /** Did this run stream any prose? Governs done-summary dedup, never its display. */
 let sawAssistantText = false;
-/** The user flipped the run target already — the stored read must not land on
+/** The user flipped the run mode already — the stored read must not land on
  *  top of a choice made while it was still in flight. */
-let runTargetTouched = false;
+let runModeTouched = false;
 /** Dispatch-and-forget's close handshake: the panel closes on the first event
  *  back (proof the command landed), with a fallback if none ever comes. */
 let closeOnFirstEvent = false;
@@ -250,19 +250,18 @@ function makeMsg(role: Message["role"], content: string, extra?: Partial<Message
  * What Retry resends: the transcript's newest user message — the failed task
  * sits right above the error it ended in. Read from the transcript rather than
  * panel state, so a reopened panel still offers it (lastRun dies with the
- * close, and the "rate limit resets in 4 hours" retry happens after one). A
- * tab stamp marks a this-page send — sendTask stamps nothing else — so the
- * retry keeps the mode the message went out in.
+ * close, and the "rate limit resets in 4 hours" retry happens after one).
+ * Nothing about where it runs travels with it: every run works the tab the user
+ * is on, and the retry is a fresh send with a fresh answer to that.
  */
 export function retryTargetFrom(
   messages: Message[],
-): { task: string; images?: string[]; thisPage?: boolean } | null {
+): { task: string; images?: string[] } | null {
   const last = messages.findLast((m) => m.role === "user");
   if (!last) return null;
   return {
     task: last.content,
     ...(last.images?.length ? { images: last.images } : {}),
-    ...(last.tab ? { thisPage: true } : {}),
   };
 }
 
@@ -493,7 +492,6 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     conversationId: string,
     task: string,
     images?: string[],
-    thisPage?: boolean,
   ) => {
     sawAssistantText = false;
     // Persistence is the worker's job now (it owns the transcript writer — the
@@ -508,15 +506,14 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       runEndedAt: null,
       runStopped: false,
       replanning: false,
-      // Watching or walking away is the user's mode, not the run's target — so
-      // it reads the toggle, not the flag on the wire. A "this page" send from
-      // a page Chrome blocks still drives a tab of its own (see sendTask), and
-      // that fallback must not also opt the user into the panel closing on
-      // approval: they never asked to walk away.
+      // Walking away is the user's mode, not the run's — the worker is never
+      // told, because it changes nothing about how the run works. It is kept
+      // here for the one thing it decides: whether approving the plan takes the
+      // panel with it (see approvePlan).
       lastRun: {
         task,
         ...(images?.length ? { images } : {}),
-        ...(get().runTarget === "thisPage" ? { thisPage: true } : {}),
+        ...(get().runMode === "background" ? { background: true } : {}),
       },
       pendingStepId: null,
       // A new run draws its own card — never revives the last run's checklist.
@@ -533,14 +530,12 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       conversationId,
       task,
       ...(images?.length ? { images } : {}),
-      ...(thisPage ? { thisPage } : {}),
     } satisfies Command);
   };
 
   /**
-   * Send a task. In "this page" mode it is stamped with the panel's active tab;
-   * an adopted background run drives that same tab, so the stamp carries the
-   * tab the run is about either way. Guarded against the stop redirect: while
+   * Send a task. It is stamped with the panel's active tab — the tab the run
+   * adopts, watched or not. Guarded against the stop redirect: while
    * pendingSend is set, a user's Enter must not start a third run mid-handoff —
    * the pending send fires from the done handler.
    */
@@ -562,31 +557,24 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     // would file the user's message under the thread they just left — the
     // "conversation switched itself" bug, now remotely triggerable.
     sending = true;
-    // Where the run drives — not always what the toggle says. Chrome forbids
-    // extensions on chrome:// and Web Store pages, so "this page" has no page
-    // to drive there: the run opens a tab of its own instead of dying on
-    // errors.restrictedPage with the user's message already in the transcript.
-    // The composer's notice says so before the send; this covers the tab
-    // switched in between, and the panel still stays open (see startRun).
-    let thisPage = get().runTarget === "thisPage";
-    // The message is anchored to the tab it was sent from. The panel queries
-    // its own window here — the send-time fact — while the background's own
-    // query stays the authority on what the run drives.
+    // The message is anchored to the tab it was sent from — the run adopts that
+    // same tab in either mode. The panel queries its own window here (the
+    // send-time fact), while the background's own query stays the authority on
+    // what the run actually drives. No stamp for a page Chrome forbids: the run
+    // opens a tab of its own there, and a chrome:// chip under the message
+    // would name a tab nothing ever drove.
     let tab: Message["tab"];
-    if (thisPage) {
-      try {
-        const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (isRestrictedUrl(active?.url)) thisPage = false;
-        else if (active?.url) {
-          tab = {
-            title: active.title ?? "",
-            url: active.url,
-            ...(active.favIconUrl ? { favIconUrl: active.favIconUrl } : {}),
-          };
-        }
-      } catch {
-        // No stamp — the run still gets its tab from the background.
+    try {
+      const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (active?.url && !isRestrictedUrl(active.url)) {
+        tab = {
+          title: active.title ?? "",
+          url: active.url,
+          ...(active.favIconUrl ? { favIconUrl: active.favIconUrl } : {}),
+        };
       }
+    } catch {
+      // No stamp — the run still gets its tab from the background.
     }
     // Stored BEFORE the run starts: the worker builds this run's history by
     // reading the transcript, so a fire-and-forget write would race it and
@@ -595,7 +583,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       makeMsg("user", task, { ...(images?.length ? { images } : {}), ...(tab ? { tab } : {}) }),
     );
     sending = false;
-    startRun(p, conversationId, task, images, thisPage || undefined);
+    startRun(p, conversationId, task, images);
     // The panel stays up through the plan: a background run's FIRST act is to
     // read the page and ask you to approve what it intends to do, and closing
     // before that turns the approval into an OS notification you have to click
@@ -1066,7 +1054,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     runStopped: false,
     replanning: false,
     lastRun: null,
-    runTarget: runTargetPref.fallback,
+    runMode: runModePref.fallback,
     pendingStepId: null,
     planMsgId: null,
     planApproval: null,
@@ -1088,8 +1076,8 @@ export const useConversationStore = create<ConversationState>((set, get) => {
 
     connect: () => {
       if (port) return;
-      void runTargetPref.get().then((runTarget) => {
-        if (!runTargetTouched) set({ runTarget });
+      void runModePref.get().then((runMode) => {
+        if (!runModeTouched) set({ runMode });
       });
       void listConversations().then((conversations) => set({ conversations }));
       unwatchConversations ??= watchConversations((conversations) => {
@@ -1314,10 +1302,10 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     // Stored, not just held: the panel closes itself on every background
     // dispatch, and a mode that reset on each reopen made "in background" a
     // choice you had to re-make all afternoon.
-    setRunTarget: (target) => {
-      runTargetTouched = true;
-      set({ runTarget: target });
-      void runTargetPref.set(target);
+    setRunMode: (target) => {
+      runModeTouched = true;
+      set({ runMode: target });
+      void runModePref.set(target);
     },
 
     retry: () => {
@@ -1334,7 +1322,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       }
       // Same as sendTask: the retry goes back through the plan gate, and the
       // panel leaves with the approval.
-      startRun(p, conversationId, target.task, target.images, target.thisPage);
+      startRun(p, conversationId, target.task, target.images);
     },
 
     stop: () => {
@@ -1375,7 +1363,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       // (lastRun is another session's) stays, because closing a window someone
       // just opened reads as a crash, not as tact.
       const dispatched = get().lastRun;
-      if (dispatched && !dispatched.thisPage) schedulePanelClose();
+      if (dispatched?.background) schedulePanelClose();
     },
 
     rejectPlan: () => {

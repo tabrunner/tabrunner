@@ -440,7 +440,7 @@ export class Bridge {
       task,
       images,
       url,
-      thisPage: background ? undefined : true,
+      adoptCurrentTab: background ? undefined : true,
       emit: (event) => this.onRunEvent(event),
       onAskUser: (question, choices) => this.onQuestion(question, choices),
     });

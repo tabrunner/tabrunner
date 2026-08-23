@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Command, Event } from "@/shared/protocol";
 import { PORT_NAME } from "@/shared/protocol";
 import { useConversationStore } from "../ui/store";
-import { runTargetPref } from "@/lib/prefs";
+import { runModePref } from "@/lib/prefs";
 
 /**
  * The real store against a fake port, checking what actually goes on the wire.
  *
  * A stop with queued messages is a redirect, not a halt: the joined queued text
  * must auto-run as the next task once the old run has fully unwound. The wiring
- * is sequencing, so it is the store's most fragile behavior. The run target
+ * is sequencing, so it is the store's most fragile behavior. The run mode
  * rides along here because it decides what every one of those sends carries.
  *
  * The base chrome stub (test-setup) has no `runtime` — this test adds the two
@@ -46,10 +46,10 @@ function makePort(): { fake: FakePort; fireMessage: (e: Event) => void } {
 
 beforeEach(async () => {
   port = makePort();
-  // The run target is a stored preference the store re-reads on connect, so the
+  // The run mode is a stored preference the store re-reads on connect, so the
   // pin has to be in both places — the state below for the synchronous read
   // sendTask does, and storage for the connect read that lands right after.
-  await runTargetPref.set("background");
+  await runModePref.set("background");
   (globalThis as Record<string, unknown>).chrome = {
     runtime: { connect: () => port.fake as unknown as chrome.runtime.Port },
     tabs: {
@@ -72,7 +72,7 @@ beforeEach(async () => {
     runStartedAt: null,
     runEndedAt: null,
     lastRun: null,
-    runTarget: "background",
+    runMode: "background",
     pendingStepId: null,
     planMsgId: null,
     queued: [],
@@ -151,18 +151,18 @@ describe("stop auto-sends the queue", () => {
     expect(useConversationStore.getState().draft).toBe("go back");
   });
 
-  it("starts every panel from the stored run target, not the built-in default", async () => {
+  it("starts every panel from the stored run mode, not the built-in default", async () => {
     // The mode is a habit, not a per-run decision — and a background run closes
     // the panel itself, so "held in panel state" meant losing it every time.
-    await runTargetPref.set("thisPage");
-    useConversationStore.setState({ runTarget: "background" });
+    await runModePref.set("foreground");
+    useConversationStore.setState({ runMode: "background" });
 
     useConversationStore.getState().connect();
-    await vi.waitFor(() => expect(useConversationStore.getState().runTarget).toBe("thisPage"));
+    await vi.waitFor(() => expect(useConversationStore.getState().runMode).toBe("foreground"));
 
     // And the flip writes it back, so the next panel opens where this one left.
-    useConversationStore.getState().setRunTarget("background");
-    expect(await runTargetPref.get()).toBe("background");
+    useConversationStore.getState().setRunMode("background");
+    expect(await runModePref.get()).toBe("background");
   });
 
   it("preserves the pending text across a second stop", async () => {

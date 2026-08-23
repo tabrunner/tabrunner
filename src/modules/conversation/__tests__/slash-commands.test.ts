@@ -38,7 +38,7 @@ beforeEach(() => {
   useProvidersStore.setState({ providers: [PROVIDER], activeId: "p1", loaded: true });
   useConversationStore.setState({
     messages: [],
-    runTarget: "thisPage",
+    runMode: "foreground",
     status: "idle",
     queuedRun: null,
     board: { queue: [] },
@@ -89,15 +89,15 @@ describe("executeSlash", () => {
     expect(useConversationStore.getState().messages).toHaveLength(0);
   });
 
-  it("reports the run target bare, and sets it explicitly by candidate", () => {
+  it("reports the run mode bare, and sets it explicitly by candidate", () => {
     expect(executeSlash("/background")).toBe("executed");
-    expect(useConversationStore.getState().runTarget).toBe("thisPage"); // untouched
-    expect(lastNote()).toContain("This page");
+    expect(useConversationStore.getState().runMode).toBe("foreground"); // untouched
+    expect(lastNote()).toContain("In foreground");
     expect(executeSlash("/background on")).toBe("executed");
-    expect(useConversationStore.getState().runTarget).toBe("background");
+    expect(useConversationStore.getState().runMode).toBe("background");
     expect(lastNote()).toContain("background");
     expect(executeSlash("/background sideways")).toBe("executed");
-    expect(useConversationStore.getState().runTarget).toBe("background"); // invalid changes nothing
+    expect(useConversationStore.getState().runMode).toBe("background"); // invalid changes nothing
     expect(lastNote()).toContain("sideways");
   });
 

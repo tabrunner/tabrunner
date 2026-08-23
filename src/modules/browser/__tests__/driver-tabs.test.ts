@@ -144,9 +144,11 @@ describe("driver tab switching", () => {
     await expect(driver.snapshot()).resolves.toMatchObject({ pageContent: "snap:1" });
   });
 
-  it("a background run re-targets without taking the browser away from the user", async () => {
+  it("re-targets without taking the browser away once nobody is watching", async () => {
     tabs[1]!.active = true; // even a user on the run's tab is left alone
-    const driver = createDriver(1, { activateOnSwitch: false });
+    // The panel closed mid-run: the predicate is asked at the switch, not at
+    // run start, so walking away silences the follow from that moment on.
+    const driver = createDriver(1, { activateOnSwitch: () => false });
 
     const info = await driver.switchTab(2);
     expect(info).toMatchObject({ id: 2, active: false });

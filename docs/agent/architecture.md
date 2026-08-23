@@ -10,21 +10,31 @@ module's internals, not on every session.
 Agent loop (stream → tool calls → results → repeat), tools, system prompt, run slot +
 serial queue, run start.
 
-A panel run **works the tab the user is looking at by default** (`resolveRunTab`):
-the state the task is about — the half-filled form, the search results, the scrolled
-thread — lives in that tab and nowhere else, and re-visiting its url in a fresh tab
-would both lose it and open a second live session the site may read as a bot. So a
-background run adopts the current tab and drives it in silence — background
-never activates anything. The composer toggle's `thisPage`, the default, is the
-same drive with the panel left open: the watched run, whose switches the driver
-follows (`activateOnSwitch`) — but only while the user is still on the tab being
-left. Wander off to a tab of your own and the run re-targets in silence: the
-sidebar is the watch surface, and no run moves the user's screen on its own —
-not at send time (a continuation reuses its tab in place), not mid-switch. The
-chip and the notification click are how the user looks at the tab. The choice
-is a stored preference (`runTargetPref`), not panel state: a background dispatch
-closes the panel itself, so holding it in memory meant re-picking the mode after
-every run.
+A panel run **works the tab the user is looking at** (`resolveRunTab`): the state the
+task is about — the half-filled form, the search results, the scrolled thread — lives in
+that tab and nowhere else, and re-visiting its url in a fresh tab would both lose it and
+open a second live session the site may read as a bot. So the run adopts the current tab
+and drives it as-is, with the plan gate carrying the "don't touch this" decision.
+
+**One resolution, both modes.** The composer toggle (`runModePref`: `foreground`, the
+default, or `background`) decides one thing — whether approving the plan closes the
+panel — and nothing else. It never reaches the worker: there is no flag on the `run`
+command, no branch in `resolveRunTab`, and no shape the model can see. It used to say
+"This page", which named the one thing that never changed; the two modes were also two
+tab resolutions, and the label was reading out an implementation detail that had drifted
+from what the toggle was for. The choice is a stored preference, not panel state: a
+background dispatch closes the panel itself, so holding it in memory meant re-picking
+the mode after every run.
+
+The one behavior that still tracks watching is the follow — the driver bringing a
+switched-to tab forward (`activateOnSwitch`). It is asked **live, at each switch**
+(`isPanelOpen`), never fixed at run start: the mode is flippable mid-run (the band's
+walk-away button, or just closing the panel), so a start-time flag would have a
+walked-away run still yanking the user's window. It also holds only while the user is
+still sitting on the tab being left — wander off to a tab of your own and the run
+re-targets in silence. Nobody watching, nothing moves: not at send time (a continuation
+reuses its tab in place), not mid-switch. The sidebar is the watch surface; the chip and
+the notification click are how the user looks at the tab.
 
 The strip is the run's working set, and it appears when the work does: sending a
 message groups nothing — the user may just be passing through the tab they sent from.
@@ -81,21 +91,18 @@ a restricted page (chrome://, the Web Store — Chrome forbids extensions there,
 is nothing to adopt and the model never has to be told about a page it never saw), an MCP
 client (no current tab at all — its sessions start on the neutral default), or a run the
 client pointed at an explicit URL. Those forks open on `defaultStartUrl` (then google),
-inactive, and are never brought forward — only background runs take this path, and
-background means the user's screen never moves; the badge and widget say the work exists.
-Their strip appears at the first action like any other run's.
+inactive, and are never brought forward — the user's screen never moves; the badge and
+widget say the work exists. Their strip appears at the first action like any other run's.
 
-"This page" is the one mode that could have died on such a page, because its target is
-named rather than inferred. It doesn't: the task is runnable, only the target is
-impossible, so the send degrades instead of failing. The composer watches the active tab
-(`useRestrictedPage`) and carries a footnote saying the task will run in a tab of its own
-— before a word is typed, not after the message is already in the transcript — and
-`sendTask` drops the `thisPage` flag for that send so the run takes the fork above. The
-user's mode is untouched: `lastRun.thisPage` reads the toggle rather than the wire flag,
-so a panel that chose to watch still stays open through the plan. `resolveRunTab`'s
-`errors.restrictedPage` stays as the backstop for a tab that turns restricted between the
-panel's query and the worker's, and for MCP direct control, where nobody is looking at a
-composer to read a footnote.
+A restricted page is a fork, not a failure: the task is runnable, only the page is
+impossible. The composer watches the active tab (`useRestrictedPage`) and carries a
+footnote saying the task will run in a tab of its own — before a word is typed, not after
+the message is already in the transcript. Nothing about the send changes (there is no
+flag to drop and no mode to override; a watching panel still stays open through the
+plan), and the message carries no tab stamp, because a chrome:// chip under it would name
+a tab nothing ever drove. `resolveRunTab`'s `errors.restrictedPage` stays as the backstop
+for a tab that turns restricted between the panel's query and the worker's, and for MCP
+direct control, where nobody is looking at a composer to read a footnote.
 
 An unanswered question is the one case the run goes back to a tab it had before: it
 returns to the **very tab** the question was asked on when that tab is still alive and
@@ -604,10 +611,10 @@ index — append-stable while the current run keeps writing — newest window by
 char-capped with `to` marking where to continue.
 
 **Tabs belong to messages, not to the conversation.** One run per message, and the user
-moves between messages: in "this page" mode each user message is stamped with the tab it
-was sent from (shown in the transcript once the conversation spans more than one tab —
-background runs adopt that same tab, so the stamp names the tab the run is about either way), and the conversation
-keeps the tabs its runs drove — deduped by url, newest first, capped. A "this page" run
+moves between messages: each user message is stamped with the tab it was sent from (shown
+in the transcript once the conversation spans more than one tab — every run adopts that
+same tab, watched or not, so the stamp names the tab the run is about), and the
+conversation keeps the tabs its runs drove — deduped by url, newest first, capped. A run
 starts on the submit-time active tab; the task message names any stored tabs the user is
 not on, so "that email" and "the doc" can find their way back via list_tabs/switch_tab.
 The stored tab keeps its `tabId` and — only when it ended its run inside the group that

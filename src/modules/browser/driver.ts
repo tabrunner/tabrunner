@@ -117,19 +117,19 @@ export interface DriverOptions {
    */
   onSwitch?: (tab: TabInfo) => void;
   /**
-   * Bring a switched-to tab to the front while the run is watched. On only for
-   * a watched run — "this page", where the user asked to follow the work — and
-   * for MCP direct control, whose client steers tab by tab explicitly. Even then
-   * the follow holds only while the user is sitting on the tab being left: once
-   * they move to a tab of their own the run re-targets in silence, and a
-   * background run never activates anything — yanking the user's window
-   * mid-switch is exactly what "background" promises not to do, and CDP input
-   * reaches an inactive tab either way. The cost of an unfollowed switch is
-   * that a background tab gets no rAF ticks, so a page whose UI only advances
-   * on animation frames can stall — a reason to pick "this page" for one, not
-   * to steal focus for all.
+   * May a switched-to tab be brought to the front? Asked at every switch, not
+   * at run start: "is someone watching" is a fact that changes mid-run — the
+   * panel closes, or the user opens it again — and a start-time flag would have
+   * a walked-away run still yanking their window. Even when it answers yes the
+   * follow holds only while the user is sitting on the tab being left: once
+   * they move to a tab of their own the run re-targets in silence. Nobody
+   * watching means nothing moves — that is what "in background" promises, and
+   * CDP input reaches an inactive tab either way. The cost of an unfollowed
+   * switch is that a background tab gets no rAF ticks, so a page whose UI only
+   * advances on animation frames can stall — a reason to keep the panel open
+   * for one, not to steal focus for all.
    */
-  activateOnSwitch?: boolean;
+  activateOnSwitch?: () => boolean;
 }
 
 /** One open tab, shaped for the model — undefined for the id-less records a query can return. */
@@ -146,7 +146,7 @@ function toTabInfo(t: chrome.tabs.Tab): TabInfo | undefined {
 }
 
 export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): BrowserDriver {
-  const { onSwitch, activateOnSwitch = true } = opts;
+  const { onSwitch, activateOnSwitch = () => true } = opts;
   // The run starts on the submit-time tab but may hop: the CDP layer is
   // multi-tab (attach re-targets per call), so the driver just tracks a target.
   let current = initialTabId;
@@ -278,7 +278,7 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
       // gets yanked. The window is never pulled either way — that's the user's
       // call, not the run's.
       let followed = false;
-      if (activateOnSwitch) {
+      if (activateOnSwitch()) {
         const [visible] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
         followed = visible?.id === current;
         if (followed) await focusTab(tabId, tab.windowId, { pullWindow: false });

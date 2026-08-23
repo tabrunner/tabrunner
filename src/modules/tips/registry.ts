@@ -9,7 +9,7 @@
 export const TIPS = [
   { id: "escStop", cooldownOpens: 4 },
   { id: "historyRecall", cooldownOpens: 4 },
-  { id: "thisPage", cooldownOpens: 4 },
+  { id: "foreground", cooldownOpens: 4 },
   { id: "queueSteer", cooldownOpens: 4 },
   { id: "slashCommands", cooldownOpens: 4 },
   { id: "help", cooldownOpens: 4 },

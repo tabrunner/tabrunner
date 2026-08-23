@@ -11,9 +11,9 @@ import type { RecordingStatus } from "@/modules/walkthrough/types";
 // ── Commands (side panel → background) ──────────────────────────────
 
 export type Command =
-  /** images are data URLs the user attached; the task text references them as "[Image #1]";
-   *  thisPage drives the user's current tab with the panel open; background drives the same
-   *  tab but closes the panel after plan approval */
+  /** images are data URLs the user attached; the task text references them as "[Image #1]".
+   *  Nothing here says foreground or background: every panel run drives the tab the user is
+   *  on, and whether the panel stays open to watch it is the panel's own business. */
   | {
       type: "run";
       /** The conversation the task message was just stored in — the run's home.
@@ -22,7 +22,6 @@ export type Command =
       conversationId: string;
       task: string;
       images?: string[];
-      thisPage?: boolean;
     }
   | { type: "stop" }
   /**

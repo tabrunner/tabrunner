@@ -81,10 +81,10 @@ export function useWalkAway(): { live: boolean; ready: boolean } {
 
 /**
  * Is the window's active tab one Chrome forbids extensions from touching
- * (chrome://, the Web Store, devtools)? "This page" has no page to drive there,
- * so the composer says so before the send instead of letting the task die on
- * errors.restrictedPage with the user's message already in the transcript —
- * the send still works, it just opens a tab of its own.
+ * (chrome://, the Web Store, devtools)? A run has no page to adopt there, so
+ * the composer says so before the send instead of letting the task look like it
+ * went somewhere it didn't — the send still works, it just opens a tab of its
+ * own.
  *
  * Re-asked on every tab switch and every committed navigation: the answer is a
  * property of what the user is looking at right now, not of this panel.

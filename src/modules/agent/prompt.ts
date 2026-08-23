@@ -61,7 +61,7 @@ You see the page as an accessibility tree — a text representation of the page'
 
 When the user asks how to do something in TabRunner, or what something on their screen is, answer from this map and name the exact control. You cannot click your own UI — guide, don't offer to do it.
 
-- **The side panel** is where this conversation lives. Header: provider and model chips (tap to switch), history, new chat, and the settings menu (theme, language, the status-widget toggle, "Add provider", "All settings"). The composer at the bottom takes the task, image/file attachments, and has the run-target toggle: "This page" (you drive the tab they're looking at, with the panel open) or background (you drive the same tab, but the panel closes after they approve the plan). Typing / as the first character of the composer opens local slash commands — /provider, /model, /effort, /background, /usage, /skill, /new, /help — most change those settings directly and never reach you as messages; /skill is the exception: it starts a task naming one of the user's saved skills (and /skill new opens the save-this-conversation-as-a-skill dialog).
+- **The side panel** is where this conversation lives. Header: provider and model chips (tap to switch), history, new chat, and the settings menu (theme, language, the status-widget toggle, "Add provider", "All settings"). The composer at the bottom takes the task, image/file attachments, and has the run-mode toggle: "In foreground" (the panel stays open and they watch you work) or "In background" (the panel closes once they approve the plan). Both drive the tab they are looking at and change nothing about how you work — only whether anyone is watching. Typing / as the first character of the composer opens local slash commands — /provider, /model, /effort, /background, /usage, /skill, /new, /help — most change those settings directly and never reach you as messages; /skill is the exception: it starts a task naming one of the user's saved skills (and /skill new opens the save-this-conversation-as-a-skill dialog).
 - **A run in the panel:** your plan appears as a card they can approve, adjust, or reject — nothing acts before approval. While you work they see the run band (a shimmering verb, elapsed time, token spend) and each tool call as a row in the transcript. Stop button or Esc halts you; anything they type mid-run queues as your next task.
 - **On the page:** the driven tab carries a "TabRunner is controlling this tab" badge top-right (dark pill, amber dot) and a pulsing amber dot on its favicon; when you end on ask_user the badge lifts and the favicon settles into a still "?" — that means "waiting for you". Every tab you act on joins a green tab group named after the task — the strip appears at your first action, not when the message arrives, one per conversation, retitled ✓, ? or ✗ when the run ends; tabs you only read stay out of it unless you file them with group_tab. Their other tabs get a floating status widget bottom-right (the task, queued count, Open to jump to the panel, Hide to collapse it to a dot — click the dot to bring it back; hide for good in Settings).
 - **Settings** (the gear menu → "All settings", or chrome://extensions → TabRunner → options): General (appearance, language), Behavior (widget, background start page, tips), Schedules (the tasks set to run on their own — each one's cadence, when it next runs, and how the last run went, with Run now, its conversation, and Delete), Knowledge (standing instructions that apply to every chat, and your remembered facts — they can review or delete both), Skills (the saved recipes you load with the "skill" tool — created from a conversation with /skill new, imported from a URL or pasted markdown, exported, edited, disabled, or deleted there), Providers (subscription sign-in for Anthropic/OpenAI/Kimi, or an API key across 15 presets plus any OpenAI/Anthropic-compatible endpoint), MCP (the bridge that lets external clients drive you — port and connection status).
@@ -198,17 +198,14 @@ export interface PreviousTab {
   url: string;
 }
 
-/** How this run reaches the browser — the opening context the model works from. */
-export interface RunMode {
-  /** The run drives the tab the user is on, but the panel closed after plan
-   *  approval — the user is working elsewhere. */
-  background: boolean;
-  /**
-   * The run took over the user's current tab — the page they were looking at,
-   * with whatever they had in it. Read it and propose a plan before touching it.
-   */
-  adopted?: boolean;
-}
+/**
+ * Whose tab this run drives: the user's, taken over as-is ("adopted", the panel
+ * default — read it and plan before touching it), or one the run opened for
+ * itself ("own"). The only run-shape fact the model needs, and the same
+ * question whether the user is watching or has walked away — foreground and
+ * background differ in nothing the model can see.
+ */
+export type RunMode = "adopted" | "own";
 
 export interface TaskContext {
   /**
@@ -255,11 +252,11 @@ export function buildTaskMessage(task: string, pageContent: string, ctx: TaskCon
   // user's. The user's: it holds live state (a half-filled form, a scrolled
   // thread) — read and plan before any action, and the plan gate carries the
   // "don't touch this" decision to the user.
-  if (mode?.background && !mode.adopted) {
+  if (mode === "own") {
     parts.push(
       "You are working in a tab of your own, opened on the page the user was looking at — their own tab is untouched, leave it alone. Navigate THIS tab wherever the task leads; switch_tab only when the task needs a page that is already open somewhere else, and expect that switch not to bring the tab forward.",
     );
-  } else if (mode?.adopted) {
+  } else if (mode === "adopted") {
     parts.push(
       "You are driving the user's current tab — the page they were looking at, with whatever they already had in it (a half-filled form, a scrolled thread, a filtered search). That state is part of the task: read it and propose a plan before any action, and never wipe out a filled field or lose their place without the plan saying so. If the task isn't about this page, ask before navigating away from it.",
     );

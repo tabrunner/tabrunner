@@ -87,14 +87,14 @@ describe("retry", () => {
 
     useConversationStore.getState().retry();
 
-    // The tab stamp marks a this-page send; the retry keeps the mode.
+    // The stamp is history, not a mode to restore: the retry is an ordinary
+    // send, and it adopts whatever tab the user is on now.
     expect(runCommands()).toEqual([
       {
         type: "run",
         conversationId: "c1",
         task: "second task",
         images: ["data:image/png;base64,x"],
-        thisPage: true,
       },
     ]);
     // No duplicate user row — the failed attempt sits right above the error.
@@ -103,7 +103,7 @@ describe("retry", () => {
     );
   });
 
-  it("an unstamped message retries as an ordinary run — no thisPage", () => {
+  it("an unstamped message retries the same way", () => {
     useConversationStore.setState({
       messages: [
         { id: "u1", role: "user", content: "do the thing", timestamp: 0 },
