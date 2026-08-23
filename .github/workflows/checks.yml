@@ -1,0 +1,49 @@
+name: Checks
+
+# The gates AGENTS.md asks for before submitting work, run where nobody can
+# forget them. Until now they lived only in a terminal and in `bun run release`
+# — so a red `main` was discovered at release time, or by the next person to
+# pull. Several agents commit into this repo concurrently; this is the seam
+# that catches what one of them didn't run.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Lets a run be re-triggered by hand after a flake, without an empty commit.
+  workflow_dispatch:
+
+# A newer push supersedes the run in flight — except on main, where every
+# commit's own verdict is the record.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    # The suite is the slow half (~1 min locally); the ceiling is for a hang,
+    # not for a slow runner.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      # One install covers both packages — daemon/ is a bun workspace.
+      - run: bun install --frozen-lockfile
+
+      # Ordered cheapest-first, so the common failure reports in seconds
+      # rather than after the suite. Each is the same command you run locally.
+      - run: bun run compile
+      - run: bun run lint
+      - run: bun run test
+      - run: bun run deadcode
+      - run: bun run i18n:check
+
+      # Past the gates: tsc --noEmit never bundles, so an entrypoint that WXT
+      # cannot resolve typechecks clean and ships broken. This is the cheapest
+      # proof the extension still builds.
+      - run: bun run build
+
+      # The bridge protocol is declared twice on purpose (extension half and
+      # daemon half). This is the check that they still agree — and it needs
+      # no Chrome, which is the only reason it can run here at all.
+      - run: bun run bridge:check
