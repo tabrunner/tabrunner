@@ -1,3 +1,5 @@
+import type { ConversationEngine } from "@/modules/providers/types";
+
 /** Sunday..Saturday, matching `Date#getDay` so no mapping table is needed. */
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -39,6 +41,14 @@ export interface Schedule {
   /** Epoch ms of the next fire, recomputed after each run. */
   nextFireAt: number;
   createdAt: number;
+  /**
+   * What this schedule runs on, snapshotted when it was set up. A schedule's
+   * whole promise is "runs the way I set it up", and its thread is not created
+   * until the first fire — hours or days later, by which time the stored
+   * default may name something else entirely. Absent on schedules made before
+   * this field: they inherit at their next fire, as they always did.
+   */
+  engine?: ConversationEngine;
   /** Consecutive self-reschedules — the bound on an agent looping on itself. */
   chainCount?: number;
   lastRun?: { at: number; ok: boolean };

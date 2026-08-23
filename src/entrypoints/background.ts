@@ -12,7 +12,7 @@ import {
   submitRun,
 } from "@/modules/agent/run-queue";
 import type { RunBoard } from "@/modules/agent/run-queue";
-import { appendMessageTo, getActiveId } from "@/modules/conversation";
+import { appendMessageTo, getActiveId, getConversationMeta } from "@/modules/conversation";
 import { setActiveConversation } from "@/modules/conversation/conversations";
 import { TranscriptWriter } from "@/modules/conversation/transcript";
 import { hideAgentIndicator, refreshAgentIndicator, syncActionBadge } from "@/modules/browser";
@@ -340,7 +340,11 @@ export default defineBackground(() => {
             break;
           }
           try {
-            const config = await getActiveProvider();
+            // A summary is written into this thread's transcript, so it is
+            // written by this thread's engine — not whatever is picked now.
+            const config = await getProviderFor(
+              (await getConversationMeta(conversationId))?.engine,
+            );
             if (!config) throw new Error(i18n.t("chat.hint.noProvider"));
             const resolved = await resolveProviderModel(await ensureProviderCredential(config));
             const result = await compactConversation(

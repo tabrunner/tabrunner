@@ -114,6 +114,7 @@ async function fireSchedule(id: string, opts: { manual?: boolean } = {}): Promis
   const hadThread = await openScheduledConversation(
     schedule.conversationId,
     i18n.t("schedule.agentLabel"),
+    schedule.engine,
   );
 
   // The notes prepended to the task, in the order they'd be read. Both exist

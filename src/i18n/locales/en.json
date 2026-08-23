@@ -388,7 +388,8 @@
     "filterAria": "Filter models",
     "filterPlaceholder": "Filter {{n}} models…",
     "noMatch": "No model matches “{{query}}” — clear the filter to see the full list.",
-    "moreModels": "{{n}} more — narrow the filter to reach them."
+    "moreModels": "{{n}} more — narrow the filter to reach them.",
+    "thisChatOnly": "Hold {{mod}} to change only this chat"
   },
   "usage": {
     "title": "Subscription usage",
@@ -513,6 +514,7 @@
     "current": "Current",
     "unknown": "No command /{{name}} — type / for the list.",
     "nextTask": "Applies to the next task, not the one running.",
+    "thisChatOnly": "This chat only — new chats keep the default.",
     "deferred": {
       "chip": "After the task",
       "title": "Waiting for the task to finish — it fires the moment nothing is working here",
@@ -538,13 +540,13 @@
       "invalid": "No effort \"{{value}}\" — pick one: {{options}}."
     },
     "model": {
-      "description": "Pin the model for the active provider — auto undoes it",
+      "description": "Pin the model for this chat — auto undoes it",
       "current": "Model: {{model}} ({{provider}}) — /model <id> to pin one, /model auto for the endpoint's newest.",
       "set": "Model → {{model}} ({{provider}})",
       "auto": "Model → auto ({{provider}}) — the endpoint's newest."
     },
     "provider": {
-      "description": "Switch the active provider",
+      "description": "Switch this chat's provider",
       "current": "Provider: {{name}} — also configured: {{others}}. /provider <name> to switch.",
       "currentOnly": "Provider: {{name}} — the only one configured.",
       "set": "Provider → {{name}}",
@@ -630,6 +632,7 @@
     "progress": "{{done}}/{{total}}",
     "peekMore": "{{done}} done · {{pending}} to go",
     "peekToggle": "Show or hide the whole plan",
+    "stepNew": "new",
     "approvalTitle": "Approve this plan?",
     "reapprovalTitle": "The plan changed — approve the new one?",
     "approve": "Approve",
@@ -766,7 +769,8 @@
     "schedule": "Ask for work on a timer — “every weekday at 9am, check my inbox”. Manage them in Settings.",
     "skills": "Taught it something in this chat? /skill new saves the recipe for next time.",
     "siteInstructions": "In Instructions, a “## site: acme.com” line scopes everything under it to that site.",
-    "enginePicker": "The chip by Send picks provider, model, and effort for the next task — /model works too.",
+    "enginePicker": "The chip by Send sets provider, model, and effort for this chat — /model works too.",
+    "engineScope": "Each chat keeps its own model and effort — new chats start from your last pick.",
     "help": "Press ? on an empty composer for every shortcut and command — /help works too.",
     "walkthrough": "Ask “and document it” and the agent writes the process up as a shareable guide."
   },

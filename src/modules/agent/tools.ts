@@ -252,6 +252,7 @@ export async function executeTool(
         return scheduleTask(call.args, {
           ...(ctx.owner ? { owner: ctx.owner } : {}),
           ...(ctx.scheduleId ? { scheduleId: ctx.scheduleId } : {}),
+          ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
         });
 
       case "cancel_schedule":

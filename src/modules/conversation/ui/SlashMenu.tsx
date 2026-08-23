@@ -18,7 +18,7 @@ export function SlashMenu({
   items: SlashItem[];
   index: number;
   onHover: (index: number) => void;
-  onPick: (item: SlashItem) => void;
+  onPick: (item: SlashItem, thisChatOnly: boolean) => void;
 }) {
   const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement>(null);
@@ -47,7 +47,7 @@ export function SlashMenu({
           onMouseDown={(e) => {
             // MouseDown, not click, and swallowed: picking must not blur the composer.
             e.preventDefault();
-            onPick(item);
+            onPick(item, e.altKey);
           }}
           onMouseEnter={() => onHover(i)}
           className={`flex w-full items-baseline gap-2 px-2.5 py-1.5 text-left text-xs ${

@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
-import { useConversationStore } from "./store";
+import { useEffect, useMemo, useState } from "react";
+import { useConversationStore, pinOf } from "./store";
+import type { ConversationState } from "./store";
 import { isRestrictedUrl } from "@/modules/browser";
+import { engineProvider } from "@/modules/providers/engine";
+import { useProvidersStore } from "@/modules/providers/ui";
+import type { ConversationEngine, ProviderConfig } from "@/modules/providers/types";
 
 /**
  * Is a queue holding the footer busy? Queued steering lines, a queued run
@@ -109,4 +113,45 @@ export function useRestrictedPage(): boolean {
     };
   }, []);
   return restricted;
+}
+
+/**
+ * The engine this conversation runs on, and how to change it.
+ *
+ * `provider` is the effective config — the thread's pin laid over the stored
+ * provider, or the stored default when nothing is pinned. Every in-conversation
+ * surface reads it from here (the composer chip, the context gauge's
+ * denominator, the error bubble's key dialog) so none of them can name an
+ * engine the run would not have used.
+ *
+ * The overlay is memoized rather than computed inside a zustand selector: a pin
+ * produces a fresh object, and a selector that returns one on every call
+ * re-renders forever.
+ */
+export function useEngine(): {
+  provider: ProviderConfig | undefined;
+  pin: ConversationEngine | undefined;
+  setEngine: ConversationState["setEngine"];
+} {
+  const load = useProvidersStore((s) => s.load);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const providers = useProvidersStore((s) => s.providers);
+  const storedId = useProvidersStore((s) => s.activeId);
+  const pin = useConversationStore(pinOf);
+  const setEngine = useConversationStore((s) => s.setEngine);
+
+  const provider = useMemo(
+    () => engineProvider(providers, storedId, pin),
+    [providers, storedId, pin],
+  );
+  return { provider, pin, setEngine };
+}
+
+/** `useEngine` for the getState() world — the slash commands' resolver. */
+export function engineNow(): ProviderConfig | undefined {
+  const { providers, activeId } = useProvidersStore.getState();
+  return engineProvider(providers, activeId, pinOf(useConversationStore.getState()));
 }

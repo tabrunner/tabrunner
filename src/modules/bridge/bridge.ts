@@ -4,7 +4,11 @@ import { compactConversation } from "@/modules/agent/compact";
 import { cancelQueued, listQueue, onBoardChanged, submitRun } from "@/modules/agent/run-queue";
 import { startAgentRun } from "@/modules/agent/start-run";
 import { captureVisibleTab } from "@/modules/browser";
-import { appendMessageTo, openAgentConversation } from "@/modules/conversation";
+import {
+  appendMessageTo,
+  getConversationMeta,
+  openAgentConversation,
+} from "@/modules/conversation";
 import { bridgeThread } from "./config";
 import { DirectSession } from "./direct";
 import { TranscriptWriter } from "@/modules/conversation/transcript";
@@ -12,6 +16,7 @@ import {
   createProvider,
   ensureProviderCredential,
   getActiveProvider,
+  getProviderFor,
   resolveProviderModel,
 } from "@/modules/providers";
 import { providerDisplayName } from "@/modules/providers/presets";
@@ -376,7 +381,8 @@ export class Bridge {
       return;
     }
     try {
-      const config = await getActiveProvider();
+      // The thread's own engine writes the thread's summary.
+      const config = await getProviderFor((await getConversationMeta(conversationId))?.engine);
       if (!config) throw new Error(i18n.t("chat.hint.noProvider"));
       const resolved = await resolveProviderModel(await ensureProviderCredential(config));
       const result = await compactConversation(

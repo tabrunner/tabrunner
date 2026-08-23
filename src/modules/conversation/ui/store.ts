@@ -9,6 +9,7 @@ import type { RunBoard } from "@/modules/agent/run-queue";
 import {
   appendMessageFresh,
   appendMessageTo,
+  recordEngine,
   deleteConversation,
   getActiveId,
   getMessages,
@@ -23,9 +24,12 @@ import { toolVerbKey } from "./tool-labels";
 import type { PastedText } from "./paste-collapse";
 import { isRestrictedUrl } from "@/modules/browser";
 import { runTargetPref } from "@/lib/prefs";
+import { engineOf, engineProvider } from "@/modules/providers/engine";
+import { useProvidersStore } from "@/modules/providers/ui";
+import type { ConversationEngine } from "@/modules/providers/types";
 import type { RunTarget } from "@/lib/prefs";
 
-interface ConversationState {
+export interface ConversationState {
   messages: Message[];
   /** Stored transcripts, most recently touched first — powers the history list */
   conversations: ConversationMeta[];
@@ -91,6 +95,12 @@ interface ConversationState {
    *  the transcript a live run is still writing. The composer card is its
    *  receipt; the drain fires it the moment nothing here is running. */
   deferred: { name: string; run: () => void } | null;
+  /**
+   * A pick made before this conversation exists. The panel's fresh thread has
+   * no id until its first message lands, so a "this chat only" pick has nothing
+   * to pin to yet — it waits here and is written the moment the thread is born.
+   */
+  draftEngine: ConversationEngine | null;
   /** Input tokens the last turn actually sent — the real context size, straight
    *  from the provider's own usage. Cumulative `usage.input` is the sum of every
    *  turn and says nothing about how full the window is. */
@@ -118,6 +128,17 @@ interface ConversationState {
   cancelQueuedById: (id: string) => void;
   /** ↑-arrow recall: the newest queued message goes back to the composer. */
   recallQueued: () => void;
+  /**
+   * Point this conversation at a provider / model / effort. One patch at a
+   * time, as the picker and the slash commands issue them: naming a provider
+   * adopts that provider's own defaults, naming a model or effort refines the
+   * pick in force.
+   *
+   * Writes through to the stored default as well, so "default" always means
+   * your last deliberate pick — unless `thisChatOnly`, the ⌥ gesture, which
+   * scopes it to this thread and leaves every future one alone.
+   */
+  setEngine: (patch: Partial<ConversationEngine>, thisChatOnly?: boolean) => void;
   setDraft: (text: string) => void;
   setRunTarget: (target: RunTarget) => void;
   /** Stash a collapsed paste's content behind its token. */
@@ -145,6 +166,20 @@ interface ConversationState {
  * gate all ask the same question, and a panel that reopened onto its own
  * background run reads `status` idle, so the board half is not optional.
  */
+/**
+ * The engine pick in force for the thread the panel is showing: what that
+ * conversation is pinned to, or — before its first message gives it an id —
+ * what the picker chose while waiting. Undefined means nothing is pinned and
+ * the stored default answers.
+ *
+ * A selector over stored values only: it must never build a fresh object, or
+ * every consumer would re-render on every unrelated store change.
+ */
+export function pinOf(s: ConversationState): ConversationEngine | undefined {
+  if (s.activeId === null) return s.draftEngine ?? undefined;
+  return s.conversations.find((c) => c.id === s.activeId)?.engine;
+}
+
 export function runsHere(s: ConversationState): boolean {
   return (
     s.status === "running" ||
@@ -272,6 +307,13 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     const write = activeId === null ? appendMessageFresh(msg) : appendMessageTo(activeId, msg);
     return write.then((id) => {
       if (get().activeId !== id) set({ activeId: id });
+      // The thread now exists, so a pick that was waiting for it can land —
+      // before the run that this same message is about to start reads it.
+      const draftEngine = get().draftEngine;
+      if (draftEngine) {
+        set({ draftEngine: null });
+        return recordEngine(id, draftEngine).then(() => id);
+      }
       return id;
     });
   };
@@ -304,6 +346,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     recording: false,
     queued: [],
     pendingSend: null,
+    draftEngine: null,
     draft: "",
     pastedTexts: [],
     collapseDisabled: false,
@@ -912,6 +955,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     queuedRun: null,
     compacting: false,
     deferred: null,
+    draftEngine: null,
     contextTokens: 0,
 
     connect: () => {
@@ -1077,6 +1121,37 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     // whose token left the text drops its content — and, per draft, teaches the
     // input to paste inline: the fold is only ever a surprise once. Store-side
     // draft writers re-arm it — a recalled text is a fresh draft.
+    setEngine: (patch, thisChatOnly) => {
+      const { providers, activeId: storedId, update, activate } = useProvidersStore.getState();
+      const inForce = engineProvider(providers, storedId, pinOf(get()));
+      // Naming a provider adopts what THAT provider is set to run; refining a
+      // model or effort keeps the rest of the pick in force. Either way the
+      // result is a whole pick, never a half-applied one.
+      const target = patch.providerId ? providers.find((p) => p.id === patch.providerId) : inForce;
+      if (!target) return;
+      const next: ConversationEngine = engineOf(target);
+      if ("model" in patch) {
+        if (patch.model) next.model = patch.model;
+        else delete next.model;
+      }
+      if ("effort" in patch) {
+        if (patch.effort) next.effort = patch.effort;
+        else delete next.effort;
+      }
+
+      const activeId = get().activeId;
+      if (activeId) void recordEngine(activeId, next);
+      else set({ draftEngine: next });
+
+      // The stored default follows your last deliberate pick — that is what a
+      // new conversation starts on. ⌥ is the opt-out, and the only reason this
+      // is a choice at all: retuning one old thread should not re-point every
+      // thread you open tomorrow.
+      if (thisChatOnly) return;
+      void update(next.providerId, { model: next.model, reasoningEffort: next.effort });
+      if (next.providerId !== storedId) void activate(next.providerId);
+    },
+
     setDraft: (text) =>
       set((st) => {
         const kept = st.pastedTexts.filter((p) => text.includes(p.token));

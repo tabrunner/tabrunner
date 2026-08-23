@@ -8,6 +8,7 @@ import {
   validateRecurrence,
 } from "./recurrence";
 import { deleteSchedule, getSchedule, saveSchedule, MAX_CHAIN } from "./store";
+import { getConversationMeta } from "@/modules/conversation";
 import type { Schedule } from "./types";
 
 const log = createLogger("schedule");
@@ -20,6 +21,9 @@ export interface AgentCaller {
   owner?: string;
   /** Set only for a run a schedule fired: the one record it is allowed to touch. */
   scheduleId?: string;
+  /** The run's own thread — what the new schedule inherits its engine from, so
+   *  work handed to a timer runs on the engine that agreed to it. */
+  conversationId?: string;
 }
 
 function fail(error: string): Result {
@@ -66,6 +70,9 @@ export async function scheduleTask(
   const next = nextFireAt(recurrence, now);
   if (next === null) return fail(i18n.t("schedule.errors.neverFires"));
 
+  const engine = caller.conversationId
+    ? (await getConversationMeta(caller.conversationId))?.engine
+    : undefined;
   const task = String(args.task ?? "").trim();
   const url = typeof args.url === "string" && args.url ? args.url : undefined;
   const fromSchedule = caller.owner === "schedule";
@@ -100,6 +107,10 @@ export async function scheduleTask(
         // reading, and one thread per schedule is what lets a recurring run
         // read what it did last time.
         conversationId: crypto.randomUUID(),
+        // Frozen at setup, not at first fire: what the user (or the run they
+        // approved this in) was working with is what unattended work should
+        // keep using, however the default moves in between.
+        ...(engine ? { engine } : {}),
         nextFireAt: next,
         createdAt: now,
         chainCount: 0,

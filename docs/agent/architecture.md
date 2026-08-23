@@ -482,6 +482,14 @@ user message before posting `run`: the worker builds the run's history by readin
 transcript, and a fire-and-forget write loses that race every time. A fresh conversation
 is created lazily by its first message, so "New chat" never leaves an empty row behind.
 
+The index row carries what the thread runs on (`engine`: provider id, plus the model and
+effort as _picked_ — absent model means auto, so a pinned thread still follows the endpoint's
+newest). It is written at the first run and rewritten whenever the picker names something
+else; `providers/engine.ts` resolves it, falling back to the stored default when the pinned
+provider is gone (the run then re-pins, so the chip never names an engine that cannot run).
+A schedule freezes its pick at setup time on the `Schedule` record instead, because its
+thread is not created until the first fire — hours or days after the user set it up.
+
 The transcript doubles as the model's memory, strictly per conversation: at run start the
 background rebuilds _that_ conversation's transcript as alternating user/assistant wire
 turns (`buildConversationHistory` in `agent/history.ts`) — entries capped, a char budget

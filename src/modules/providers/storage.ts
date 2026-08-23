@@ -1,5 +1,6 @@
 import { defineItem } from "@/lib/storage";
-import type { ProviderConfig } from "./types";
+import { engineProvider } from "./engine";
+import type { ConversationEngine, ProviderConfig } from "./types";
 
 const providersItem = defineItem<ProviderConfig[]>("providers", []);
 const activeIdItem = defineItem<string | null>("active-provider", null);
@@ -42,6 +43,17 @@ export async function getActiveProvider(): Promise<ProviderConfig | undefined> {
   const id = await activeIdItem.get();
   if (!id) return undefined;
   return getProvider(id);
+}
+
+/**
+ * The provider a conversation runs on — its pin, else the stored pick. The one
+ * resolution every run goes through; see `engine.ts` for the rule itself.
+ */
+export async function getProviderFor(
+  pin: ConversationEngine | undefined,
+): Promise<ProviderConfig | undefined> {
+  const [providers, activeId] = await Promise.all([providersItem.get(), activeIdItem.get()]);
+  return engineProvider(providers, activeId, pin);
 }
 
 export async function setActiveProvider(id: string): Promise<void> {

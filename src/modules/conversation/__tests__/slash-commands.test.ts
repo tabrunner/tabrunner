@@ -8,6 +8,7 @@ import {
 } from "../ui/slash-commands";
 import { useConversationStore } from "../ui/store";
 import { useProvidersStore } from "@/modules/providers/ui";
+import { getProviders, saveProvider } from "@/modules/providers";
 import type { ProviderConfig } from "@/modules/providers/types";
 
 const PROVIDER: ProviderConfig = {
@@ -41,6 +42,11 @@ beforeEach(() => {
     status: "idle",
     queuedRun: null,
     board: { queue: [] },
+    // The engine pick of a conversation that has no id yet — a picker write
+    // lands here, so leaving it set would carry one test's /effort into the next.
+    draftEngine: null,
+    conversations: [],
+    activeId: null,
   });
 });
 
@@ -353,5 +359,50 @@ describe("/skill", () => {
     });
     executeSlash("/skill new");
     expect(skillsUi.openSkillDraft).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Scope: a pick lands on the open conversation, and — unless ⌥ says otherwise —
+ * also becomes the stored default that the next new conversation starts on.
+ */
+describe("engine scope", () => {
+  const pin = () => useConversationStore.getState().draftEngine;
+  /** What was actually persisted — the store only mirrors it through a watch. */
+  const storedModel = async () => (await getProviders())[0]?.model;
+
+  // Seeded so "the default is untouched" is a claim about a provider that IS
+  // stored, not about an empty store that would pass either way.
+  beforeEach(async () => {
+    await saveProvider(PROVIDER);
+  });
+
+  it("writes through to the stored default by default", async () => {
+    executeSlash("/model claude-y");
+    expect(pin()).toEqual({ providerId: "p1", model: "claude-y" });
+    expect(await storedModel()).toBe("claude-y");
+    expect(lastNote()).not.toContain("This chat only");
+  });
+
+  it("keeps a ⌥ pick off the default, and says so", async () => {
+    executeSlash("/model claude-z", true);
+    expect(pin()).toEqual({ providerId: "p1", model: "claude-z" });
+    // The whole point of the gesture: tomorrow's conversations are untouched.
+    expect(await storedModel()).toBeUndefined();
+    expect(lastNote()).toContain("This chat only");
+  });
+
+  it("refines the pick in force rather than replacing it", () => {
+    executeSlash("/model claude-y", true);
+    executeSlash("/effort high", true);
+    expect(pin()).toEqual({ providerId: "p1", model: "claude-y", effort: "high" });
+  });
+
+  it("pins onto the conversation once it has one", () => {
+    useConversationStore.setState({ activeId: "c1", conversations: [] });
+    executeSlash("/effort low", true);
+    // No conversation row to patch yet — but the draft is not the target
+    // either, because this conversation exists. Nothing silently lands.
+    expect(pin()).toBeNull();
   });
 });

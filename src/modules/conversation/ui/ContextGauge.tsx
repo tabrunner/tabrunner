@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useConversationStore } from "./store";
-import { useProvidersStore, activeProviderOf } from "@/modules/providers/ui";
+import { useEngine } from "./hooks";
 import {
   CONTEXT_RESERVE,
   knownContextWindow,
@@ -46,7 +46,7 @@ export function ContextGauge() {
   );
   const compact = useConversationStore((s) => s.compact);
   const learned = useStoredItem(learnedContextLimits);
-  const provider = useProvidersStore(activeProviderOf);
+  const { provider } = useEngine();
 
   const used = live > 0 ? live : stored;
   // Nothing has been measured yet — a gauge reading zero would be a claim we

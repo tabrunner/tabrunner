@@ -3,13 +3,15 @@ import { knownModels, pickLatestModel } from "@/modules/providers/models";
 import { providerDisplayName } from "@/modules/providers/presets";
 import { formatResetRelative } from "@/modules/providers/rate-limit";
 import { EFFORT_LABEL_KEYS, isEffort, REASONING_EFFORTS } from "@/modules/providers/types";
+import type { ConversationEngine } from "@/modules/providers/types";
 import { fetchProviderUsage, supportsUsage } from "@/modules/providers/usage";
 import type { UsageWindow } from "@/modules/providers/usage";
-import { useProvidersStore, activeProviderOf } from "@/modules/providers/ui";
+import { useProvidersStore } from "@/modules/providers/ui";
 import { loadedSkills, openSkillDraft } from "@/modules/skills/ui";
 import { truncateTo } from "@/lib/format";
 import { openHelp } from "./help-open";
 import { runsHere, useConversationStore } from "./store";
+import { engineNow } from "./hooks";
 
 /**
  * Slash commands — /stop, /background, /effort, /model, /provider, /new, /help.
@@ -77,7 +79,9 @@ export interface SlashCommand {
   /** Needs a quiet conversation: it costs a model call, or writes the transcript
    *  a live run is still writing. `runSlash` parks it instead of firing it. */
   deferWhileBusy?: boolean;
-  run: (arg: string | undefined) => void;
+  /** `thisChatOnly` is the ⌥ gesture the engine picker carries — the same
+   *  modifier means the same thing at both ends of the same choice. */
+  run: (arg: string | undefined, thisChatOnly?: boolean) => void;
 }
 
 export interface ParsedSlash {
@@ -108,9 +112,20 @@ function note(content: string): void {
   useConversationStore.getState().note(content);
 }
 
-/** The provider the header chips call active — one shared rule, see activeProviderOf. */
+/** What THIS conversation runs on — one shared rule, see `engineProvider`. */
 function activeProvider() {
-  return activeProviderOf(useProvidersStore.getState());
+  return engineNow();
+}
+
+/** Point this conversation somewhere else — the picker's write, by keyboard. */
+function setEngine(patch: Partial<ConversationEngine>, thisChatOnly: boolean): void {
+  useConversationStore.getState().setEngine(patch, thisChatOnly);
+}
+
+/** Names the narrower scope, so ⌥ never applies silently. Pairs with
+ *  nextTaskSuffix: one says WHEN it lands, this says WHERE. */
+function scopeSuffix(thisChatOnly: boolean): string {
+  return thisChatOnly ? ` ${i18n.t("commands.thisChatOnly")}` : "";
 }
 
 /** Settings edits land on the stored config that the next run snapshots — a
@@ -203,7 +218,7 @@ export const COMMANDS: readonly SlashCommand[] = [
       ...REASONING_EFFORTS.map((value) => ({ value, label: i18n.t(EFFORT_LABEL_KEYS[value]) })),
     ],
     current: () => activeProvider()?.reasoningEffort ?? "default",
-    run: (arg) => {
+    run: (arg, thisChatOnly = false) => {
       const provider = activeProvider();
       // Unreachable — the panel onboards instead of showing a composer when
       // no provider exists — but a note-less crash is worse than a guard.
@@ -223,10 +238,12 @@ export const COMMANDS: readonly SlashCommand[] = [
         note(i18n.t("commands.effort.invalid", { value: arg, options: EFFORT_OPTIONS }));
         return;
       }
-      void useProvidersStore
-        .getState()
-        .update(provider.id, { reasoningEffort: level === "default" ? undefined : level });
-      note(i18n.t("commands.effort.set", { effort: level, provider: name }) + nextTaskSuffix());
+      setEngine({ effort: level === "default" ? undefined : level }, thisChatOnly);
+      note(
+        i18n.t("commands.effort.set", { effort: level, provider: name }) +
+          scopeSuffix(thisChatOnly) +
+          nextTaskSuffix(),
+      );
     },
   },
   {
@@ -250,7 +267,7 @@ export const COMMANDS: readonly SlashCommand[] = [
       ];
     },
     current: () => activeProvider()?.model ?? "auto",
-    run: (arg) => {
+    run: (arg, thisChatOnly = false) => {
       const provider = activeProvider();
       if (!provider) return;
       const name = providerDisplayName(provider);
@@ -264,14 +281,22 @@ export const COMMANDS: readonly SlashCommand[] = [
         return;
       }
       if (arg.toLowerCase() === "auto") {
-        void useProvidersStore.getState().update(provider.id, { model: undefined });
-        note(i18n.t("commands.model.auto", { provider: name }) + nextTaskSuffix());
+        setEngine({ model: undefined }, thisChatOnly);
+        note(
+          i18n.t("commands.model.auto", { provider: name }) +
+            scopeSuffix(thisChatOnly) +
+            nextTaskSuffix(),
+        );
         return;
       }
       // Any string goes — the header picker already keeps a pinned id the
       // endpoint stops listing, so the slash command is equally permissive.
-      void useProvidersStore.getState().update(provider.id, { model: arg });
-      note(i18n.t("commands.model.set", { model: arg, provider: name }) + nextTaskSuffix());
+      setEngine({ model: arg }, thisChatOnly);
+      note(
+        i18n.t("commands.model.set", { model: arg, provider: name }) +
+          scopeSuffix(thisChatOnly) +
+          nextTaskSuffix(),
+      );
     },
   },
   {
@@ -283,7 +308,7 @@ export const COMMANDS: readonly SlashCommand[] = [
         .getState()
         .providers.map((p) => ({ value: p.id, label: providerDisplayName(p) })),
     current: () => activeProvider()?.id,
-    run: (arg) => {
+    run: (arg, thisChatOnly = false) => {
       const { providers } = useProvidersStore.getState();
       const current = activeProvider();
       if (!current) return;
@@ -315,8 +340,12 @@ export const COMMANDS: readonly SlashCommand[] = [
         );
         return;
       }
-      void useProvidersStore.getState().activate(pick.id);
-      note(i18n.t("commands.provider.set", { name: providerDisplayName(pick) }) + nextTaskSuffix());
+      setEngine({ providerId: pick.id }, thisChatOnly);
+      note(
+        i18n.t("commands.provider.set", { name: providerDisplayName(pick) }) +
+          scopeSuffix(thisChatOnly) +
+          nextTaskSuffix(),
+      );
     },
   },
   {
@@ -585,13 +614,17 @@ export function resolveSlashArg(
  * parked command is not lost and not refused: the composer shows it as a card
  * waiting its turn, and the store fires it the moment the conversation is quiet.
  */
-export function runSlash(command: SlashCommand, arg: string | undefined): void {
+export function runSlash(
+  command: SlashCommand,
+  arg: string | undefined,
+  thisChatOnly = false,
+): void {
   const store = useConversationStore.getState();
   if (command.deferWhileBusy && runsHere(store)) {
-    store.deferCommand(command.name, () => command.run(arg));
+    store.deferCommand(command.name, () => command.run(arg, thisChatOnly));
     return;
   }
-  command.run(arg);
+  command.run(arg, thisChatOnly);
 }
 
 export type SlashOutcome = "not-slash" | "executed" | { complete: string };
@@ -602,11 +635,11 @@ export type SlashOutcome = "not-slash" | "executed" | { complete: string };
  * "/mo" Enter never fires a half-typed "/model gpt-5". Anything else is an
  * unknown command — answered with a note, never sent as a task.
  */
-export function executeSlash(text: string): SlashOutcome {
+export function executeSlash(text: string, thisChatOnly = false): SlashOutcome {
   const parsed = parseSlash(text);
   if (!parsed) return "not-slash";
   if (parsed.command) {
-    runSlash(parsed.command, resolveSlashArg(parsed.command, parsed.arg));
+    runSlash(parsed.command, resolveSlashArg(parsed.command, parsed.arg), thisChatOnly);
     return "executed";
   }
   if (!parsed.fragment) return "executed"; // a bare "/" — the menu already said everything

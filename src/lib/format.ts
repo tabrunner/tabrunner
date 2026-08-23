@@ -38,3 +38,16 @@ export function formatTokens(n: number): string {
 export function truncateTo(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+
+/**
+ * How to name the ⌥ modifier in a hint. macOS prints the glyph — every menu
+ * there does, and spelling it "Alt" on a Mac keyboard sends people looking for
+ * a key that isn't labelled. `userAgentData` where Chrome offers it, the
+ * deprecated `platform` where it doesn't.
+ */
+export function altKeyLabel(): string {
+  const platform =
+    (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+    navigator.platform;
+  return /mac/i.test(platform) ? "⌥" : "Alt";
+}

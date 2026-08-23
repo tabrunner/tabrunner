@@ -82,6 +82,19 @@ export interface ProviderConfig {
 }
 
 /**
+ * One conversation's engine pick — the three picker choices, stored verbatim.
+ * The PICK, never the resolution: an absent `model` means auto, so a pinned
+ * conversation still follows the endpoint's newest model, and an absent
+ * `effort` means the provider's own default. What a run actually resolved to
+ * is stamped per run on `RunSummary.model` instead.
+ */
+export interface ConversationEngine {
+  providerId: string;
+  model?: string;
+  effort?: ReasoningEffort;
+}
+
+/**
  * A config whose model has been resolved to a concrete id — what adapters
  * accept. `apiKey` here is the EFFECTIVE bearer: for OAuth providers the
  * credential seam swaps in a fresh access token, so adapters never learn

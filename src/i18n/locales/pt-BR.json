@@ -388,7 +388,8 @@
     "filterAria": "Filtrar modelos",
     "filterPlaceholder": "Filtrar {{n}} modelos…",
     "noMatch": "Nenhum modelo corresponde a “{{query}}” — limpe o filtro para ver a lista completa.",
-    "moreModels": "Mais {{n}} — refine o filtro para alcançá-los."
+    "moreModels": "Mais {{n}} — refine o filtro para alcançá-los.",
+    "thisChatOnly": "Segure {{mod}} para mudar só esta conversa"
   },
   "usage": {
     "title": "Uso da assinatura",
@@ -513,6 +514,7 @@
     "current": "Atual",
     "unknown": "O comando /{{name}} não existe — digite / para ver a lista.",
     "nextTask": "Vale para a próxima tarefa, não para a que está rodando.",
+    "thisChatOnly": "Só nesta conversa — novas conversas mantêm o padrão.",
     "deferred": {
       "chip": "Depois da tarefa",
       "title": "Esperando a tarefa terminar — dispara assim que nada estiver rodando aqui",
@@ -538,13 +540,13 @@
       "invalid": "O esforço \"{{value}}\" não existe — escolha um: {{options}}."
     },
     "model": {
-      "description": "Fixa o modelo do provedor ativo — auto desfaz",
+      "description": "Fixa o modelo desta conversa — auto desfaz",
       "current": "Modelo: {{model}} ({{provider}}) — /model <id> para fixar, /model auto para o mais novo do endpoint.",
       "set": "Modelo → {{model}} ({{provider}})",
       "auto": "Modelo → auto ({{provider}}) — o mais novo do endpoint."
     },
     "provider": {
-      "description": "Troca o provedor ativo",
+      "description": "Troca o provedor desta conversa",
       "current": "Provedor: {{name}} — também configurados: {{others}}. /provider <nome> para trocar.",
       "currentOnly": "Provedor: {{name}} — o único configurado.",
       "set": "Provedor → {{name}}",
@@ -630,6 +632,7 @@
     "progress": "{{done}}/{{total}}",
     "peekMore": "{{done}} concluídos · {{pending}} restantes",
     "peekToggle": "Mostrar ou ocultar o plano inteiro",
+    "stepNew": "novo",
     "approvalTitle": "Aprovar este plano?",
     "reapprovalTitle": "O plano mudou — aprovar o novo?",
     "approve": "Aprovar",
@@ -766,7 +769,8 @@
     "schedule": "Peça trabalho com hora marcada — “todo dia útil às 9h, veja meu e-mail”. Gerencie em Configurações.",
     "skills": "Ensinou algo nesta conversa? /skill new salva a receita para a próxima.",
     "siteInstructions": "Em Instruções, uma linha “## site: acme.com” limita tudo abaixo dela àquele site.",
-    "enginePicker": "O chip ao lado de enviar escolhe provedor, modelo e esforço — /model também funciona.",
+    "enginePicker": "O chip ao lado de enviar define provedor, modelo e esforço desta conversa — /model também.",
+    "engineScope": "Cada conversa guarda seu modelo e esforço — novas partem da sua última escolha.",
     "help": "Pressione ? com o campo vazio para ver atalhos e comandos — /help também funciona.",
     "walkthrough": "Peça “e documente isso” e o agente escreve o processo como um guia compartilhável."
   },

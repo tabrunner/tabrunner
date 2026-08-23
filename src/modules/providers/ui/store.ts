@@ -8,6 +8,7 @@ import {
   watchProviders,
   watchActiveProvider,
 } from "../index";
+import { engineProvider } from "../engine";
 import type { ProviderConfig } from "../types";
 
 interface ProvidersState {
@@ -33,17 +34,21 @@ let watchersStarted = false;
 let loadPromise: Promise<void> | null = null;
 
 /**
- * Which provider the UI calls active: the stored pick, else the first one
- * configured. One rule, because four surfaces answer the question and they must
- * agree — the header chip, the slash commands' "Model → X", the context gauge's
- * denominator, and the error bubble's "Update your API key" dialog. A surface
- * that resolved it differently would name a provider the run never used.
+ * The stored pick — what a NEW conversation starts on, and the answer for the
+ * surfaces that have no conversation to speak for: the options page, the
+ * onboarding gate, the "report a bug" links.
+ *
+ * Anything inside a conversation asks `useEngine()` instead, which lays that
+ * conversation's pin over this. Both go through `engineProvider`, so the two
+ * can't drift into naming different engines.
  *
  * A selector, not a hook: the same function serves `useProvidersStore(...)` in
- * a component and `useProvidersStore.getState()` outside one.
+ * a component and `useProvidersStore.getState()` outside one. It returns a
+ * stored object by reference — never a fresh one, which would re-render on
+ * every unrelated store change.
  */
 export function activeProviderOf(state: ProvidersState): ProviderConfig | undefined {
-  return state.providers.find((p) => p.id === state.activeId) ?? state.providers[0];
+  return engineProvider(state.providers, state.activeId);
 }
 
 export const useProvidersStore = create<ProvidersState>((set, get) => ({

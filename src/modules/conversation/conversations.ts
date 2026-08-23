@@ -4,7 +4,7 @@ import { cancelQueued, listQueue } from "@/modules/agent/run-queue";
 import { deleteSchedule, disarmSchedule, schedulesForConversation } from "@/modules/schedule";
 import { removeRecordingsFor } from "@/modules/walkthrough";
 import type { Message } from "./types";
-import type { ReasoningEffort } from "@/modules/providers/types";
+import type { ConversationEngine, ReasoningEffort } from "@/modules/providers/types";
 
 /** A tab the conversation's runs drove — lets the next run spot a tab change. */
 export interface LastTab {
@@ -83,6 +83,13 @@ export interface ConversationMeta {
    * nothing saying where it came from, reads as a stranger in their own browser.
    */
   agent?: string;
+  /**
+   * What this conversation runs on — pinned at its first run, and rewritten
+   * whenever the picker names something else. Absent means never pinned: it
+   * falls back to the stored pick, which is also how every conversation
+   * written before this field behaves.
+   */
+  engine?: ConversationEngine;
   /**
    * The thread belongs to a scheduled task rather than an MCP client. Both wear
    * a label in `agent`, but only one of them arrived over MCP — and the history
@@ -200,6 +207,24 @@ export function recordRunSummary(id: string, run: RunSummary): Promise<void> {
   });
 }
 
+/** One conversation's index row — how a run reads the engine it is pinned to. */
+export async function getConversationMeta(id: string): Promise<ConversationMeta | undefined> {
+  return (await indexItem.get()).find((c) => c.id === id);
+}
+
+/**
+ * Pins what this conversation runs on. Written by the picker, and by a run that
+ * found no pin (or found one naming a provider that is gone) — so the chip and
+ * the run can never disagree for longer than one run.
+ */
+export function recordEngine(id: string, engine: ConversationEngine): Promise<void> {
+  return serialized(async () => {
+    const list = await indexItem.get();
+    if (!list.some((c) => c.id === id)) return;
+    await indexItem.set(list.map((c) => (c.id === id ? { ...c, engine } : c)));
+  });
+}
+
 /**
  * Creates the thread an external MCP client is about to drive, stamped with
  * which client it was. Called once when the bridge opens a thread; the goal or
@@ -220,10 +245,14 @@ export async function openAgentConversation(id: string, agent: string): Promise<
  * (Deletion is not one of these cases any more: deleting the thread cancels the
  * schedule, so the only way back here is eviction.)
  */
-export function openScheduledConversation(id: string, label: string): Promise<boolean> {
+export function openScheduledConversation(
+  id: string,
+  label: string,
+  engine?: ConversationEngine,
+): Promise<boolean> {
   return serialized(async () => {
     const existed = (await indexItem.get()).some((c) => c.id === id);
-    await ensureConversation(id, label, true);
+    await ensureConversation(id, label, true, engine);
     return existed;
   });
 }
@@ -286,6 +315,7 @@ async function ensureConversation(
   id: string,
   agent?: string,
   scheduled?: boolean,
+  engine?: ConversationEngine,
 ): Promise<ConversationMeta> {
   const list = await indexItem.get();
   const existing = list.find((c) => c.id === id);
@@ -300,6 +330,7 @@ async function ensureConversation(
     taskCount: 0,
     ...(agent ? { agent } : {}),
     ...(scheduled ? { scheduled: true } : {}),
+    ...(engine ? { engine } : {}),
   };
   const kept = [meta, ...list].slice(0, MAX_CONVERSATIONS);
   const evicted = list.slice(MAX_CONVERSATIONS - 1);

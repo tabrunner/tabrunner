@@ -14,6 +14,7 @@ import {
   listConversations,
   openScheduledConversation,
   recordDrivenTabFor,
+  recordEngine,
   renameConversation,
   retitleIfDerived,
   setActiveConversation,
@@ -307,5 +308,40 @@ describe("conversations", () => {
     expect(tabs).toHaveLength(5);
     expect(tabs[0]?.url).toBe("https://site7.com/"); // newest work first
     expect(tabs.map((t) => t.url)).not.toContain("https://site2.com/"); // oldest evicted
+  });
+});
+
+/**
+ * The engine pick is conversation state: it survives an unrelated patch, and a
+ * schedule's thread is born already carrying the pick it was set up with.
+ */
+describe("engine pin", () => {
+  it("round-trips and survives an unrelated meta write", async () => {
+    const id = await appendMessageFresh(msg("user", "book a table"));
+    await recordEngine(id, { providerId: "p1", model: "claude-x" });
+    await recordDrivenTabFor(id, { url: "https://site.com/", title: "Site" });
+
+    const meta = (await listConversations()).find((c) => c.id === id);
+    expect(meta?.engine).toEqual({ providerId: "p1", model: "claude-x" });
+    expect(meta?.tabs?.[0]?.url).toBe("https://site.com/");
+  });
+
+  it("ignores a conversation that is gone rather than resurrecting it", async () => {
+    await recordEngine("never-existed", { providerId: "p1" });
+    expect((await listConversations()).some((c) => c.id === "never-existed")).toBe(false);
+  });
+
+  it("seeds a schedule's thread with the pick it was set up with", async () => {
+    await openScheduledConversation("s1", "Scheduled", { providerId: "p1", effort: "low" });
+    const meta = (await listConversations()).find((c) => c.id === "s1");
+    expect(meta?.engine).toEqual({ providerId: "p1", effort: "low" });
+
+    // Re-created after eviction, it keeps what it already had — the second
+    // call must not overwrite a pin the user has since changed.
+    await recordEngine("s1", { providerId: "p2" });
+    await openScheduledConversation("s1", "Scheduled", { providerId: "p1", effort: "low" });
+    expect((await listConversations()).find((c) => c.id === "s1")?.engine).toEqual({
+      providerId: "p2",
+    });
   });
 });

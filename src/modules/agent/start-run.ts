@@ -16,9 +16,11 @@ import {
 } from "@/modules/browser";
 import {
   createProvider,
+  engineOf,
   ensureProviderCredential,
-  getActiveProvider,
+  getProviderFor,
   resolveProviderModel,
+  sameEngine,
 } from "@/modules/providers";
 import type { ResolvedProviderConfig } from "@/modules/providers/types";
 import {
@@ -26,7 +28,13 @@ import {
   learnContextLimit,
   readLearnedLimits,
 } from "@/modules/providers/context-window";
-import { getMessages, getThreadTabsFor, recordDrivenTabFor } from "@/modules/conversation";
+import {
+  getConversationMeta,
+  getMessages,
+  getThreadTabsFor,
+  recordDrivenTabFor,
+  recordEngine,
+} from "@/modules/conversation";
 import {
   flushConversationWrites,
   type LastTab,
@@ -93,14 +101,23 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
   const { run } = claim;
 
   try {
-    const [providerConfig, transcript] = await Promise.all([
-      getActiveProvider(),
+    // What this conversation runs on: its own pin, else the stored pick. The
+    // thread owns the engine so a picker change mid-afternoon can't re-point
+    // the 9am schedule, and a reopened chat still runs what it always ran.
+    const [meta, transcript] = await Promise.all([
+      getConversationMeta(conversationId),
       getMessages(conversationId),
     ]);
+    const providerConfig = await getProviderFor(meta?.engine);
     if (!providerConfig) {
       emit({ type: "error", message: i18n.t("errors.noActiveProvider") });
       return { ok: true };
     }
+    // Pin what actually answered. First run of a fresh thread lands here, and
+    // so does a thread whose pinned provider has since been deleted — leaving
+    // the stale pin would keep the chip naming an engine that can't run.
+    const pick = engineOf(providerConfig);
+    if (!sameEngine(meta?.engine, pick)) void recordEngine(conversationId, pick);
 
     // Resolve "auto" model to a concrete id at run start — mid-task changes to
     // the stored config never affect a run in flight. An OAuth provider gets a

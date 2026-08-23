@@ -75,6 +75,9 @@ beforeEach(() => {
     status: "idle",
     queued: [],
     queuedRun: null,
+    draftEngine: null,
+    conversations: [],
+    activeId: null,
   });
 });
 

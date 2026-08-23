@@ -388,7 +388,8 @@
     "filterAria": "Filtrar modelos",
     "filterPlaceholder": "Filtrar {{n}} modelos…",
     "noMatch": "Ningún modelo coincide con «{{query}}» — borra el filtro para ver la lista completa.",
-    "moreModels": "{{n}} más — acota el filtro para alcanzarlos."
+    "moreModels": "{{n}} más — acota el filtro para alcanzarlos.",
+    "thisChatOnly": "Mantén {{mod}} para cambiar solo este chat"
   },
   "usage": {
     "title": "Uso de la suscripción",
@@ -513,6 +514,7 @@
     "current": "Actual",
     "unknown": "El comando /{{name}} no existe — escribe / para ver la lista.",
     "nextTask": "Se aplica a la próxima tarea, no a la que se está ejecutando.",
+    "thisChatOnly": "Solo este chat — los nuevos mantienen el valor por defecto.",
     "deferred": {
       "chip": "Después de la tarea",
       "title": "Esperando a que termine la tarea — se lanza en cuanto no haya nada trabajando aquí",
@@ -538,13 +540,13 @@
       "invalid": "El esfuerzo \"{{value}}\" no existe — elige uno: {{options}}."
     },
     "model": {
-      "description": "Fija el modelo del proveedor activo — auto lo deshace",
+      "description": "Fija el modelo de este chat — auto lo deshace",
       "current": "Modelo: {{model}} ({{provider}}) — /model <id> para fijar, /model auto para el más nuevo del endpoint.",
       "set": "Modelo → {{model}} ({{provider}})",
       "auto": "Modelo → auto ({{provider}}) — el más nuevo del endpoint."
     },
     "provider": {
-      "description": "Cambia el proveedor activo",
+      "description": "Cambia el proveedor de este chat",
       "current": "Proveedor: {{name}} — también configurados: {{others}}. /provider <nombre> para cambiar.",
       "currentOnly": "Proveedor: {{name}} — el único configurado.",
       "set": "Proveedor → {{name}}",
@@ -630,6 +632,7 @@
     "progress": "{{done}}/{{total}}",
     "peekMore": "{{done}} hechos · {{pending}} pendientes",
     "peekToggle": "Mostrar u ocultar el plan completo",
+    "stepNew": "nuevo",
     "approvalTitle": "¿Aprobar este plan?",
     "reapprovalTitle": "El plan cambió — ¿aprobar el nuevo?",
     "approve": "Aprobar",
@@ -766,7 +769,8 @@
     "schedule": "Pide trabajo con temporizador — “cada día laborable a las 9, mira mi correo”. Gestiónalas en Configuración.",
     "skills": "¿Le enseñaste algo en este chat? /skill new guarda la receta para la próxima.",
     "siteInstructions": "En Instrucciones, una línea “## site: acme.com” limita todo lo que sigue a ese sitio.",
-    "enginePicker": "El chip junto a Enviar elige proveedor, modelo y esfuerzo — /model también sirve.",
+    "enginePicker": "El chip junto a Enviar define proveedor, modelo y esfuerzo de este chat — /model también.",
+    "engineScope": "Cada chat guarda su modelo y esfuerzo — los nuevos parten de tu última elección.",
     "help": "Pulsa ? con el campo vacío para ver atajos y comandos — /help también sirve.",
     "walkthrough": "Pide “y documéntalo” y el agente escribe el proceso como una guía para compartir."
   },

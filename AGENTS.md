@@ -98,8 +98,18 @@ never reach the service-worker bundle.
   absent (PDF, `file://`, CSP, or the `widgetHidden` pref); the toolbar badge is the one run
   signal that never is. Never let the injected marks be the only thing saying a run is alive.
 - `providers/` — OpenAI/Anthropic/Responses adapters, presets, storage, config UI. Adding a
-  provider is a data change in `presets.ts` — never a code change elsewhere.
-- `conversation/` — stored conversations, message types, chat UI. The worker owns transcript
+  provider is a data change in `presets.ts` — never a code change elsewhere. **The engine
+  (provider · model · effort) belongs to the conversation, not to the app**: `engine.ts` holds
+  the one rule — the conversation's pin, else the stored pick (`active-provider` + the
+  `model`/`reasoningEffort` on the config), else the first configured — and everything asks it,
+  the run through `getProviderFor`, the panel through `useEngine`. What is pinned is the PICK,
+  so an absent model still means auto; a pin naming a deleted provider degrades to the stored
+  pick and the next run re-pins. Changing the picker writes through to the stored default —
+  ⌥ (the composer picker and the slash menu alike) scopes the change to this chat instead.
+- `conversation/` — stored conversations, message types, chat UI. A conversation owns the
+  engine it runs on (`ConversationMeta.engine`, pinned at its first run) — so a picker change
+  this afternoon cannot re-point the 9am schedule, and a reopened chat still runs what it
+  always ran. The worker owns transcript
   persistence (`TranscriptWriter`); the panel store only renders. Whenever a run ends without
   a summary of its own — an error, or a user stop — the writer appends a deterministic progress
   note (`progress-note.ts`), so the work still reaches the next run's history. That note is

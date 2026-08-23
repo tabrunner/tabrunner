@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useProvidersStore, activeProviderOf } from "./store";
+import { useProvidersStore } from "./store";
 import { engineLabel } from "./engine-label";
 import { FILTER_THRESHOLD, narrowModels } from "./narrow-models";
 import { ProviderMark } from "./ProviderIcon";
@@ -19,20 +19,22 @@ import type { ModelsTarget } from "../models";
 import { PRESETS, providerDisplayName } from "../presets";
 import { supportsUsage } from "../usage";
 import { EFFORT_LABEL_KEYS, isEffort, REASONING_EFFORTS } from "../types";
-import type { ModelInfo, ProviderConfig } from "../types";
+import type { ConversationEngine, ModelInfo, ProviderConfig } from "../types";
 import { Popover } from "@/components/Popover";
 import { Select } from "@/components/Select";
 import { TextField } from "@/components/TextField";
 import { Button } from "@/components/Button";
+import { altKeyLabel } from "@/lib/format";
 import { CheckIcon, ChevronDownIcon } from "@/components/Icon";
 
 /**
  * The engine picker — provider, model, and reasoning effort behind one quiet
  * chip in the composer footer (the layout every agent harness converged on:
  * the control sits where the task is typed, and effort folds into the model
- * picker rather than living as a peer select). Choices persist onto the
- * provider's stored config; the background snapshots it at run start, so edits
- * apply to the next task, never a run in flight.
+ * picker rather than living as a peer select). Controlled: it renders the pick in
+ * force and reports what was chosen — the conversation owns which engine it
+ * runs on, and this owns how you say so. The background snapshots the pick at
+ * run start, so a change applies to the next task, never a run in flight.
  *
  * **Model is the frequent choice, provider the rare one**, and the layout says
  * so: the model list owns the popover body, and the providers are a strip of
@@ -107,15 +109,6 @@ function useModels(target: ModelsTarget | null) {
     loading: key !== null && current === null,
     error: current?.error ?? null,
   };
-}
-
-/** The active provider; the store's load is idempotent, so no guard here. */
-function useActiveProvider() {
-  const load = useProvidersStore((s) => s.load);
-  useEffect(() => {
-    void load();
-  }, [load]);
-  return useProvidersStore(activeProviderOf);
 }
 
 /** What a provider is set to run, named without touching the network. */
@@ -321,11 +314,24 @@ function ModelList({
   );
 }
 
-export function EnginePicker() {
+export function EnginePicker({
+  provider: active,
+  onPick,
+}: {
+  /** The pick in force for this conversation — already resolved by `useEngine`. */
+  provider: ProviderConfig | undefined;
+  onPick: (patch: Partial<ConversationEngine>, thisChatOnly: boolean) => void;
+}) {
   const { t } = useTranslation();
-  const { providers, activate, update } = useProvidersStore();
-  const active = useActiveProvider();
+  const providers = useProvidersStore((s) => s.providers);
   const [open, setOpen] = useState(false);
+  /**
+   * Was ⌥ down for the choice being made? Read at the moment of the write, set
+   * by whichever event started it — one ref rather than three handlers, because
+   * the effort Select reports a value and no event at all, and a `<button>`
+   * activated by Enter still reports its modifiers on the click it synthesizes.
+   */
+  const alt = useRef(false);
   const [addOpen, setAddOpen] = useState(false);
   const listing = useModels(active ? modelsTarget(active) : null);
 
@@ -350,7 +356,7 @@ export function EnginePicker() {
   // Picking a model is the commit-and-close; everything else leaves the popover
   // open, because a tile click is normally the first half of a model change.
   const pick = (model: string | undefined) => {
-    void update(active.id, { model });
+    onPick({ model }, alt.current);
     setOpen(false);
   };
 
@@ -385,56 +391,67 @@ export function EnginePicker() {
           </Button>
         }
       >
-        {providers.length > 1 && (
-          <ProviderTabs
-            providers={providers}
-            activeId={active.id}
-            onSelect={(p) => void activate(p.id)}
-          />
-        )}
+        {/* `contents` so the capture wrapper generates no box of its own. */}
+        <div
+          className="contents"
+          onPointerDownCapture={(e) => (alt.current = e.altKey)}
+          onKeyDownCapture={(e) => (alt.current = e.altKey)}
+        >
+          {providers.length > 1 && (
+            <ProviderTabs
+              providers={providers}
+              activeId={active.id}
+              onSelect={(p) => onPick({ providerId: p.id }, alt.current)}
+            />
+          )}
 
-        {/* Keyed on the provider so a switch resets the filter with the list. */}
-        <div className="flex flex-col gap-0.5">
-          <ModelList key={active.id} provider={active} {...listing} onPick={pick} />
-        </div>
-
-        <div className="mt-2 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
-          <span className="shrink-0 text-xs font-medium text-neutral-500 dark:text-neutral-400">
-            {t("modelPicker.reasoningEffort")}
-          </span>
-          <Select
-            size="sm"
-            variant="quiet"
-            className="min-w-0"
-            ariaLabel={t("modelPicker.reasoningEffort")}
-            title={t("modelPicker.effortHint")}
-            value={active.reasoningEffort ?? "default"}
-            onChange={(v) =>
-              void update(active.id, { reasoningEffort: isEffort(v) ? v : undefined })
-            }
-            options={effortOptions}
-          />
-        </div>
-
-        {supportsUsage(active.id) && (
-          <div className="mt-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
-            {/* Keyed: the section's snapshot is fetched per provider, and a key
-                change is the only correct remount when active moves under us. */}
-            <UsageSection key={active.id} provider={active} />
+          {/* Keyed on the provider so a switch resets the filter with the list. */}
+          <div className="flex flex-col gap-0.5">
+            <ModelList key={active.id} provider={active} {...listing} onPick={pick} />
           </div>
-        )}
 
-        <div className="mt-2 border-t border-neutral-100 pt-1.5 dark:border-neutral-800">
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              setAddOpen(true);
-            }}
-            className="flex w-full cursor-pointer items-center rounded-md px-1.5 py-1 text-left text-xs font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-          >
-            {t("modelPicker.addProvider")}
-          </button>
+          <div className="mt-2 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
+            <span className="shrink-0 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+              {t("modelPicker.reasoningEffort")}
+            </span>
+            <Select
+              size="sm"
+              variant="quiet"
+              className="min-w-0"
+              ariaLabel={t("modelPicker.reasoningEffort")}
+              title={t("modelPicker.effortHint")}
+              value={active.reasoningEffort ?? "default"}
+              onChange={(v) => onPick({ effort: isEffort(v) ? v : undefined }, alt.current)}
+              options={effortOptions}
+            />
+          </div>
+
+          {supportsUsage(active.id) && (
+            <div className="mt-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
+              {/* Keyed: the section's snapshot is fetched per provider, and a key
+                change is the only correct remount when active moves under us. */}
+              <UsageSection key={active.id} provider={active} />
+            </div>
+          )}
+
+          <div className="mt-2 border-t border-neutral-100 pt-1.5 dark:border-neutral-800">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setAddOpen(true);
+              }}
+              className="flex w-full cursor-pointer items-center rounded-md px-1.5 py-1 text-left text-xs font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            >
+              {t("modelPicker.addProvider")}
+            </button>
+          </div>
+
+          {/* The gesture says itself: a modifier nobody is told about is a
+            modifier nobody uses. */}
+          <div className="mt-1.5 px-1.5 text-[10px] text-neutral-400 dark:text-neutral-500">
+            {t("enginePicker.thisChatOnly", { mod: altKeyLabel() })}
+          </div>
         </div>
       </Popover>
       <AddProviderDialog open={addOpen} onOpenChange={setAddOpen} />

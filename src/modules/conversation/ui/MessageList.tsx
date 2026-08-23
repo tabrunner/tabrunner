@@ -4,7 +4,7 @@ import { runsHere, useConversationStore, retryTargetFrom } from "./store";
 import { Markdown } from "./Markdown";
 import { PlanMark } from "./PlanMark";
 import { groupBursts, type Burst } from "./bursts";
-import { useNow } from "./hooks";
+import { useEngine, useNow } from "./hooks";
 import { toolVerbKey, toolHint, displacedHint } from "./tool-labels";
 import { pendingAskId } from "./ask-gate";
 import type { Message } from "../types";
@@ -13,7 +13,7 @@ import type { ErrorKind } from "@/modules/providers/error-classify";
 import { formatDuration, formatTokens, hostnameOf } from "@/lib/format";
 import { newIssueUrl } from "@/lib/report";
 import { showReasoning } from "@/lib/prefs";
-import { AddProviderDialog, useProvidersStore, activeProviderOf } from "@/modules/providers/ui";
+import { AddProviderDialog } from "@/modules/providers/ui";
 import type { ProviderConfig } from "@/modules/providers/types";
 import { Button, buttonClasses } from "@/components/Button";
 import { CometPose } from "@/components/CometPose";
@@ -289,11 +289,16 @@ function QuestionCard({ msg, onAnswer }: { msg: Message; onAnswer?: (text: strin
  */
 function PlanApprovalCard({
   steps,
+  current,
+  previous,
   reapproval,
   onApprove,
   onReject,
 }: {
   steps: string[];
+  current: number;
+  /** The list the user was shown at the last gate — what this one is diffed against. */
+  previous?: string[];
   reapproval: boolean;
   onApprove: () => void;
   onReject: () => void;
@@ -303,21 +308,64 @@ function PlanApprovalCard({
   // composer: typed text at the gate sends the plan back (ChatInput's
   // parkedAtPlan), the same way an unanswered ask_user turns it into the
   // answer field — one input surface per wait, not two.
+  const done = Math.min(current, steps.length);
+  // A mid-run re-ask is about the rest of the route, not the whole trip: the
+  // steps the run already finished carry the live card's own check and strike,
+  // so the list reads as "here is what's left" instead of a restart. Before the
+  // first yes nothing has run, so nothing is marked — and no step is ever in
+  // flight while the gate is up, which is why the cursor sits at `done`, not on
+  // a gold chevron the run isn't working.
+  const marked = done > 0 ? done : -1;
+  // What is actually being asked: the steps that weren't in the list the user
+  // last saw. Everything else drops to muted, so a seven-step re-ask reads as
+  // the one line that changed.
+  //
+  // ponytail: exact-text membership, no alignment. The ceiling is that a
+  // reworded step reads as new and a dropped one shows only as a shorter list
+  // — a real diff (LCS) is the upgrade if that ever misleads.
+  const before = previous ? new Set(previous) : null;
 
   return (
     <div className="flex max-w-[85%] flex-col gap-2 self-start rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 dark:border-brand-900 dark:bg-brand-950/60">
-      <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
-        {t(reapproval ? "plan.reapprovalTitle" : "plan.approvalTitle")}
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+          {t(reapproval ? "plan.reapprovalTitle" : "plan.approvalTitle")}
+        </div>
+        {done > 0 && (
+          <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+            {t("plan.peekMore", { done, pending: steps.length - done })}
+          </span>
+        )}
       </div>
       <ol className="flex flex-col gap-0.5 text-xs text-neutral-600 dark:text-neutral-300">
-        {steps.map((step, i) => (
-          <li key={i} className="flex gap-1.5">
-            {/* Pre-approval every step is "ahead" — PlanMark's dot, never a
-                typeface ○, so the card speaks the live plan's language. */}
-            <PlanMark index={i} current={-1} />
-            <span>{step}</span>
-          </li>
-        ))}
+        {steps.map((step, i) => {
+          const isNew = before !== null && i >= done && !before.has(step);
+          return (
+            <li key={i} className="flex items-start gap-1.5">
+              {/* PlanMark's dot for what's ahead, never a typeface ○, so the card
+                  speaks the live plan's language. */}
+              <PlanMark index={i} current={marked} />
+              <span
+                className={
+                  i < done
+                    ? "text-neutral-400 line-through dark:text-neutral-500"
+                    : isNew
+                      ? "font-medium text-neutral-800 dark:text-neutral-100"
+                      : before !== null
+                        ? "text-neutral-500 dark:text-neutral-400"
+                        : ""
+                }
+              >
+                {step}
+                {isNew && (
+                  <span className="ml-1.5 align-[1px] text-[10px] font-medium tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
+                    {t("plan.stepNew")}
+                  </span>
+                )}
+              </span>
+            </li>
+          );
+        })}
       </ol>
       <div className="flex gap-2">
         <Button size="sm" onClick={onApprove}>
@@ -1063,7 +1111,9 @@ function Transcript() {
   const rejectPlan = useConversationStore((s) => s.rejectPlan);
   // The same provider every other surface calls active — the error bubble's
   // "Update your API key" must open the config the failed run actually used.
-  const activeProvider = useProvidersStore(activeProviderOf);
+  // The provider THIS conversation runs on — the error came from it, so the
+  // "update your key" dialog must open on it and not on the stored default.
+  const { provider: activeProvider } = useEngine();
   // One global preference, read and watched once here — never per reasoning block.
   const showReasoningOn = useStoredItem(showReasoning);
   const toggleReasoning = useCallback(
@@ -1228,6 +1278,8 @@ function Transcript() {
             <MessageScrollerItem className="settle">
               <PlanApprovalCard
                 steps={planApproval.steps}
+                current={planApproval.current}
+                previous={planApproval.previous}
                 reapproval={planApproval.reapproval}
                 onApprove={approvePlan}
                 onReject={rejectPlan}

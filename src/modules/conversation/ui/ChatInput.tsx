@@ -6,7 +6,7 @@ import { pendingAskId } from "./ask-gate";
 import { toAttachment } from "./image";
 import { recallStep, sentMessages } from "./history-recall";
 import { caretVisualLine } from "./caret-line";
-import { useQueueBusy, useRestrictedPage } from "./hooks";
+import { useEngine, useQueueBusy, useRestrictedPage } from "./hooks";
 import { expandText, insertToken, linesOf, nextToken, shouldCollapse } from "./paste-collapse";
 import { RunTargetToggle } from "./RunTargetToggle";
 import { SlashMenu } from "./SlashMenu";
@@ -122,6 +122,7 @@ export function ChatInput() {
   const runTarget = useConversationStore((s) => s.runTarget);
   const pageBlocked = restrictedPage && runTarget === "thisPage";
   const sendTask = useConversationStore((s) => s.sendTask);
+  const { provider: engineProvider, setEngine } = useEngine();
   const queueMessage = useConversationStore((s) => s.queueMessage);
   const unqueueMessage = useConversationStore((s) => s.unqueueMessage);
   const recallQueued = useConversationStore((s) => s.recallQueued);
@@ -358,10 +359,10 @@ export function ChatInput() {
   /** Click/Enter on a menu row: a candidate runs its command with the row's
    *  value; a command row fires at once when it takes no argument, and
    *  completes into the draft otherwise so its picker can open. */
-  const acceptSlash = (item: SlashItem) => {
+  const acceptSlash = (item: SlashItem, thisChatOnly = false) => {
     if (!slash) return;
     if (slash.kind === "candidates") {
-      runSlash(slash.command, item.key);
+      runSlash(slash.command, item.key, thisChatOnly);
       resetComposer();
       return;
     }
@@ -449,7 +450,9 @@ export function ChatInput() {
         // opens on the current value, so an untouched picker's Enter is a
         // no-op set — never an accidental change.
         e.preventDefault();
-        if (slashActive) acceptSlash(slashActive);
+        // ⌥ Enter scopes the pick to this chat, exactly as ⌥ does in the
+        // engine picker — the same gesture, the same meaning, both ways in.
+        if (slashActive) acceptSlash(slashActive, e.altKey);
         else submit();
         return;
       }
@@ -634,7 +637,7 @@ export function ChatInput() {
         />
         <div className="flex items-center gap-1 px-1.5 pb-1.5">
           <RunTargetToggle />
-          <EnginePicker />
+          <EnginePicker provider={engineProvider} onPick={setEngine} />
           {pastedTexts.some((p) => text.includes(p.token)) && (
             <p
               className="min-w-0 flex-1 truncate text-right text-[11px] italic text-neutral-500 dark:text-neutral-400"
