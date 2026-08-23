@@ -119,7 +119,7 @@ describe("the parked plan gate", () => {
     useConversationStore.setState({
       status: "running",
       runStartedAt: Date.now(),
-      planApproval: { steps: ["a"], reapproval: false },
+      planApproval: { steps: ["a"], current: 0, reapproval: false },
       draft: "isso",
     });
     const h = await render(<ChatInput />);
@@ -188,7 +188,7 @@ describe("run target: a preference while idle, the walk-away while running", () 
     useConversationStore.setState({
       status: "running",
       runStartedAt: Date.now(),
-      planApproval: { steps: ["a"], reapproval: false },
+      planApproval: { steps: ["a"], current: 0, reapproval: false },
     });
     const close = vi.spyOn(window, "close").mockImplementation(() => {});
     const h = await render(<RunTargetToggle />);

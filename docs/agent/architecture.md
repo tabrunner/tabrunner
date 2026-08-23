@@ -207,7 +207,23 @@ would erase what the run already did; only steps the user cancelled come off. Th
 backstop for a model that narrows anyway is the cursor, not a diff: a replan whose
 `current` moves backwards dropped finished steps, so the plan tool's result appends a
 whole-arc note (`plan.narrowedNote`) — the update still lands, since the model is the
-list's one writer and a merged list would put words in its mouth. A bare rejection ends the run with `errors.planRejected` as the done
+list's one writer and a merged list would put words in its mouth.
+
+A re-ask is not the first card again, because the run is already mid-list: the
+`plan_approval` payload carries the cursor (`current`) and the list the user was last
+shown at a gate (`previous`). The card checks and strikes what is already finished, counts
+the remainder, and tags as `new` the steps that were not in the list they last saw — the
+baseline is the last GATED list, not the last approved one, so a revised plan answers "did
+it change what I asked?" rather than diffing against a plan that was never approved. Drawn
+without those, seven identical rows read as a restart of work the user had just watched
+happen. The diff is exact-text membership, not an alignment: a reworded step reads as new
+and a dropped one shows only as a shorter list — over-marking, never a hidden change.
+While the gate is up the footer band drops its plan peek (the card above carries the same
+steps with more on them, and the band keeps what only it has: the amber waiting line, the
+clock, Stop), and the away notification lists only the steps still ahead — one line of
+text has no room to mark anything done.
+
+A bare rejection ends the run with `errors.planRejected` as the done
 summary; a rejection WITH feedback is a revision request instead — the note rides back
 inside the plan tool's own result (a separate user message would collide with the
 tool_results turn, which Anthropic forbids), the gate re-arms, and the revised plan is

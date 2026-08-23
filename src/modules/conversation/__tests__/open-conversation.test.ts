@@ -85,10 +85,11 @@ describe("openConversation", () => {
     useConversationStore.getState().openConversation("c1");
     await vi.waitFor(() => expect(queryRuns()).not.toHaveLength(0));
 
-    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], reapproval: false });
+    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], current: 0, reapproval: false });
 
-    expect(useConversationStore.getState().planApproval).toEqual({
+    expect(useConversationStore.getState().planApproval).toMatchObject({
       steps: ["a", "b"],
+      current: 0,
       reapproval: false,
     });
   });

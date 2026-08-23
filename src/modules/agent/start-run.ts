@@ -43,7 +43,7 @@ import {
 import type { Message } from "@/modules/conversation/types";
 import { defaultStartUrl, walkthroughsEnabled } from "@/lib/prefs";
 import { createLogger, truncate } from "@/lib/logger";
-import type { Event } from "@/shared/protocol";
+import type { Event, PlanApprovalPayload } from "@/shared/protocol";
 import { acquireRun, releaseRun } from "./active-runs";
 import type { ActiveRun, RunOwner } from "./active-runs";
 import type { PlanApprovalOutcome } from "./loop";
@@ -83,7 +83,7 @@ export interface StartRunOptions {
    *  (the panel fires an OS notification, the bridge records a pending answer). */
   onAskUser?: (question: string, choices?: string[]) => void;
   /** The run parked on a plan approval — the away notification's cue, same as ask_user. */
-  onPlanApprovalRequest?: (steps: string[], reapproval: boolean) => void;
+  onPlanApprovalRequest?: (ask: PlanApprovalPayload) => void;
 }
 
 export type StartRunResult = { ok: true } | { ok: false; active: ActiveRun };
@@ -319,7 +319,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
           onStepStart: (tool, args) => emit({ type: "step_start", tool, args }),
           onStep: (step) => emit({ type: "step", ...step }),
           onPlan: (plan) => emit({ type: "plan", ...plan }),
-          onPlanApproval: (steps, reapproval) => {
+          onPlanApproval: (ask) => {
             // The gate is the panel's, because the panel is the only owner with
             // a human at the other end. A bridge client is itself an AI carrying
             // the consequential-action policy, and a scheduled run's consent was
@@ -327,10 +327,10 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             // either one would hang a run nobody can answer. The plan still
             // crosses the event stream and lands in the transcript for review.
             if (owner !== "panel") return Promise.resolve({ approved: true });
-            emit({ type: "plan_approval", steps, reapproval });
+            emit({ type: "plan_approval", ...ask });
             // Parked runs stall silently otherwise — the user has usually tabbed
             // away by the time a mid-run replan asks again.
-            onPlanApprovalRequest?.(steps, reapproval);
+            onPlanApprovalRequest?.(ask);
             // Parked means blocked-on-you, not working: the driven tab settles
             // into the same still "?" an ask_user wait shows, and the board's
             // pulse stops. An approve re-raises both; a reject (or stop) ends
@@ -339,8 +339,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             void waitAgentIndicator(drivenTabId);
             return new Promise<PlanApprovalOutcome>((resolve) => {
               run.planApproval = {
-                steps,
-                reapproval,
+                ask,
                 resolve: (approved, feedback) => {
                   const revision = approved ? undefined : feedback?.trim() || undefined;
                   // Approve or revise: the run works again, so the working marks

@@ -1,4 +1,5 @@
 import { createLogger } from "@/lib/logger";
+import type { PlanApprovalPayload } from "@/shared/protocol";
 
 const log = createLogger("runs");
 
@@ -24,8 +25,9 @@ export interface ActiveRun {
    * is a run nobody can finish.
    */
   planApproval?: {
-    steps: string[];
-    reapproval: boolean;
+    /** Exactly what the panel is asked, wire-shaped — a reconnecting panel
+     *  re-sends this untouched. */
+    ask: PlanApprovalPayload;
     resolve: (approved: boolean, feedback?: string) => void;
   };
 }

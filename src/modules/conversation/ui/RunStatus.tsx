@@ -311,7 +311,13 @@ export function RunStatus() {
           not the plan's — indented to 1.125rem its favicon landed exactly on
           the glyph column and the tab read as a fifth step. */}
       <DrivenTabChip />
-      {plan?.steps && <PlanPeek steps={plan.steps} current={plan.current ?? 0} />}
+      {/* One list per screen: at the plan gate the approval card right above
+          carries the same steps WITH what's done and what changed, and a second
+          copy of them 40px below is the clutter that made the ask hard to read.
+          The band keeps what only it has — the amber status, the clock, Stop. */}
+      {plan?.steps && !awaitingApproval && (
+        <PlanPeek steps={plan.steps} current={plan.current ?? 0} />
+      )}
       {/* Same corner as the settled band's, so the number does not move when the
           run ends — you look in one place whether it is working or done. */}
       <ContextGauge />

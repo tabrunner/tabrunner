@@ -101,6 +101,20 @@ export interface PlanPayload {
 }
 
 /**
+ * A plan parked on the user's yes. A re-ask is the hard case: the run is already
+ * mid-list, so the card has to say what is DONE (`current`) and what CHANGED
+ * (`previous`) — without both it reads as a restart of work the user watched
+ * happen.
+ */
+export interface PlanApprovalPayload extends PlanPayload {
+  /** A mid-run change big enough to need a fresh yes, not the first ask. */
+  reapproval: boolean;
+  /** The steps of the last plan the user was shown at a gate — absent on the
+   *  first ask, when there is nothing to diff against. */
+  previous?: string[];
+}
+
+/**
  * An external client working in the browser — the bridge's delegated run, or a
  * direct-driving session. The panel shows this as a status band, because the
  * run it represents is already blinking the driven tab's favicon.
@@ -142,11 +156,7 @@ export type Event =
   | { type: "step_start"; tool: string; args?: Record<string, unknown> }
   | ({ type: "step" } & StepPayload)
   | ({ type: "plan" } & PlanPayload)
-  /**
-   * The agent proposed a plan and is parked until the user answers. `reapproval`
-   * marks a mid-run change big enough to need a fresh yes, not the first ask.
-   */
-  | { type: "plan_approval"; steps: string[]; reapproval: boolean }
+  | ({ type: "plan_approval" } & PlanApprovalPayload)
   /** A queued message was inserted into the conversation at a tool boundary */
   | { type: "injected"; id: string; text: string }
   /**

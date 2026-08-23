@@ -100,9 +100,10 @@ describe("plan approval prompt", () => {
     s.connect();
     await s.sendTask("do the thing");
 
-    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], reapproval: false });
-    expect(useConversationStore.getState().planApproval).toEqual({
+    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], current: 0, reapproval: false });
+    expect(useConversationStore.getState().planApproval).toMatchObject({
       steps: ["a", "b"],
+      current: 0,
       reapproval: false,
     });
 
@@ -119,7 +120,7 @@ describe("plan approval prompt", () => {
     s.connect();
     await s.sendTask("do the thing");
 
-    port.fireMessage({ type: "plan_approval", steps: ["a"], reapproval: true });
+    port.fireMessage({ type: "plan_approval", steps: ["a"], current: 0, reapproval: true });
     useConversationStore.getState().rejectPlan();
     expect(port.fake.postMessage).toHaveBeenLastCalledWith({
       type: "plan_approval",
@@ -133,7 +134,7 @@ describe("plan approval prompt", () => {
     s.connect();
     await s.sendTask("do the thing");
 
-    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], reapproval: false });
+    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], current: 0, reapproval: false });
     useConversationStore.getState().revisePlan("  skip step b  ");
     expect(port.fake.postMessage).toHaveBeenLastCalledWith({
       type: "plan_approval",
@@ -150,12 +151,12 @@ describe("plan approval prompt", () => {
     s.connect();
     await s.sendTask("do the thing");
 
-    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], reapproval: false });
+    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], current: 0, reapproval: false });
     useConversationStore.getState().revisePlan("skip b");
     // The band names the gap between the note and the revised plan.
     expect(useConversationStore.getState().replanning).toBe(true);
 
-    port.fireMessage({ type: "plan_approval", steps: ["a"], reapproval: true });
+    port.fireMessage({ type: "plan_approval", steps: ["a"], current: 0, reapproval: true });
     expect(useConversationStore.getState().replanning).toBe(false);
   });
 
@@ -164,7 +165,7 @@ describe("plan approval prompt", () => {
     s.connect();
     await s.sendTask("do the thing");
 
-    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], reapproval: false });
+    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], current: 0, reapproval: false });
     useConversationStore.getState().revisePlan("skip b");
     expect(useConversationStore.getState().replanning).toBe(true);
 
@@ -177,7 +178,7 @@ describe("plan approval prompt", () => {
     s.connect();
     await s.sendTask("do the thing");
 
-    port.fireMessage({ type: "plan_approval", steps: ["a"], reapproval: false });
+    port.fireMessage({ type: "plan_approval", steps: ["a"], current: 0, reapproval: false });
     useConversationStore.getState().revisePlan("   ");
     expect(useConversationStore.getState().planApproval).not.toBeNull();
     expect(port.fake.postMessage).not.toHaveBeenCalledWith(
@@ -190,7 +191,7 @@ describe("plan approval prompt", () => {
     s.connect();
     await s.sendTask("do the thing");
 
-    port.fireMessage({ type: "plan_approval", steps: ["a"], reapproval: false });
+    port.fireMessage({ type: "plan_approval", steps: ["a"], current: 0, reapproval: false });
     expect(useConversationStore.getState().planApproval).not.toBeNull();
 
     s.stop();

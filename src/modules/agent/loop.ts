@@ -8,7 +8,7 @@ import type {
 } from "@/modules/providers/types";
 import { isRetryable, ProviderError } from "@/modules/providers/types";
 import type { ErrorKind } from "@/modules/providers/error-classify";
-import type { StepPayload, PlanPayload } from "@/shared/protocol";
+import type { StepPayload, PlanApprovalPayload, PlanPayload } from "@/shared/protocol";
 import { createLogger, truncate } from "@/lib/logger";
 import { i18n, currentLanguageName } from "@/i18n";
 import { loadAgentContext } from "@/modules/memory";
@@ -194,7 +194,7 @@ export interface LoopCallbacks {
    * Absent = auto-approve (tests, non-interactive callers); the panel wires
    * the real gate.
    */
-  onPlanApproval?: (steps: string[], reapproval: boolean) => Promise<PlanApprovalOutcome>;
+  onPlanApproval?: (ask: PlanApprovalPayload) => Promise<PlanApprovalOutcome>;
   /** A queued mid-run message was consumed — the panel turns its pending line into a real one. */
   onInjected?: (id: string, text: string) => void;
   onUsage?: (input: number, output: number) => void;
@@ -481,6 +481,11 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
   // replan answers their words, and their words already approved what they
   // asked for — parking there would be requesting permission to obey.
   let steeredSincePlan = false;
+  // The last list the user was SHOWN at a gate — what the next ask diffs
+  // against. Not `approvedPlan`: a plan sent back for revision clears that one,
+  // and "did it change what I asked it to?" is exactly the question the revised
+  // list has to answer.
+  let lastAsked: string[] | null = null;
   // One retry for a `done` the output cap emptied of both summary and streamed
   // text — bounded so a model that keeps truncating still closes, never loops.
   let retriedTruncatedDone = false;
@@ -738,9 +743,13 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         const needsApproval =
           !approvedPlan || (call.args.deviates_from_approved === true && !steered);
         if (needsApproval) {
-          const outcome = (await callbacks.onPlanApproval?.(plan.steps, approvedPlan !== null)) ?? {
-            approved: true,
+          const ask: PlanApprovalPayload = {
+            ...plan,
+            reapproval: approvedPlan !== null,
+            ...(lastAsked ? { previous: lastAsked } : {}),
           };
+          lastAsked = plan.steps;
+          const outcome = (await callbacks.onPlanApproval?.(ask)) ?? { approved: true };
           if (signal.aborted) {
             callbacks.onDone?.();
             return messages;

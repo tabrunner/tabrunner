@@ -73,17 +73,17 @@ describe("walk-away gate (planApproved)", () => {
     await s.sendTask("do the thing");
     expect(useConversationStore.getState().planApproved).toBe(false);
 
-    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], reapproval: false });
+    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], current: 0, reapproval: false });
     useConversationStore.getState().approvePlan();
     expect(useConversationStore.getState().planApproved).toBe(true);
 
     // Sent back for changes: the REVISED plan must earn the walk-away back.
-    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], reapproval: true });
+    port.fireMessage({ type: "plan_approval", steps: ["a", "b"], current: 0, reapproval: true });
     expect(useConversationStore.getState().planApproved).toBe(false);
     useConversationStore.getState().revisePlan("skip step b");
     expect(useConversationStore.getState().planApproved).toBe(false);
 
-    port.fireMessage({ type: "plan_approval", steps: ["a"], reapproval: true });
+    port.fireMessage({ type: "plan_approval", steps: ["a"], current: 0, reapproval: true });
     useConversationStore.getState().approvePlan();
     expect(useConversationStore.getState().planApproved).toBe(true);
   });
@@ -92,7 +92,7 @@ describe("walk-away gate (planApproved)", () => {
     const s = useConversationStore.getState();
     s.connect();
     await s.sendTask("do the thing");
-    port.fireMessage({ type: "plan_approval", steps: ["a"], reapproval: false });
+    port.fireMessage({ type: "plan_approval", steps: ["a"], current: 0, reapproval: false });
     useConversationStore.getState().approvePlan();
     expect(useConversationStore.getState().planApproved).toBe(true);
 

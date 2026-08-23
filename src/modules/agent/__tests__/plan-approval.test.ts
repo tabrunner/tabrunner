@@ -4,6 +4,7 @@ import { i18n } from "@/i18n";
 import type { BrowserDriver } from "@/modules/browser";
 import type { SnapshotResult } from "@/modules/browser/snapshot";
 import type { ChatMessage, ChatProvider, ToolCall } from "@/modules/providers/types";
+import type { PlanApprovalPayload } from "@/shared/protocol";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
@@ -140,7 +141,7 @@ describe("runAgentLoop plan approval gate", () => {
 
   it("parks on the first plan, then runs actions once approved", async () => {
     const calls: string[] = [];
-    const approvals: { steps: string[]; reapproval: boolean }[] = [];
+    const approvals: PlanApprovalPayload[] = [];
     const provider = scriptedProvider([
       [planCall(["Go to X", "Read X"])],
       [call("navigate", { url: "https://x.com" })],
@@ -151,14 +152,14 @@ describe("runAgentLoop plan approval gate", () => {
       task: "go to x",
       signal: new AbortController().signal,
       callbacks: {
-        onPlanApproval: async (steps, reapproval) => {
-          approvals.push({ steps, reapproval });
+        onPlanApproval: async (ask) => {
+          approvals.push(ask);
           return { approved: true };
         },
       },
     });
 
-    expect(approvals).toEqual([{ steps: ["Go to X", "Read X"], reapproval: false }]);
+    expect(approvals).toEqual([{ steps: ["Go to X", "Read X"], current: 0, reapproval: false }]);
     expect(calls).toEqual(["navigate"]);
   });
 
@@ -183,7 +184,7 @@ describe("runAgentLoop plan approval gate", () => {
 
   it("sends a rejected plan back with the revision note and re-asks the revised plan", async () => {
     const calls: string[] = [];
-    const approvals: { steps: string[]; reapproval: boolean }[] = [];
+    const approvals: PlanApprovalPayload[] = [];
     const provider = scriptedProvider([
       [planCall(["Go to X", "Buy the thing"])],
       [planCall(["Go to X", "Read X"])], // the revised plan
@@ -195,8 +196,8 @@ describe("runAgentLoop plan approval gate", () => {
       task: "go to x",
       signal: new AbortController().signal,
       callbacks: {
-        onPlanApproval: async (steps, reapproval) => {
-          approvals.push({ steps, reapproval });
+        onPlanApproval: async (ask) => {
+          approvals.push(ask);
           return approvals.length === 1
             ? { approved: false, feedback: "Do not buy anything" }
             : { approved: true };
@@ -205,9 +206,16 @@ describe("runAgentLoop plan approval gate", () => {
     });
 
     // Both plans were asked about; the revision re-ask is a fresh first ask.
+    // The revised list is diffed against the one the user sent back, not against
+    // an approved plan there never was — "did it change what I asked?".
     expect(approvals).toEqual([
-      { steps: ["Go to X", "Buy the thing"], reapproval: false },
-      { steps: ["Go to X", "Read X"], reapproval: false },
+      { steps: ["Go to X", "Buy the thing"], current: 0, reapproval: false },
+      {
+        steps: ["Go to X", "Read X"],
+        current: 0,
+        reapproval: false,
+        previous: ["Go to X", "Buy the thing"],
+      },
     ]);
     // The note rode back in the first plan's own tool result.
     const results = wire.find((m) => m.role === "tool_results")?.toolResults ?? [];
@@ -234,7 +242,7 @@ describe("runAgentLoop plan approval gate", () => {
   });
 
   it("does not re-ask when a plan update only advances progress", async () => {
-    const approvals: { steps: string[]; reapproval: boolean }[] = [];
+    const approvals: PlanApprovalPayload[] = [];
     const provider = scriptedProvider([
       [planCall(["Go to X", "Read X"])],
       [planCall(["Go to X", "Read X"], 1)],
@@ -245,8 +253,8 @@ describe("runAgentLoop plan approval gate", () => {
       task: "go to x",
       signal: new AbortController().signal,
       callbacks: {
-        onPlanApproval: async (steps, reapproval) => {
-          approvals.push({ steps, reapproval });
+        onPlanApproval: async (ask) => {
+          approvals.push(ask);
           return { approved: true };
         },
       },
@@ -256,7 +264,7 @@ describe("runAgentLoop plan approval gate", () => {
   });
 
   it("does not re-ask when a replan rewords steps without flagging a deviation", async () => {
-    const approvals: { steps: string[]; reapproval: boolean }[] = [];
+    const approvals: PlanApprovalPayload[] = [];
     // The whole point of the flag: a reworded upcoming step is not a fresh ask.
     const provider = scriptedProvider([
       [planCall(["Go to X", "Read X"])],
@@ -268,8 +276,8 @@ describe("runAgentLoop plan approval gate", () => {
       task: "go to x",
       signal: new AbortController().signal,
       callbacks: {
-        onPlanApproval: async (steps, reapproval) => {
-          approvals.push({ steps, reapproval });
+        onPlanApproval: async (ask) => {
+          approvals.push(ask);
           return { approved: true };
         },
       },
@@ -280,7 +288,7 @@ describe("runAgentLoop plan approval gate", () => {
 
   it("re-asks when the model flags its replan as deviating from the approved plan", async () => {
     const calls: string[] = [];
-    const approvals: { steps: string[]; reapproval: boolean }[] = [];
+    const approvals: PlanApprovalPayload[] = [];
     const provider = scriptedProvider([
       [planCall(["Go to X", "Read X"])],
       [call("navigate", { url: "https://x.com" })],
@@ -293,23 +301,31 @@ describe("runAgentLoop plan approval gate", () => {
       task: "go to x",
       signal: new AbortController().signal,
       callbacks: {
-        onPlanApproval: async (steps, reapproval) => {
-          approvals.push({ steps, reapproval });
+        onPlanApproval: async (ask) => {
+          approvals.push(ask);
           return { approved: true };
         },
       },
     });
 
+    // The re-ask carries the cursor and the list it replaces, not just the new
+    // steps: the card marks the finished step done and the changed one new,
+    // instead of asking for the whole trip again.
     expect(approvals).toEqual([
-      { steps: ["Go to X", "Read X"], reapproval: false },
-      { steps: ["Go to X", "Buy the thing"], reapproval: true },
+      { steps: ["Go to X", "Read X"], current: 0, reapproval: false },
+      {
+        steps: ["Go to X", "Buy the thing"],
+        current: 1,
+        reapproval: true,
+        previous: ["Go to X", "Read X"],
+      },
     ]);
     expect(calls).toEqual(["navigate", "click"]);
   });
 
   it("does not re-ask a replan that answers the user's own mid-run message", async () => {
     const calls: string[] = [];
-    const approvals: { steps: string[]; reapproval: boolean }[] = [];
+    const approvals: PlanApprovalPayload[] = [];
     const queue = [{ id: "m1", text: "the purchase is handled already, move on" }];
     const provider = scriptedProvider([
       [planCall(["Go to X", "Buy the thing", "Confirm it"])],
@@ -326,8 +342,8 @@ describe("runAgentLoop plan approval gate", () => {
       signal: new AbortController().signal,
       drainInjected: () => queue.splice(0, queue.length),
       callbacks: {
-        onPlanApproval: async (steps, reapproval) => {
-          approvals.push({ steps, reapproval });
+        onPlanApproval: async (ask) => {
+          approvals.push(ask);
           return { approved: true };
         },
       },
@@ -338,7 +354,7 @@ describe("runAgentLoop plan approval gate", () => {
   });
 
   it("re-asks a self-initiated deviation once the steering replan has passed", async () => {
-    const approvals: { steps: string[]; reapproval: boolean }[] = [];
+    const approvals: PlanApprovalPayload[] = [];
     const queue = [{ id: "m1", text: "skip the reading" }];
     const provider = scriptedProvider([
       [planCall(["Go to X", "Read X", "Wrap up"])],
@@ -352,8 +368,8 @@ describe("runAgentLoop plan approval gate", () => {
       signal: new AbortController().signal,
       drainInjected: () => queue.splice(0, queue.length),
       callbacks: {
-        onPlanApproval: async (steps, reapproval) => {
-          approvals.push({ steps, reapproval });
+        onPlanApproval: async (ask) => {
+          approvals.push(ask);
           return { approved: true };
         },
       },
@@ -362,8 +378,15 @@ describe("runAgentLoop plan approval gate", () => {
     // The steering yes is consumed by the first replan it prompted — a later
     // self-initiated deviation parks on its own.
     expect(approvals).toEqual([
-      { steps: ["Go to X", "Read X", "Wrap up"], reapproval: false },
-      { steps: ["Go to X", "Buy the thing"], reapproval: true },
+      { steps: ["Go to X", "Read X", "Wrap up"], current: 0, reapproval: false },
+      {
+        steps: ["Go to X", "Buy the thing"],
+        current: 1,
+        reapproval: true,
+        // The silent steering replan never reached the user, so the diff is
+        // still against the last list they actually saw.
+        previous: ["Go to X", "Read X", "Wrap up"],
+      },
     ]);
   });
 

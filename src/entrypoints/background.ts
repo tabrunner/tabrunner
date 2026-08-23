@@ -28,12 +28,12 @@ import { initProviderOriginStrip } from "@/modules/providers/origin";
 import {
   createProvider,
   ensureProviderCredential,
-  getActiveProvider,
+  getProviderFor,
   resolveProviderModel,
 } from "@/modules/providers";
 import { compactConversation } from "@/modules/agent/compact";
 import { createLogger, truncate } from "@/lib/logger";
-import type { Command, Event } from "@/shared/protocol";
+import type { Command, Event, PlanApprovalPayload } from "@/shared/protocol";
 import { PORT_NAME } from "@/shared/protocol";
 import { getBridge, startBridge } from "@/modules/bridge";
 import { isScheduleAlarm } from "@/modules/schedule";
@@ -215,8 +215,7 @@ export default defineBackground(() => {
               },
               onAskUser: (question, choices) =>
                 void notifyIfAway("tabrunner-question", question, conversationId, choices),
-              onPlanApprovalRequest: (steps, reapproval) =>
-                void notifyPlanParked(conversationId, steps, reapproval),
+              onPlanApprovalRequest: (ask) => void notifyPlanParked(conversationId, ask),
             }).catch((e) => {
               log.error("panel run failed to start:", e instanceof Error ? e.message : String(e));
             });
@@ -302,8 +301,7 @@ export default defineBackground(() => {
           const parked = getActiveRun();
           if (parked?.owner === "panel" && (await getActiveId()) === parked.conversationId) {
             if (parked.planApproval) {
-              const { steps, reapproval } = parked.planApproval;
-              send(port, { type: "plan_approval", steps, reapproval });
+              send(port, { type: "plan_approval", ...parked.planApproval.ask });
             }
             // Same reason as the plan card above: the queue is the worker's,
             // its cards are the panel's. Without this the steers still land
@@ -669,14 +667,13 @@ async function notifyIfAway(
  */
 let notifiedPlanFor: string | null = null;
 
-async function notifyPlanParked(
-  conversationId: string,
-  steps: string[],
-  reapproval: boolean,
-): Promise<void> {
+async function notifyPlanParked(conversationId: string, ask: PlanApprovalPayload): Promise<void> {
   if (notifiedPlanFor === conversationId) return;
-  const title = reapproval ? i18n.t("plan.reapprovalTitle") : i18n.t("plan.approvalTitle");
-  if (await notifyIfAway("tabrunner-plan", `${title} ${steps.join(" · ")}`, conversationId)) {
+  const title = ask.reapproval ? i18n.t("plan.reapprovalTitle") : i18n.t("plan.approvalTitle");
+  // Only what is still ahead: on a re-ask the finished steps would read as work
+  // the run wants to redo, in the one place with no room to mark them done.
+  const ahead = ask.steps.slice(ask.current).join(" · ");
+  if (await notifyIfAway("tabrunner-plan", `${title} ${ahead}`, conversationId)) {
     notifiedPlanFor = conversationId;
   }
 }
@@ -689,8 +686,7 @@ async function notifyPlanParked(
 function notifyParkedRun(): void {
   const run = getActiveRun();
   if (run?.owner !== "panel" || !run.planApproval) return;
-  const { steps, reapproval } = run.planApproval;
-  void notifyPlanParked(run.conversationId, steps, reapproval);
+  void notifyPlanParked(run.conversationId, run.planApproval.ask);
 }
 
 // Notification click opens the panel at the right conversation so the user can

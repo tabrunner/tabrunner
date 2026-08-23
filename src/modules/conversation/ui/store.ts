@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import { i18n } from "@/i18n";
-import type { BridgeActive, Command, DrivingPayload, Event } from "@/shared/protocol";
+import type {
+  BridgeActive,
+  Command,
+  DrivingPayload,
+  Event,
+  PlanApprovalPayload,
+} from "@/shared/protocol";
 import { PORT_NAME } from "@/shared/protocol";
 import type { Message, AgentStatus } from "../types";
 import type { ConversationMeta } from "../conversations";
@@ -65,7 +71,7 @@ export interface ConversationState {
   /** The running task is documenting itself — the band shows REC while it is. */
   recording: boolean;
   /** A proposed plan parked on the user's answer — the run resumes on approve, ends on reject. */
-  planApproval: { steps: string[]; reapproval: boolean } | null;
+  planApproval: PlanApprovalPayload | null;
   /** This run's plan has the user's yes — the walk-away gate. Closing the panel
    *  before it strands the approval prompt on an OS notification. */
   planApproved: boolean;
@@ -712,17 +718,23 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         pushDisplay(makeMsg("user", event.text));
         break;
 
-      case "plan_approval":
+      case "plan_approval": {
         // The loop is parked until the user answers — the plan card above
         // already shows what is being asked; this arms the approval card. A
         // fresh gate means no approved plan is in force (reapproval included).
         // The revised plan has arrived, so the "Revising…" band yields to it.
         set({
-          planApproval: { steps: event.steps, reapproval: event.reapproval },
+          planApproval: {
+            steps: event.steps,
+            current: event.current,
+            reapproval: event.reapproval,
+            previous: event.previous,
+          },
           planApproved: false,
           replanning: false,
         });
         break;
+      }
 
       case "usage":
         set({
