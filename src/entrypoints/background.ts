@@ -33,7 +33,7 @@ import {
 } from "@/modules/providers";
 import { compactConversation } from "@/modules/agent/compact";
 import { createLogger, truncate } from "@/lib/logger";
-import type { Command, Event, PlanApprovalPayload } from "@/shared/protocol";
+import type { Command, Event, PanelMessage, PlanApprovalPayload } from "@/shared/protocol";
 import { PORT_NAME } from "@/shared/protocol";
 import { getBridge, startBridge } from "@/modules/bridge";
 import { isScheduleAlarm } from "@/modules/schedule";
@@ -208,7 +208,7 @@ export default defineBackground(() => {
               thisPage: msg.thisPage,
               emit: (event) => {
                 writer.apply(event);
-                send(port, event);
+                broadcast(conversationId, event);
                 if (event.type === "done" || event.type === "error") {
                   void notifyRunEnded(conversationId, msg.task, event);
                 }
@@ -280,8 +280,13 @@ export default defineBackground(() => {
           if (run?.owner === "bridge") getBridge()?.stopFromPanel();
           else haltRun(run);
           // Flush the partial stream immediately — the loop's own done arrives
-          // as it unwinds and is a harmless no-op in the panel.
-          send(port, { type: "done" });
+          // as it unwinds and is a harmless no-op in the panel. Every panel gets
+          // it, not just the one that pressed Stop: the others would otherwise
+          // keep a working band up until the unwind lands. Deliberately without
+          // `stopped` — the real done carries that, and two flags would push two
+          // halt markers.
+          if (run) broadcast(run.conversationId, { type: "done" });
+          else send(port, { type: "done" });
           break;
         }
 
@@ -352,16 +357,17 @@ export default defineBackground(() => {
               // panel that asked for it may already be gone.
               new AbortController().signal,
             );
-            send(
-              port,
-              result
-                ? { type: "compacted", ...result }
-                : {
-                    type: "compact_failed",
-                    message: i18n.t("commands.compact.nothing"),
-                    nothing: true,
-                  },
-            );
+            // The receipt goes to every panel on this thread, not just the one
+            // that asked: a fold with no run in flight is invisible to the
+            // others, whose transcript refetch only fires while the board names
+            // a run here. The failure stays unicast — it answers one command.
+            if (result) broadcast(conversationId, { type: "compacted", ...result });
+            else
+              send(port, {
+                type: "compact_failed",
+                message: i18n.t("commands.compact.nothing"),
+                nothing: true,
+              });
           } catch (e) {
             const message = e instanceof Error ? e.message : String(e);
             log.warn("compact failed:", message);
@@ -461,12 +467,26 @@ function haltRun(run: ReturnType<typeof getActiveRun>): boolean {
   return true;
 }
 
-function send(port: chrome.runtime.Port, event: Event) {
+function send(port: chrome.runtime.Port, msg: PanelMessage) {
   try {
-    port.postMessage(event);
+    port.postMessage(msg);
   } catch {
     // Port closed
   }
+}
+
+/**
+ * A run event to every open panel, stamped with the thread it belongs to.
+ *
+ * The side panel is per-window and Chrome draws one per window, so the panel
+ * that dispatched a run is not the only one watching it: a second window on the
+ * same conversation used to sit on last run's numbers and a plan card nobody
+ * could dismiss. Every panel showing the thread is a live subscriber — identical
+ * events in, identical state out — and one showing another thread drops the
+ * stamp. Replies to a panel's own command stay unicast and unstamped.
+ */
+function broadcast(conversationId: string, event: Event) {
+  for (const p of panelPorts.keys()) send(p, { ...event, conversationId });
 }
 
 /**

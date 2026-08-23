@@ -5,6 +5,7 @@ import type {
   Command,
   DrivingPayload,
   Event,
+  PanelMessage,
   PlanApprovalPayload,
 } from "@/shared/protocol";
 import { PORT_NAME } from "@/shared/protocol";
@@ -415,6 +416,13 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       reasoningStartedAt: null,
       status,
       runEndedAt: Date.now(),
+      // "Did THIS panel dispatch the run in flight?" is a question two callers
+      // need now that every panel sees every run — the port-lost write and
+      // approvePlan's auto-close both key on it. Kept past its run it answers
+      // yes for a run somebody else started. Nothing reads it after the end:
+      // the queued chip and the auto-close are both mid-run, and Retry reads
+      // the transcript on purpose (see retryTargetFrom).
+      lastRun: null,
       pendingStepId: null,
       planMsgId: null,
       planApproval: null,
@@ -854,6 +862,70 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     }
   };
 
+  /**
+   * Everything the worker sends, before `handleEvent` sees it.
+   *
+   * The panel is per-window, so a run's events now reach every open panel. Two
+   * jobs here, and both have to happen outside the switch:
+   *
+   * 1. **Drop what is not ours.** A stamped event belongs to one conversation;
+   *    a panel showing another one ignores it. Unstamped means a reply to this
+   *    panel's own command, which was never broadcast and cannot be misrouted.
+   *    Filtering out here also keeps a foreign event away from the
+   *    dispatch-and-forget close handshake at the top of `handleEvent`.
+   * 2. **Adopt the stream.** A panel that did not dispatch the run still renders
+   *    it, so it has to say so: while `status` reads idle the conversation-index
+   *    watch keeps refetching the transcript, and storage holds none of the live
+   *    rows this panel is now drawing — the two would fight and the transcript
+   *    would double up.
+   */
+  const handleMessage = (msg: PanelMessage) => {
+    const { conversationId, ...rest } = msg;
+    const event = rest as Event;
+    if (conversationId !== undefined && conversationId !== get().activeId) return;
+    const live = get().board.running;
+    if (
+      conversationId !== undefined &&
+      live?.conversationId === conversationId &&
+      live.owner === "panel" &&
+      get().status !== "running"
+    ) {
+      // The board, not the event type: it is the authoritative "a run is live
+      // here", so a stamped straggler that means the opposite — a compaction
+      // receipt, the artifact a finished run emits last — can never revive a
+      // settled panel. It lags the first events by a tick, but so does the
+      // refetch this guards against: both read the same board.
+      //
+      // Panel-owned only. A schedule or bridge run sends this panel nothing (it
+      // follows along through the transcript refetch), so adopting one would
+      // switch off its only sync path and wait forever for a `done` that is not
+      // coming — and a bridge run adopted as our own would hide the band naming
+      // the client that actually holds it.
+      //
+      // The numbers reset with it. They belong to a run, not to a panel, and
+      // this panel's are the LAST run's: left standing they put a finished
+      // run's 40k on a run six seconds old, and a gauge that could already read
+      // red — which is the whole bug this fan-out exists to fix, surviving it.
+      sawAssistantText = false;
+      set({
+        status: "running",
+        runStartedAt: live.startedAt,
+        runEndedAt: null,
+        runStopped: false,
+        usage: { input: 0, output: 0 },
+        // Back to the stored fallback (`RunSummary.lastInput`) until this run
+        // reports its own — the same thing a reopened panel shows.
+        contextTokens: 0,
+        // Nothing of ours is in flight: this run's rows and cards are arriving.
+        pendingStepId: null,
+        planMsgId: null,
+        planApproved: false,
+        replanning: false,
+      });
+    }
+    handleEvent(event);
+  };
+
   /** Send if the port lives, swallow if it died — onDisconnect does the cleanup. */
   const post = (cmd: Command) => {
     try {
@@ -868,7 +940,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     intentionalDisconnect = false;
     const p = chrome.runtime.connect({ name: PORT_NAME });
     port = p;
-    p.onMessage.addListener(handleEvent);
+    p.onMessage.addListener(handleMessage);
     p.onDisconnect.addListener(() => {
       port = null;
       // The worker died with its state — nothing can be in the browser now; the
@@ -883,7 +955,11 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         return;
       }
       // The worker dropped us (dev hot-reload, update, crash) — never silent.
-      if (get().status === "running") {
+      // Written by the panel that DISPATCHED the run, not by every panel that
+      // was watching it: this one persists, and one worker death across three
+      // open windows would otherwise leave three copies of the same line in the
+      // transcript. The others settle quietly; the run is equally dead for them.
+      if (get().status === "running" && get().lastRun) {
         pushMsg(makeMsg("error", i18n.t("chat.portLost")));
       }
       // A compaction in flight died with the worker, and no `compacted` event is
@@ -1035,7 +1111,14 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // ends here, not on a `done` event — this is that run's settle point.
         drainDeferred();
         void getMessages(activeId).then((messages) => {
-          if (get().activeId === activeId) set({ messages });
+          // Never over the stream we own — the same rule the index watch above
+          // keeps. Storage holds no live rows, so a mid-run board write (a tab
+          // switch, the plan gate parking, the recorder arming) would replace
+          // the tool row still spinning with a transcript that has never heard
+          // of it. Safe at the end: `done` settles this panel to idle before
+          // start-run's finally releases the slot and writes the board, so the
+          // settle refetch this watch exists for still lands.
+          if (get().activeId === activeId && get().status !== "running") set({ messages });
         });
       });
       void getActiveId().then(async (activeId) => {

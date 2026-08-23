@@ -208,6 +208,18 @@ export type Event =
   | { type: "compacted"; messages: number; before: number; after: number }
   | { type: "compact_failed"; message: string; nothing?: boolean };
 
+/**
+ * What actually crosses the port. The side panel is per-window, so a run's
+ * events go to every open panel — `conversationId` says which thread they are
+ * about, and a panel showing another one drops them. Absent means "for the
+ * panel that asked": a reply to that panel's own command, which cannot be
+ * misrouted because it was never broadcast.
+ *
+ * A stamp rather than an envelope, so an unstamped event still reads as a plain
+ * `Event` at every handler.
+ */
+export type PanelMessage = Event & { conversationId?: string };
+
 // ── Port name ────────────────────────────────────────────────────────
 
 export const PORT_NAME = "tabrunner";
