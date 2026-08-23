@@ -54,6 +54,13 @@ const notificationTargets = new Map<string, { conversationId: string; tabId?: nu
 /** Runs the user stopped themselves — their done is not notification-worthy. */
 const stoppedByUser = new Set<string>();
 /**
+ * Compactions in flight, by conversation — the handle Esc pulls. The worker
+ * holds them rather than the panel because the worker owns the call: the panel
+ * that asked can close mid-fold, and a second window's Esc has to reach the
+ * same controller.
+ */
+const compactions = new Map<string, AbortController>();
+/**
  * A run failed while nobody was watching. The board empties the moment a run
  * ends, so the count badge that carried it is gone one tick later and the
  * toolbar goes back to looking idle — the exact opposite of what happened. This
@@ -364,6 +371,12 @@ export default defineBackground(() => {
             });
             break;
           }
+          // Esc's handle for this fold. Registered before the first await so a
+          // cancel arriving while the provider is still being resolved still
+          // finds something to abort.
+          const controller = new AbortController();
+          compactions.get(conversationId)?.abort();
+          compactions.set(conversationId, controller);
           try {
             // A summary is written into this thread's transcript, so it is
             // written by this thread's engine — not whatever is picked now.
@@ -375,9 +388,7 @@ export default defineBackground(() => {
             const result = await compactConversation(
               createProvider(resolved),
               conversationId,
-              // Nothing cancels a compaction: it is one short call, and the
-              // panel that asked for it may already be gone.
-              new AbortController().signal,
+              controller.signal,
             );
             // The receipt goes to every panel on this thread, not just the one
             // that asked: a fold with no run in flight is invisible to the
@@ -392,9 +403,29 @@ export default defineBackground(() => {
               });
           } catch (e) {
             const message = e instanceof Error ? e.message : String(e);
-            log.warn("compact failed:", message);
-            send(port, { type: "compact_failed", message });
+            // A cancel is an answer, not a failure — same rule as a stopped run,
+            // and it wears the quiet note `nothing` marks rather than a red
+            // "Couldn't compact — the operation was aborted".
+            if (controller.signal.aborted) {
+              log.info("compact cancelled");
+              send(port, {
+                type: "compact_failed",
+                message: i18n.t("commands.compact.cancelled"),
+                nothing: true,
+              });
+            } else {
+              log.warn("compact failed:", message);
+              send(port, { type: "compact_failed", message });
+            }
+          } finally {
+            // Only if it is still ours: a newer fold on this thread owns the slot.
+            if (compactions.get(conversationId) === controller) compactions.delete(conversationId);
           }
+          break;
+        }
+
+        case "cancel_compact": {
+          compactions.get(msg.conversationId)?.abort();
           break;
         }
 

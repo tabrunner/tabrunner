@@ -95,9 +95,10 @@ export interface ConversationState {
   board: RunBoard;
   /** This panel's own submission waiting in the serial queue. */
   queuedRun: { id: string; position: number; task: string } | null;
-  /** A compaction is in flight — a second /compact while one runs is a no-op.
-   *  Progress shows as a transcript note that the result replaces. */
-  compacting: boolean;
+  /** When the compaction in flight started, null when none is — a second
+   *  /compact while one runs is a no-op. The timestamp, not a flag: the live
+   *  row counts the wait out loud, the way the run band does. */
+  compactingSince: number | null;
   /** A slash command parked until this conversation goes quiet — the one class
    *  of command that cannot just fire, because it costs a model call and writes
    *  the transcript a live run is still writing. The composer card is its
@@ -124,6 +125,9 @@ export interface ConversationState {
    *  `resume` re-runs the failed task once the summary lands: the CTA's promise
    *  is "compact and carry on", one click. */
   compact: (opts?: { resume?: boolean }) => void;
+  /** Take back the fold while it is still summarizing — Esc, and the live row's
+   *  own control. The worker holds the abort handle; this only asks. */
+  cancelCompact: () => void;
   /**
    * Land on a conversation somebody else opened — the shared slot moved. Same
    * switch as `openConversation` without the write that caused it; the composer
@@ -383,7 +387,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     // whatever is open when it fires, so it must not survive a switch.
     deferred: null,
     // Per-conversation measurements: another chat's fill is not this chat's.
-    compacting: false,
+    compactingSince: null,
     contextTokens: 0,
   });
 
@@ -791,7 +795,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
 
       case "compacted": {
         set({
-          compacting: false,
+          compactingSince: null,
           // The fold shrank the replay by exactly this much, so the gauge moves
           // the moment the work lands instead of sitting on a number describing
           // a request that will never be sent again. An estimate until the next
@@ -828,7 +832,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       }
 
       case "compact_failed":
-        set({ compacting: false });
+        set({ compactingSince: null });
         // No summary, no resume — retrying into the same wall helps no one.
         resumeAfterCompact = null;
         // "Nothing to compact" is an answer, not a failure — it arrives as the
@@ -949,7 +953,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         runEndedAt: null,
         runStopped: false,
         usage: { input: 0, output: 0 },
-        // Back to the stored fallback (`RunSummary.lastInput`) until this run
+        // Back to the stored fallback (`ConversationMeta.contextTokens`) until this run
         // reports its own — the same thing a reopened panel shows.
         contextTokens: 0,
         // Nothing of ours is in flight: this run's rows and cards are arriving.
@@ -1002,8 +1006,8 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       // ever coming — without this the shimmer row keeps promising a fold that
       // nobody is doing. The worker owns the write, so the summary may have
       // landed anyway: refetch rather than assume either way.
-      if (get().compacting) {
-        set({ compacting: false });
+      if (get().compactingSince !== null) {
+        set({ compactingSince: null });
         resumeAfterCompact = null;
         const activeId = get().activeId;
         const note = makeMsg(
@@ -1113,7 +1117,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     bridgeActive: null,
     board: { queue: [] },
     queuedRun: null,
-    compacting: false,
+    compactingSince: null,
     deferred: null,
     draftEngine: null,
     contextTokens: 0,
@@ -1225,7 +1229,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     note: (content) => pushDisplay(makeMsg("step", content)),
 
     compact: (opts) => {
-      if (get().compacting) return;
+      if (get().compactingSince !== null) return;
       // Mid-run the wire conversation is the run's, not the transcript's — the
       // loop folds its own turns when it needs to (see compactRunMessages), and
       // a transcript summary landing under a live run would summarize a story
@@ -1237,10 +1241,10 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         get().deferCommand("compact", () => get().compact(opts));
         return;
       }
-      // No progress note: `compacting` draws a live shimmer row at the tail,
+      // No progress note: `compactingSince` draws a live shimmer row at the tail,
       // the same way a running step does, and the summary card replaces it
       // in place when the fold lands.
-      set({ compacting: true });
+      set({ compactingSince: Date.now() });
       // Arm the resume against the task as it stands now: on success it fires
       // only if this is still the newest thing said — anything fresher (typed
       // while the summarizer ran, or a conversation switch, whose ids differ)
@@ -1255,11 +1259,24 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       if (target === null) {
         // A thread with no first message yet has nothing to fold — the same
         // answer the worker gave when it resolved this from the slot itself.
-        set({ compacting: false });
+        set({ compactingSince: null });
         pushDisplay(makeMsg("step", i18n.t("commands.compact.nothing")));
         return;
       }
       post({ type: "compact", conversationId: target });
+    },
+
+    cancelCompact: () => {
+      const target = get().activeId;
+      if (get().compactingSince === null || target === null) return;
+      // Asked, not assumed: the worker answers with the quiet note that takes
+      // the live row down, exactly as it does for a fold that finished. A local
+      // settle here would race the summary — an abort that lost by a
+      // millisecond would leave a summary in storage no panel went to fetch.
+      post({ type: "cancel_compact", conversationId: target });
+      // The resume the context-error CTA armed dies with the fold it was
+      // waiting on — retrying into the same full window helps no one.
+      resumeAfterCompact = null;
     },
 
     // One slot: a command parked twice is still one thing waiting, and the

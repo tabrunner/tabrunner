@@ -1,8 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The gauge's whole contract is honesty plus one action: it never invents a
-// denominator it wasn't given, it never blanks once a turn has been measured,
-// and the number itself is the button that compacts.
+// The gauge's whole contract is honesty: it never invents a denominator it
+// wasn't given, it never blanks once a turn has been measured, and it never
+// acts — clicking a measurement must not spend a model call.
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -36,7 +36,7 @@ async function render(): Promise<{ container: HTMLElement; root: Root }> {
   return { container, root };
 }
 
-const gauge = (c: HTMLElement) => c.querySelector("button");
+const gauge = (c: HTMLElement) => c.querySelector("span[role='status']");
 const bar = (c: HTMLElement) => c.querySelector("span[aria-hidden] > span");
 
 beforeEach(() => {
@@ -80,8 +80,9 @@ describe("the context gauge", () => {
     await act(async () => view.root.unmount());
   });
 
-  it("survives the run that measured it — a reopened panel reads the stored last input", async () => {
-    // Panel state is gone (contextTokens 0); the conversation's own record stands in.
+  it("survives the run that measured it — a reopened panel reads the thread's own record", async () => {
+    // Panel state is gone (contextTokens 0); the conversation's own record
+    // stands in — and it is NOT inside lastRun, which the next message retires.
     useConversationStore.setState({
       activeId: "c1",
       conversations: [
@@ -91,7 +92,7 @@ describe("the context gauge", () => {
           createdAt: 0,
           updatedAt: 0,
           taskCount: 1,
-          lastRun: { startedAt: 0, endedAt: 1, input: 90_000, output: 10, lastInput: 31_200 },
+          contextTokens: 31_200,
         },
       ],
     });
@@ -101,11 +102,14 @@ describe("the context gauge", () => {
     await act(async () => view.root.unmount());
   });
 
-  it("is the compact button — the number that motivates the fold performs it", async () => {
+  it("is not a button — a measurement must not spend a model call on a stray click", async () => {
     useConversationStore.setState({ contextTokens: 24_300 });
     const view = await render();
-    await act(async () => gauge(view.container)!.click());
-    expect(useConversationStore.getState().compact).toHaveBeenCalledTimes(1);
+    expect(view.container.querySelector("button")).toBeNull();
+    await act(async () =>
+      gauge(view.container)!.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    expect(useConversationStore.getState().compact).not.toHaveBeenCalled();
     await act(async () => view.root.unmount());
   });
 });

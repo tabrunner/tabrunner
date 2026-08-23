@@ -563,21 +563,45 @@ undefined instead of guessing, and is what anything the USER reads must call —
 gauge draws a bar and a "24.3k / 200k" ratio only when the window was measured or published,
 and otherwise shows the token count alone. A percentage computed against a guessed
 denominator is a statistic nobody verified, and the user would act on it. The count itself is
-the last turn's real input, persisted as `RunSummary.lastInput` so a reopened panel
-still knows — cumulative `input` sums every turn and cannot say how full the context is. Both
-ride the same `usage` event, which carries the run's **running totals** rather than a per-turn
-delta: `input`/`output` are what the run has spent, `contextTokens` is that last turn's input,
-and a consumer sets rather than accumulates. Absolute because a panel that opened mid-run has
-seen none of the deltas — `query_run` answers with the totals and that is enough — and
-`contextTokens` is spelled out rather than inferred, because inferring it from a cumulative
-`input` reports a short thread as several windows full and turns the gauge red on nothing. The
-gauge is also the compact button: red inside the reserve, the number has stopped being
-information and become an instruction, and an instruction with nothing to press is a dead
-end. The fold is append-only, so a stray click costs one short model call and no history.
+the last turn's real input — cumulative `input` sums every turn and cannot say how full the
+context is. Both ride the same `usage` event, which carries the run's **running totals**
+rather than a per-turn delta: `input`/`output` are what the run has spent, `contextTokens` is
+that last turn's input, and a consumer sets rather than accumulates. Absolute because a panel
+that opened mid-run has seen none of the deltas — `query_run` answers with the totals and that
+is enough — and `contextTokens` is spelled out rather than inferred, because inferring it from
+a cumulative `input` reports a short thread as several windows full and turns the gauge red on
+nothing.
+
+Between runs the reading comes from **`ConversationMeta.contextTokens`**, stamped by the
+writer when the run ends. It sits on the conversation rather than inside `RunSummary`, where
+it started, because it is not a fact about a run: a run's duration and cost are over when it
+ends, the context it left behind is not. `lastRun` is retired by the next user message (the
+band above the composer speaks for the run that just finished); the occupancy is not, or the
+gauge would blank the instant you press send and come back a minute later with the number it
+already had — in exactly the panels with no live figure of their own, which is every reopened
+one and every other window. A fold moves it too (`noteContextFreed`), so the receipt's
+18.4k → 1.2k is not contradicted by the gauge right above it.
+
+The gauge is a **readout, not a button**. It used to compact on click; gold measures and
+emerald acts, and a measurement that spends a model call when the cursor slips is a trap in
+the one band the eye lands on between runs. Nothing is dead-ended by removing the click,
+because nothing is owed at the top of the scale: the run folds its own turns as it approaches
+the ceiling, a turn that overflows anyway carries "Compact and retry →" on the error itself,
+and `/compact` remains the deliberate fold. The tooltip names it.
 
 Both entry points refuse to compact a conversation with a run in flight, and the check that
 counts is the worker's (`getActiveRun()?.conversationId`) — the panel's own guard reads its
 local status, which a panel reopened onto a background run of its own reports as idle.
+
+A fold is **cancellable** (`cancel_compact`, and Esc from anywhere in the panel — a run and a
+fold are never in flight together, so the key has nothing to arbitrate). The worker holds the
+`AbortController`, keyed by conversation, because the worker owns the call: the panel that
+asked can close mid-fold and a second window's Esc has to reach the same handle. A cancel
+comes back as a `compact_failed` marked `nothing`, so it lands as the same quiet note every
+other command result does rather than a red "Couldn't compact — the operation was aborted" —
+the same rule that makes a user stop end a run with `done`. The panel does not settle its own
+row on the ask: an abort that lost the race by a millisecond would leave a summary in storage
+that no panel went to fetch.
 
 The panel watches the run board, not transcripts, so a compaction with no run in flight would
 write a summary nobody told the panel to look for — the card only appeared once the next

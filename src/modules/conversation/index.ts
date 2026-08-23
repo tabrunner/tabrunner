@@ -4,6 +4,7 @@ export {
   getConversationMeta,
   getMessages,
   getThreadTabsFor,
+  noteContextFreed,
   openAgentConversation,
   recordDrivenTabFor,
   recordEngine,

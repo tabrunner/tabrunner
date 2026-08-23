@@ -71,7 +71,7 @@ beforeEach(async () => {
     timestamp: 1,
   });
   useConversationStore.setState({
-    compacting: false,
+    compactingSince: null,
     contextTokens: 0,
     status: "idle",
     deferred: null,
@@ -85,7 +85,7 @@ describe("a compaction the panel asked for", () => {
   it("pulls in the summary the worker wrote — nothing else would tell it to look", async () => {
     useConversationStore.getState().compact();
     expect(port.posted.some((c) => c.type === "compact")).toBe(true);
-    expect(useConversationStore.getState().compacting).toBe(true);
+    expect(useConversationStore.getState().compactingSince).not.toBeNull();
 
     // The worker's write lands in storage while the panel shows its live row.
     await appendMessageTo("c1", {
@@ -100,22 +100,44 @@ describe("a compaction the panel asked for", () => {
     await settled();
 
     const state = useConversationStore.getState();
-    expect(state.compacting).toBe(false);
+    expect(state.compactingSince).toBeNull();
     expect(state.messages.some((m) => m.role === "summary")).toBe(true);
     // The gauge moves when the work lands, not a turn later: 20k − (18.4k − 1.2k).
     expect(state.contextTokens).toBe(2_800);
   });
 
+  it("asks the worker to drop it on Esc, and waits for the answer", async () => {
+    useConversationStore.getState().compact();
+    useConversationStore.getState().cancelCompact();
+
+    // The abort is the worker's to perform — a local settle here would race a
+    // summary that already landed in storage and leave it unfetched.
+    expect(port.posted.some((c) => c.type === "cancel_compact")).toBe(true);
+    expect(useConversationStore.getState().compactingSince).not.toBeNull();
+
+    port.fireMessage({
+      type: "compact_failed",
+      message: "Compaction cancelled — nothing was folded.",
+      nothing: true,
+    });
+    await settled();
+
+    const state = useConversationStore.getState();
+    expect(state.compactingSince).toBeNull();
+    // A cancel is an answer, not a failure — no "Couldn't compact —" prefix.
+    expect(state.messages.some((m) => m.content.startsWith("Compaction cancelled"))).toBe(true);
+  });
+
   it("takes its own live row down when the worker dies mid-fold", async () => {
     useConversationStore.getState().compact();
-    expect(useConversationStore.getState().compacting).toBe(true);
+    expect(useConversationStore.getState().compactingSince).not.toBeNull();
 
     port.fireDisconnect();
     await settled();
 
     const state = useConversationStore.getState();
     // Otherwise the shimmer keeps promising a fold nobody is doing.
-    expect(state.compacting).toBe(false);
+    expect(state.compactingSince).toBeNull();
     expect(state.messages.some((m) => m.content.startsWith("Couldn't compact —"))).toBe(true);
   });
 });

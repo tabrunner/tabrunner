@@ -68,7 +68,13 @@ beforeEach(() => {
     runtime: { connect: () => fake as unknown as chrome.runtime.Port },
     tabs: {
       query: async () => [
-        { id: 1, active: true, currentWindow: true, url: "https://mail.example.com", title: "Mail" },
+        {
+          id: 1,
+          active: true,
+          currentWindow: true,
+          url: "https://mail.example.com",
+          title: "Mail",
+        },
       ],
     },
     windows: { getCurrent: async () => ({ id: 1 }) },

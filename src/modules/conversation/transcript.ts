@@ -68,7 +68,9 @@ export class TranscriptWriter {
   /** Cumulative tokens, from the run's usage events. */
   private usage = { input: 0, output: 0 };
   /** The newest turn's input alone — the context's real size, which the
-   *  cumulative total cannot express. Drops when the loop folds its own turns. */
+   *  cumulative total cannot express. Drops when the loop folds its own turns.
+   *  Stamped on the CONVERSATION, not on the run summary: the run is over, the
+   *  context it left is not (see ConversationMeta.contextTokens). */
   private lastInput = 0;
   /** done after an error is the same end unwinding — stamp the summary once. */
   private summaryRecorded = false;
@@ -98,17 +100,20 @@ export class TranscriptWriter {
   private recordSummary(ok = true, stopped = false): void {
     if (this.summaryRecorded) return;
     this.summaryRecorded = true;
-    void recordRunSummary(this.conversationId, {
-      startedAt: this.startedAt,
-      endedAt: Date.now(),
-      input: this.usage.input,
-      output: this.usage.output,
-      ...(this.lastInput > 0 ? { lastInput: this.lastInput } : {}),
-      ...(this.engine ? { model: this.engine.model } : {}),
-      ...(this.engine?.effort ? { effort: this.engine.effort } : {}),
-      ok,
-      ...(stopped ? { stopped } : {}),
-    }).catch((e) => {
+    void recordRunSummary(
+      this.conversationId,
+      {
+        startedAt: this.startedAt,
+        endedAt: Date.now(),
+        input: this.usage.input,
+        output: this.usage.output,
+        ...(this.engine ? { model: this.engine.model } : {}),
+        ...(this.engine?.effort ? { effort: this.engine.effort } : {}),
+        ok,
+        ...(stopped ? { stopped } : {}),
+      },
+      this.lastInput,
+    ).catch((e) => {
       log.debug("run summary write failed:", e instanceof Error ? e.message : String(e));
     });
   }
@@ -252,7 +257,7 @@ export class TranscriptWriter {
       case "usage":
         // Running totals, not a delta — the event carries the run's whole
         // spend, so this sets rather than adds. `contextTokens` is the last
-        // turn's input, which is the occupancy RunSummary.lastInput means;
+        // turn's input, which is the occupancy the conversation records;
         // cumulative input would report a short thread as several windows full
         // and turn the gauge red on nothing.
         this.usage = { input: event.input, output: event.output };

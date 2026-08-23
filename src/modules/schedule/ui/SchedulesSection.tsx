@@ -249,9 +249,7 @@ export function SchedulesSection() {
                       <Button
                         variant="ghost-danger"
                         size="sm"
-                        aria-label={t(
-                          running ? "schedule.ui.deleteRunning" : "schedule.ui.delete",
-                        )}
+                        aria-label={t(running ? "schedule.ui.deleteRunning" : "schedule.ui.delete")}
                         title={t(running ? "schedule.ui.deleteRunning" : "schedule.ui.delete")}
                       >
                         <TrashIcon />

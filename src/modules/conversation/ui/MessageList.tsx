@@ -1065,8 +1065,22 @@ function WorkingDots() {
 /**
  * The fold, while it happens. A compaction is a model call over a long
  * transcript — seconds of nothing, and the panel owes the same "alive" signal
- * every other wait gets. It wears the live step row's exact clothes (amber dot,
+ * every other wait gets. It wears the live step row's clothes (amber dot,
  * shimmering label), because that is what it is: work in flight, at the tail.
+ *
+ * Three things a live step row does not have, because this wait is different in
+ * kind — one opaque call the user is blocked behind rather than one of fifty
+ * steps ticking past:
+ *
+ * - **The clock.** Every other wait in the panel says how long it has been
+ *   waiting (the run band, "Thought for 12s"); this one asked you to sit still
+ *   and said nothing. It is also what tells a slow fold from a wedged one.
+ * - **The bar.** Indeterminate on purpose — there is no progress to report, so
+ *   it sweeps rather than fills. Same keyframes and period as the label above
+ *   it, so the row carries one gesture instead of two loops (see .progress-sweep).
+ * - **The way out.** A wait with no exit is a dead end, and this one spends a
+ *   model call while it holds the panel. Esc does the same thing from anywhere
+ *   in the panel, exactly as it stops a run.
  *
  * It leaves no trace of its own. The summary card the worker writes replaces it
  * the moment the fold lands — same spot, same gold, now expandable — so the
@@ -1074,17 +1088,39 @@ function WorkingDots() {
  */
 function CompactingRow() {
   const { t } = useTranslation();
-  const compacting = useConversationStore((s) => s.compacting);
-  if (!compacting) return null;
+  const since = useConversationStore((s) => s.compactingSince);
+  const cancelCompact = useConversationStore((s) => s.cancelCompact);
+  const now = useNow(since !== null);
+  if (since === null) return null;
   return (
     <MessageScrollerItem>
       <div
         role="status"
         aria-live="polite"
-        className="flex items-center gap-1.5 self-start px-1 text-xs text-neutral-500 dark:text-neutral-400"
+        className="flex flex-col gap-1 self-start px-1 text-xs text-neutral-500 dark:text-neutral-400"
       >
-        <DotIcon filled className="shrink-0 text-amber-500 dark:text-amber-300" />
-        <span className="shimmer-text font-medium">{t("commands.compact.running")}</span>
+        <div className="flex items-center gap-1.5">
+          <DotIcon filled className="shrink-0 text-amber-500 dark:text-amber-300" />
+          <span className="shimmer-text font-medium">{t("commands.compact.running")}</span>
+          {/* Gold measures. The clock is the one number here that is real —
+              hidden from the live region, or a screen reader would re-announce
+              the whole row once a second. Same rule as the run band's timer. */}
+          <span aria-hidden="true" className="telemetry text-[11px]">
+            {formatDuration(now - since)}
+          </span>
+          <span aria-hidden className="text-neutral-300 dark:text-neutral-600">
+            ·
+          </span>
+          <button
+            type="button"
+            onClick={cancelCompact}
+            title={t("commands.compact.cancelHint")}
+            className="cursor-pointer rounded text-[11px] underline-offset-2 hover:text-neutral-900 hover:underline focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none dark:hover:text-neutral-100"
+          >
+            {t("commands.compact.cancel")}
+          </button>
+        </div>
+        <span aria-hidden className="progress-sweep h-0.5 w-full rounded-full" />
       </div>
     </MessageScrollerItem>
   );

@@ -71,6 +71,14 @@ export type Command =
    * whatever the last one of them opened.
    */
   | { type: "compact"; conversationId: string }
+  /**
+   * Take the fold back while it is still summarizing. A compaction is a model
+   * call over a long transcript — seconds where the panel can do nothing else
+   * — so the wait needs the same way out every other wait here has (Esc, the
+   * run's Stop). The worker holds the controller: the panel that asked may be
+   * gone by the time a second one presses Esc.
+   */
+  | { type: "cancel_compact"; conversationId: string }
   /** Heartbeat — receiving it resets the worker's idle timer during long silences */
   | { type: "ping" };
 

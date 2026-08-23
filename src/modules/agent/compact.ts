@@ -4,6 +4,7 @@ import {
   appendMessageTo,
   capTranscriptTail,
   getMessages,
+  noteContextFreed,
   renderTranscriptMessage,
 } from "@/modules/conversation";
 import { createLogger, truncate } from "@/lib/logger";
@@ -210,6 +211,10 @@ export async function compactConversation(
     timestamp: Date.now(),
     compacted,
   });
+  // The gauge's between-runs fallback describes a request that will never be
+  // sent again — move it by what the fold freed. After the append, or the index
+  // rewrite that append performs would put the stale number straight back.
+  await noteContextFreed(conversationId, before - compacted.after);
   log.info(`compacted ${compacted.messages} messages: ${before} → ${compacted.after} tokens`);
   return compacted;
 }

@@ -24,12 +24,6 @@ export interface RunSummary {
   endedAt: number;
   input: number;
   output: number;
-  /**
-   * The LAST turn's input tokens — how full the context actually was when the
-   * run ended, which `input` (every turn summed) cannot say. The gauge reads it
-   * so a reopened panel still knows, instead of blanking until the next run.
-   */
-  lastInput?: number;
   /** The resolved engine — what answered, so the settled band can say so.
    *  Absent on summaries from before the engine event existed. */
   model?: string;
@@ -76,6 +70,23 @@ export interface ConversationMeta {
    * state died with the close. Retired by the next user message.
    */
   lastRun?: RunSummary;
+  /**
+   * How full the model's context was on this thread's last measured turn — the
+   * provider's own input count, which only it can tell us.
+   *
+   * It sits on the CONVERSATION rather than inside `lastRun`, where it started,
+   * because it is not a fact about a run: a run's duration and cost are over
+   * when it ends, but the context it left behind is still there, and it is
+   * still there after you type the next message. `lastRun` is retired by that
+   * message (the band above the composer is about the run that just finished);
+   * this is not, or the gauge would blank on every send and come back a minute
+   * later with the same number it already had.
+   *
+   * Absent until a turn reports usage — the gauge shows nothing rather than
+   * guessing (see ContextGauge), and some OpenAI-compatible endpoints never
+   * report any.
+   */
+  contextTokens?: number;
   /**
    * What drove this conversation, when it wasn't the user's own panel — an
    * external client's name ("Claude Code"), or the standing label a schedule's
@@ -206,15 +217,47 @@ export function recordDrivenTabFor(id: string, tab: LastTab, stripUrls?: string[
 }
 
 /**
- * Stamps the conversation's index row with its just-ended run's summary.
+ * Stamps the conversation's index row with its just-ended run's summary, and
+ * with the context the run leaves behind — one write, because they land at the
+ * same moment and a second pass would just be a second storage notification.
  * Serialized with the transcript writes so the record never lands ahead of the
  * run's own closing messages. A conversation deleted mid-run stays deleted.
  */
-export function recordRunSummary(id: string, run: RunSummary): Promise<void> {
+export function recordRunSummary(
+  id: string,
+  run: RunSummary,
+  contextTokens?: number,
+): Promise<void> {
   return serialized(async () => {
     const list = await indexItem.get();
     if (!list.some((c) => c.id === id)) return;
-    await indexItem.set(list.map((c) => (c.id === id ? { ...c, lastRun: run } : c)));
+    await indexItem.set(
+      list.map((c) =>
+        c.id === id ? { ...c, lastRun: run, ...(contextTokens ? { contextTokens } : {}) } : c,
+      ),
+    );
+  });
+}
+
+/**
+ * A fold shrank what this thread replays, so the stored occupancy has to shrink
+ * with it. The reading is the last turn's input — system prompt, tools, page
+ * snapshot AND the replayed history — and only the last of those moved, which
+ * is exactly the arithmetic the live panel already does on its own copy.
+ *
+ * Without it the number survives the fold: the receipt says 18.4k → 1.2k and
+ * the gauge right above it still reads 18.4k, in every window that was not the
+ * one that asked, and in that one too as soon as it is reopened.
+ */
+export function noteContextFreed(id: string, freed: number): Promise<void> {
+  if (freed <= 0) return Promise.resolve();
+  return serialized(async () => {
+    const list = await indexItem.get();
+    const measured = list.find((c) => c.id === id)?.contextTokens;
+    // Never measured means nothing to correct — the next run measures fresh.
+    if (!measured) return;
+    const contextTokens = Math.max(0, measured - freed);
+    await indexItem.set(list.map((c) => (c.id === id ? { ...c, contextTokens } : c)));
   });
 }
 

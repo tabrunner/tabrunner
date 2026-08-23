@@ -135,6 +135,49 @@ body {
 }
 
 /*
+ * ── The fold's own bar (MessageList's CompactingRow) ────────────────────────
+ *
+ * A compaction is one opaque model call over the whole transcript: there is no
+ * percentage to report, and a bar that filled steadily would be inventing one.
+ * So it is indeterminate — a light travelling a track — and it rides the SAME
+ * keyframes and the same 2.4s period as the label shimmering above it. That is
+ * the point: the two read as one gesture crossing the row, not as a second
+ * "alive" loop competing with the first. The elapsed clock beside the label is
+ * the honest measurement; this is the reassurance.
+ */
+.progress-sweep {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-brand-200) 30%,
+    var(--color-brand-500) 50%,
+    var(--color-brand-200) 70%
+  );
+  background-size: 250% auto;
+  animation: tabrunner-shimmer 2.4s linear infinite;
+}
+
+:where(.dark) .progress-sweep {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-brand-900) 30%,
+    var(--color-brand-400) 50%,
+    var(--color-brand-900) 70%
+  );
+}
+
+/* Still a track, just not a moving one — the row keeps its shape. */
+@media (prefers-reduced-motion: reduce) {
+  .progress-sweep {
+    animation: none;
+    background-image: none;
+    background-color: var(--color-brand-200);
+  }
+  :where(.dark) .progress-sweep {
+    background-color: var(--color-brand-900);
+  }
+}
+
+/*
  * Waiting on the first token — three dots breathing in sequence. Deliberately
  * not a bounce: every other "alive" signal in the panel eases smoothly (the
  * shimmer sweep, the amber pulse), and a bouncing dot made a fourth idiom for

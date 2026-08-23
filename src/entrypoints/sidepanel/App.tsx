@@ -58,6 +58,12 @@ export default function App() {
   const stopReady = useConversationStore(
     (s) => (s.status === "running" && !s.queuedRun) || boardRunHere(s) !== undefined,
   );
+  // The other thing Esc can be about. A fold and a run are never in flight at
+  // once (/compact parks itself while one runs), so there is nothing to
+  // arbitrate — but a compaction holds the panel just as a run does, and it is
+  // the one wait that used to have no way out at all.
+  const compacting = useConversationStore((s) => s.compactingSince !== null);
+  const cancelCompact = useConversationStore((s) => s.cancelCompact);
   // Until the first message names the conversation the header says "New chat" —
   // never a blank row.
   const chatTitle = useConversationStore(
@@ -78,25 +84,30 @@ export default function App() {
     return () => disconnect();
   }, [connect, disconnect]);
 
-  // Esc cancels the current run from anywhere in the panel — the stop gesture,
-  // which auto-sends a pending queue as the next task. A Base UI overlay's own
-  // Esc-to-close wins: with a dialog/menu open, Esc never halts a run by surprise.
+  // Esc cancels whatever the panel is waiting on, from anywhere in it: the run
+  // (the stop gesture, which auto-sends a pending queue as the next task), or a
+  // compaction still summarizing. A Base UI overlay's own Esc-to-close wins:
+  // with a dialog/menu open, Esc never halts work by surprise.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
       if (
         document.querySelector(
           '[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]',
         )
       )
         return;
-      if (e.key === "Escape" && stopReady) {
+      if (compacting) {
+        e.preventDefault();
+        cancelCompact();
+      } else if (stopReady) {
         e.preventDefault();
         stop();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [stopReady, stop]);
+  }, [stopReady, stop, compacting, cancelCompact]);
 
   useEffect(() => {
     void load(); // idempotent — the store dedupes concurrent mounts
@@ -186,10 +197,7 @@ export default function App() {
         // rail got — this is the higher-traffic of the two by a wide margin, and
         // it was the one still hard-cutting. Onboarding stays outside the key:
         // it owns a staggered `rise-in` ladder and would be animated twice.
-        <div
-          key={historyOpen ? "history" : "chat"}
-          className="arrive flex min-h-0 flex-1 flex-col"
-        >
+        <div key={historyOpen ? "history" : "chat"} className="arrive flex min-h-0 flex-1 flex-col">
           {historyOpen ? (
             <ConversationList onClose={() => setHistoryOpen(false)} />
           ) : (

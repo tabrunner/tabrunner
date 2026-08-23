@@ -11,7 +11,7 @@ import { formatTokens } from "@/lib/format";
 
 /**
  * How full the model's context is — the number you read before deciding whether
- * to compact, and the button that does it.
+ * to compact.
  *
  * **It shows a token count, not a percentage.** A percentage needs a
  * denominator, and for most providers nobody can tell us one: the extension is
@@ -23,28 +23,36 @@ import { formatTokens } from "@/lib/format";
  * reads "24.3k / 200k" and the bar is that ratio; when it isn't, the count
  * stands alone and claims nothing.
  *
- * **It is the compact button.** Red once inside the reserve, the number has
- * stopped being information and become an instruction — and an instruction with
- * nothing to press is the dead end the house rules forbid. Clicking compacts, at
- * any fill: the fold is append-only, so the worst a stray click costs is one
- * short model call. That also makes the feature discoverable from the very
- * number that motivates it, instead of only from `/compact`.
+ * **It is a readout, not a button.** It used to compact on click, and that was
+ * the wrong verb on the wrong element: gold measures, emerald acts — a
+ * measurement that spends a model call when your cursor slips is a trap, and
+ * this one sits in the band the eye lands on between runs. Nothing is
+ * dead-ended by taking the click away, because nothing is owed: the run folds
+ * its own history when it approaches the ceiling (`needsCompaction`), a turn
+ * that overflows anyway offers "Compact and retry →" on the error itself, and
+ * `/compact` is there for a deliberate fold. The tooltip names it.
  *
  * **It outlives the run.** Panel state dies with the panel, so the reading falls
- * back to the last turn's input persisted on the conversation — a reopened
- * panel shows the same number it showed before, instead of blanking until the
- * next run. Only a conversation that has never run a turn has nothing to say.
+ * back to `ConversationMeta.contextTokens` — a reopened panel shows the same
+ * number it showed before, instead of blanking until the next run. That is a
+ * fact about the THREAD, not about a run: it survives the next user message,
+ * which retires the run summary beside it, and a fold moves it down. Only a
+ * conversation whose turns were never measured has nothing to say.
+ * The fallback stands in BETWEEN runs only: mid-run the worker answers
+ * `query_run` with the live figure, so a panel that just opened onto a running
+ * task — or a second window watching it — reads the run in flight, never the
+ * last one's leftovers.
  *
  * Gold, because it measures rather than acts.
  */
 export function ContextGauge() {
   const { t } = useTranslation();
   const live = useConversationStore((s) => s.contextTokens);
-  // The run that ended — including one that ended while the panel was closed.
+  // The last turn measured on this thread — including one from a run that
+  // ended while the panel was closed, or one a schedule ran overnight.
   const stored = useConversationStore(
-    (s) => s.conversations.find((c) => c.id === s.activeId)?.lastRun?.lastInput ?? 0,
+    (s) => s.conversations.find((c) => c.id === s.activeId)?.contextTokens ?? 0,
   );
-  const compact = useConversationStore((s) => s.compact);
   const learned = useStoredItem(learnedContextLimits);
   const { provider } = useEngine();
 
@@ -68,14 +76,14 @@ export function ContextGauge() {
     // Self-aligning: both bands drop it in a column, and an empty wrapper left
     // behind by a gauge with nothing to say would still spend the column's gap.
     <div className="flex justify-end">
-      <button
-        type="button"
-        onClick={() => compact()}
+      <span
         title={explain}
-        // The visible text is a measurement; the accessible name has to be the
-        // action, or the button announces "24.3k / 200k" and nothing else.
+        // "24.3k / 200k" read aloud is a pair of numbers with no subject — the
+        // label says which numbers they are, and `status` lets a screen reader
+        // announce the new one when a turn moves it.
+        role="status"
         aria-label={explain}
-        className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded px-0.5 hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none dark:hover:bg-neutral-800"
+        className="inline-flex shrink-0 items-center gap-1 px-0.5"
       >
         {known && (
           <span
@@ -99,7 +107,7 @@ export function ContextGauge() {
         >
           {label}
         </span>
-      </button>
+      </span>
     </div>
   );
 }
