@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useConversationStore, retryTargetFrom } from "./store";
+import { runsHere, useConversationStore, retryTargetFrom } from "./store";
 import { Markdown } from "./Markdown";
 import { PlanMark } from "./PlanMark";
 import { groupBursts, type Burst } from "./bursts";
@@ -1046,7 +1046,16 @@ function CompactingRow() {
 function Transcript() {
   const { t } = useTranslation();
   const stored = useConversationStore((s) => s.messages);
-  const status = useConversationStore((s) => s.status);
+  // Whether a run owns this conversation, not whether THIS panel is streaming
+  // one. A panel opened onto a run already in flight (the on-page pill's click,
+  // a second window) reads `status` idle and has no event stream — keyed to
+  // that, the transcript closed the tail burst with a ✓, folded every row
+  // behind it, and left the panel looking empty while the run worked. Same
+  // predicate as the composer, /stop and the deferral gate.
+  const live = useConversationStore(runsHere);
+  // Narrower than `!live`: the jump pill promises an ANSWER, so a run that
+  // ended on an error keeps the neutral "jump to latest".
+  const settled = useConversationStore((s) => s.status === "idle") && !live;
   const retry = useConversationStore((s) => s.retry);
   const sendTask = useConversationStore((s) => s.sendTask);
   const planApproval = useConversationStore((s) => s.planApproval);
@@ -1064,7 +1073,7 @@ function Transcript() {
 
   // Everything below is derived from the message list, and this component
   // re-renders on every state change the transcript watches. Memoized as one
-  // block so a status flip — or anything else — does not redo five O(n) scans
+  // block so a liveness flip — or anything else — does not redo five O(n) scans
   // over a hundred messages.
   const { messages, hasLiveStep, tappableAskId, multiTab, hasPlan } = useMemo(() => {
     // Internal entries are the model's, not the chat's — the progress note an
@@ -1078,7 +1087,7 @@ function Transcript() {
       hasLiveStep: visible.some((m) => m.live),
       // The newest unanswered question keeps its answer affordance — the gate is
       // shared with the composer's answer placeholder (ask-gate.ts).
-      tappableAskId: pendingAskId(visible, status),
+      tappableAskId: pendingAskId(visible, live),
       // User messages name their tab only once a conversation spans more than
       // one — with a single tab every message is obviously there, so the label
       // is noise.
@@ -1086,7 +1095,7 @@ function Transcript() {
         new Set(visible.flatMap((m) => (m.role === "user" && m.tab ? [m.tab.url] : []))).size > 1,
       hasPlan: visible.some((m) => m.role === "plan" && m.steps?.length),
     };
-  }, [stored, status]);
+  }, [stored, live]);
 
   // `end` is "unseen content below the viewport" — the old !stuck: true once
   // the reader scrolls off the live edge, so the pill shows exactly then.
@@ -1110,11 +1119,11 @@ function Transcript() {
       if (e.target instanceof HTMLElement && e.target.closest("input,textarea,[contenteditable]"))
         return;
       // First press counters the live default: expand mid-run, compact once settled.
-      setPlansOpen((v) => !(v ?? status !== "running"));
+      setPlansOpen((v) => !(v ?? !live));
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [hasPlan, status]);
+  }, [hasPlan, live]);
 
   // Where the rendered transcript starts. A compaction is the natural seam —
   // the summary already stands for everything above it — and a very long
@@ -1145,7 +1154,7 @@ function Transcript() {
   const lastUserIdx = messages.map((m) => m.role).lastIndexOf("user");
   const lastErrorIdx = messages.map((m) => m.role).lastIndexOf("error");
   const retryErrorId =
-    status !== "running" && lastErrorIdx > lastUserIdx && retryTargetFrom(messages) !== null
+    !live && lastErrorIdx > lastUserIdx && retryTargetFrom(messages) !== null
       ? messages[lastErrorIdx]?.id
       : undefined;
   const answer = useCallback((text: string) => void sendTask(text), [sendTask]);
@@ -1155,7 +1164,7 @@ function Transcript() {
   const compactResume = useCallback(() => compact({ resume: true }), [compact]);
   const rendered = showReasoningOn
     ? shown.map((m) => ({ kind: "message" as const, msg: m }))
-    : groupBursts(shown, status === "running");
+    : groupBursts(shown, live);
 
   return (
     <MessageScroller>
@@ -1198,7 +1207,7 @@ function Transcript() {
                   showReasoningOn={showReasoningOn}
                   onToggleReasoning={toggleReasoning}
                   showTab={multiTab}
-                  planSettled={status !== "running"}
+                  planSettled={!live}
                   plansOpen={plansOpen}
                   onRetry={
                     // Only the retryable error offers it — see retryErrorId.
@@ -1225,12 +1234,12 @@ function Transcript() {
               />
             </MessageScrollerItem>
           )}
-          <LiveText running={status === "running"} />
+          <LiveText running={live} />
           {/* Dots cover the gaps only — a live tool row carries its own spinner,
               and a parked approval is not a gap: the run is waiting on the user,
               not working, so "working…" under the card would rush a decision
               that has all the time it needs. */}
-          {status === "running" && !planApproval && !hasLiveStep && <WorkingDots />}
+          {live && !planApproval && !hasLiveStep && <WorkingDots />}
         </MessageScrollerContent>
       </MessageScrollerViewport>
       {offEnd && (
@@ -1252,7 +1261,7 @@ function Transcript() {
             size="sm"
             onClick={() => void scrollToEnd({ behavior: "smooth" })}
             className={`arrive pointer-events-auto rounded-full border shadow-md ${
-              status === "idle"
+              settled
                 ? // The run ended while the reader was scrolled up: say the answer
                   // is here, don't just say "scroll down". Brand accent, since the
                   // thing they were waiting for landed.
@@ -1260,7 +1269,7 @@ function Transcript() {
                 : "border-neutral-200 bg-white hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
             }`}
           >
-            {status === "idle" ? t("chat.answerReady") : t("chat.jumpToLatest")}
+            {settled ? t("chat.answerReady") : t("chat.jumpToLatest")}
           </Button>
         </div>
       )}

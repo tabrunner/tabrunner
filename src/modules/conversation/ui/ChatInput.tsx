@@ -100,9 +100,14 @@ export function ChatInput() {
   const [attachError, setAttachError] = useState<string | null>(null);
   const status = useConversationStore((s) => s.status);
   const messages = useConversationStore((s) => s.messages);
+  // Steering = typing into a run that is driving THIS conversation — the same
+  // question /stop, the deferral gate and the ask gate all ask, so it comes
+  // from the one predicate rather than `status`, which a panel reopened onto a
+  // background run reads idle.
+  const runHere = useConversationStore(runsHere);
   // An unanswered ask_user turns the composer into the answer field — the
   // placeholder says so (the card's chips/hint use the same gate, ask-gate.ts).
-  const questionPending = pendingAskId(messages, status) !== undefined;
+  const questionPending = pendingAskId(messages, runHere) !== undefined;
   // A parked plan gate does the same, stronger: the run is BLOCKED on the
   // answer with no tool boundary ahead, so a queued steer could never land.
   // Typed text is the answer — it sends the plan back with the note.
@@ -147,11 +152,8 @@ export function ChatInput() {
   const sentHistory = useMemo(() => sentMessages(messages), [messages]);
 
   const running = status === "running";
-  // Steering = typing into a run that is driving THIS conversation — the same
-  // question /stop and the deferral gate ask, so it comes from the one
-  // predicate. While our own submission only waits in the queue, input starts
-  // another task instead.
-  const runHere = useConversationStore(runsHere);
+  // While our own submission only waits in the queue, input starts another
+  // task instead of steering the run ahead of it.
   const steering = queuedRun ? false : runHere;
   // The composer's one button is a single morphing slot (the agentic-IDE idiom):
   // ■ Stop appears only while a live run owns this conversation AND the input is

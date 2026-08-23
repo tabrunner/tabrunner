@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useConversationStore } from "./store";
+import { runsHere, useConversationStore } from "./store";
 import { DrivenTabChip } from "./DrivenTabChip";
 import { PlanMark } from "./PlanMark";
 import { ContextGauge } from "./ContextGauge";
@@ -32,7 +32,7 @@ export function RunStatus() {
   const awaitingApproval = useConversationStore((s) => s.planApproval !== null);
   const awaitingAnswer = useConversationStore(
     (s) =>
-      pendingAskId(s.messages, s.status) !== undefined ||
+      pendingAskId(s.messages, runsHere(s)) !== undefined ||
       (s.activeId !== null && s.board.pendingQuestion?.conversationId === s.activeId),
   );
   // A crowded footer (queued lines, a queued run, a stop-redirect in transit)

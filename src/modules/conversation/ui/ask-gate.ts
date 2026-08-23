@@ -1,4 +1,4 @@
-import type { AgentStatus, Message } from "../types";
+import type { Message } from "../types";
 
 /**
  * The one ask_user a reply would land on: the newest question with no user
@@ -9,9 +9,13 @@ import type { AgentStatus, Message } from "../types";
  * gates the card's chips/hint on this, ChatInput the composer's answer
  * placeholder — one scan so the two surfaces never disagree about which
  * question is still awaiting an answer.
+ *
+ * `live` is the shared runsHere predicate, never the panel's own `status`: a
+ * panel reopened onto a background run reads idle, and a stale question would
+ * otherwise re-arm itself mid-run.
  */
-export function pendingAskId(messages: Message[], status: AgentStatus): string | undefined {
-  if (status === "running") return undefined;
+export function pendingAskId(messages: Message[], live: boolean): string | undefined {
+  if (live) return undefined;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (m?.role === "user") return undefined;
