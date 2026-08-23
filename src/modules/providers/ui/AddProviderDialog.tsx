@@ -23,8 +23,9 @@ export function AddProviderDialog({
   initialProvider?: ProviderConfig;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  /** After a successful save or sign-in, once the dialog has closed — e.g. retry the run a fresh credential unblocks. */
-  onSaved?: () => void;
+  /** After a successful save or sign-in, once the dialog has closed — e.g. retry
+   *  the run a fresh credential unblocks, or point this chat at the new provider. */
+  onSaved?: (id: string) => void;
 }) {
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
@@ -43,9 +44,9 @@ export function AddProviderDialog({
       {...(trigger ? { trigger } : {})}
     >
       <ProviderForm
-        onSaved={() => {
+        onSaved={(id) => {
           setOpen(false);
-          onSaved?.();
+          onSaved?.(id);
         }}
         initialProvider={initialProvider}
       />

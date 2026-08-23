@@ -17,7 +17,9 @@ interface ProvidersState {
   loaded: boolean;
 
   load: () => Promise<void>;
-  add: (input: Omit<ProviderConfig, "id" | "createdAt"> & { id?: string }) => Promise<void>;
+  /** Resolves with the provider's id — a conversation opened on the picker's
+   *  "Add a provider…" is pointed at what was just set up. */
+  add: (input: Omit<ProviderConfig, "id" | "createdAt"> & { id?: string }) => Promise<string>;
   remove: (id: string) => Promise<void>;
   activate: (id: string) => Promise<void>;
   /** Patch a stored provider's per-task choices (model / effort). Falsy = back to auto/default. */
@@ -86,6 +88,7 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
     // (or signing in to / keying) one switches to it. Removing still falls
     // back to the next provider in storage.
     await setActiveProvider(provider.id);
+    return provider.id;
   },
 
   remove: async (id) => {

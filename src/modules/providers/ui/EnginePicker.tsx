@@ -454,7 +454,14 @@ export function EnginePicker({
           </div>
         </div>
       </Popover>
-      <AddProviderDialog open={addOpen} onOpenChange={setAddOpen} />
+      {/* Adding a provider from inside a chat means you want to use it HERE —
+          the stored default already follows it, and a pinned conversation
+          would otherwise stay on the provider you just replaced. */}
+      <AddProviderDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onSaved={(id) => onPick({ providerId: id }, false)}
+      />
     </>
   );
 }

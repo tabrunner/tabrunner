@@ -48,7 +48,7 @@ export function ProviderForm({
   onSaved,
   initialProvider,
 }: {
-  onSaved?: () => void;
+  onSaved?: (id: string) => void;
   initialProvider?: ProviderConfig;
 }) {
   const { t } = useTranslation();
@@ -80,8 +80,8 @@ export function ProviderForm({
    * Write the provider row. Throws — the sign-in card and the submit button
    * each word their own failure.
    */
-  const save = async (authOverride?: OAuthCredential) => {
-    await add({
+  const save = async (authOverride?: OAuthCredential): Promise<string> => {
+    return add({
       // Unseeded custom → undefined → the store assigns custom-<ts>.
       id: preset?.id ?? existing?.id,
       name: preset ? preset.name : name.trim(),
@@ -150,8 +150,7 @@ export function ProviderForm({
         return;
       }
       setBusy("saving");
-      await save();
-      onSaved?.();
+      onSaved?.(await save());
     } catch (err) {
       fail(err instanceof Error ? err.message : String(err));
     } finally {
@@ -248,9 +247,9 @@ export function ProviderForm({
           preset={preset}
           signedIn={auth}
           onSignedIn={async (credential) => {
-            await save(credential);
+            const id = await save(credential);
             // The "connected" card gets its moment before the dialog closes over it.
-            setTimeout(() => onSaved?.(), SIGN_IN_DONE_MS);
+            setTimeout(() => onSaved?.(id), SIGN_IN_DONE_MS);
           }}
         />
       ) : (
