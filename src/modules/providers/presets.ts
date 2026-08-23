@@ -106,7 +106,7 @@ export const PRESETS: ProviderPreset[] = [
     id: "kimi-plan",
     name: "Kimi Coding",
     shape: "anthropic",
-    baseUrl: "https://api.kimi.com/coding",
+    baseUrl: "https://api.kimi.ai/coding",
     models: ["k3", "k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"],
     auth: "oauth",
     paired: true,
@@ -142,7 +142,7 @@ export const PRESETS: ProviderPreset[] = [
     // wrong one. The key console is a click away on `apiKeyUrl`.
     name: "Kimi Coding",
     shape: "anthropic",
-    baseUrl: "https://api.kimi.com/coding",
+    baseUrl: "https://api.kimi.ai/coding",
     models: ["k3", "k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"],
     apiKeyUrl: "https://platform.moonshot.ai/console/api-keys",
     paired: true,

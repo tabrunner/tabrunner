@@ -17,8 +17,8 @@ const log = createLogger("kimi-oauth");
  */
 const KIMI_OAUTH = {
   clientId: "17e5f671-d194-4dfb-9706-5516cb48c098",
-  deviceUrl: "https://auth.kimi.com/api/oauth/device_authorization",
-  tokenUrl: "https://auth.kimi.com/api/oauth/token",
+  deviceUrl: "https://auth.kimi.ai/api/oauth/device_authorization",
+  tokenUrl: "https://auth.kimi.ai/api/oauth/token",
   deviceGrant: "urn:ietf:params:oauth:grant-type:device_code",
 } as const;
 

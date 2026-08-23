@@ -35,7 +35,7 @@ const PROVIDER_HOSTS = [
   "api.anthropic.com",
   "api.openai.com",
   "chatgpt.com",
-  "api.kimi.com",
+  "api.kimi.ai",
   "api.z.ai",
   "token-plan.ap-southeast-1.maas.aliyuncs.com",
   "api.deepseek.com",

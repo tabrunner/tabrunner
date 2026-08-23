@@ -22,7 +22,7 @@ function jwt(claims: Record<string, unknown>): string {
 function prompt(over: Partial<DevicePrompt> = {}): DevicePrompt {
   return {
     userCode: "UYNP-2B6J",
-    verificationUrl: "https://www.kimi.com/code/authorize_device?user_code=UYNP-2B6J",
+    verificationUrl: "https://www.kimi.ai/code/authorize_device?user_code=UYNP-2B6J",
     deviceCode: "device-abc",
     intervalMs: 0, // no real waiting in tests
     expiresAt: Date.now() + 60_000,
@@ -38,8 +38,8 @@ describe("requestDeviceCode", () => {
       json({
         device_code: "device-abc",
         user_code: "UYNP-2B6J",
-        verification_uri: "https://www.kimi.com/code/authorize_device",
-        verification_uri_complete: "https://www.kimi.com/code/authorize_device?user_code=UYNP-2B6J",
+        verification_uri: "https://www.kimi.ai/code/authorize_device",
+        verification_uri_complete: "https://www.kimi.ai/code/authorize_device?user_code=UYNP-2B6J",
         expires_in: 1800,
         interval: 5,
       }),

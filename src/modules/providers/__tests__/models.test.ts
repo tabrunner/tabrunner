@@ -9,7 +9,7 @@ const anthropicConfig: ProviderConfig = {
   id: "kimi",
   name: "Kimi",
   shape: "anthropic",
-  baseUrl: "https://api.kimi.com/coding",
+  baseUrl: "https://api.kimi.ai/coding",
   apiKey: "sk-test",
   createdAt: 0,
 };
@@ -42,7 +42,7 @@ describe("listModels", () => {
     });
     const models = await listModels(anthropicConfig);
     const [url, init] = mock.mock.calls[0]!;
-    expect(url).toBe("https://api.kimi.com/coding/v1/models");
+    expect(url).toBe("https://api.kimi.ai/coding/v1/models");
     const headers = init?.headers as Record<string, string>; // fetch init headers, set by listModels
     expect(headers["x-api-key"]).toBe("sk-test");
     expect(headers.Authorization).toBe("Bearer sk-test");

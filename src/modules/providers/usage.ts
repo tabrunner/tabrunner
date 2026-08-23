@@ -22,7 +22,7 @@ const toNum = (v: unknown): number | undefined => {
  *
  * - claude    GET api.anthropic.com/api/oauth/usage — { five_hour, seven_day }
  * - chatgpt   GET chatgpt.com/backend-api/wham/usage — primary(5h)/secondary(weekly) windows
- * - kimi-plan GET api.kimi.com/coding/v1/usages — limits[0] (5h) + usage (weekly)
+ * - kimi-plan GET api.kimi.ai/coding/v1/usages — limits[0] (5h) + usage (weekly)
  *
  * Being unofficial, shapes drift — parsers omit any window they can't read
  * rather than fail, and the UI shows what arrived.
@@ -44,7 +44,7 @@ export interface ProviderUsage {
 const USAGE_URLS: Record<string, string> = {
   claude: "https://api.anthropic.com/api/oauth/usage",
   chatgpt: "https://chatgpt.com/backend-api/wham/usage",
-  "kimi-plan": "https://api.kimi.com/coding/v1/usages",
+  "kimi-plan": "https://api.kimi.ai/coding/v1/usages",
 };
 
 /** Only the OAuth (subscription) presets have usage windows to show. */

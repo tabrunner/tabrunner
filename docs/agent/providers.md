@@ -88,7 +88,7 @@ The load-bearing details of talking to each provider shape. Read this when a tas
   `anthropic-beta: oauth-2025-04-20`; `{five_hour, seven_day: {utilization, resets_at}}`),
   ChatGPT `GET chatgpt.com/backend-api/wham/usage` (Bearer + `ChatGPT-Account-Id`;
   `rate_limit.primary_window` = 5h, `secondary_window` = weekly, `used_percent` +
-  `plan_type`), Kimi `GET api.kimi.com/coding/v1/usages` (Bearer; `limits[0].detail` = 5h,
+  `plan_type`), Kimi `GET api.kimi.ai/coding/v1/usages` (Bearer; `limits[0].detail` = 5h,
   `usage` = weekly, numbers as strings, `resetTime` RFC 3339). Only the OAuth presets have
   one (`supportsUsage`); keyed variants don't. The panel's gauge icon (between the model
   and effort selects) fetches lazily on popover open, cached 60s — these endpoints are
