@@ -32,9 +32,10 @@ describe("TranscriptWriter", () => {
 
     expect(rows).toEqual([
       ["reasoning", "inbox first"],
-      ["step", "Navigated successfully"],
-      // Streamed prose is held until the turn ends, so it sits after the work.
+      // A tool call closes the prose segment too, so what the model said before
+      // acting stays above the row for the act. See interleave.test.ts.
       ["assistant", "Opening the inbox"],
+      ["step", "Navigated successfully"],
       ["assistant", "Two unread invoices."],
     ]);
   });

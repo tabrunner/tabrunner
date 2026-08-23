@@ -131,7 +131,8 @@ export class TranscriptWriter {
     this.append(makeMsg("assistant", note, { internal: true }));
   }
 
-  /** Reasoning and text close at the same points the display closes them. */
+  /** Reasoning and text close at the same points the display closes them —
+   *  at each other, and at every tool call. */
   private flushReasoning(): void {
     const text = this.reasoningText.trim();
     if (text) {
@@ -177,12 +178,15 @@ export class TranscriptWriter {
         break;
 
       case "step_start":
-        // Live rows are display-only — nothing to persist; just close the segment.
+        // Live rows are display-only — nothing to persist; just close the open
+        // segments, so prose said before the call stays above it.
         this.flushReasoning();
+        this.flushStreaming();
         break;
 
       case "step": {
         this.flushReasoning();
+        this.flushStreaming();
         this.append(
           makeMsg("step", event.summary, {
             tool: event.tool,

@@ -317,10 +317,12 @@ export const useConversationStore = create<ConversationState>((set, get) => {
   });
 
   /**
-   * Reasoning and text are separate segments closed at the point the other one
-   * starts, so a run reads in the order it happened: think, say, act, think
-   * again. Accumulating either across a whole run would pile every thought into
-   * one block sitting where the first one opened.
+   * Thinking, prose and tool calls are three kinds of segment, and each closes
+   * the ones already open — so a run reads in the order it happened: think,
+   * say, act, say again. Holding prose across the whole run instead put every
+   * aside the model made into one block under every row it was said between:
+   * the work stacked at the top, the narration at the bottom, and neither
+   * explaining the other.
    *
    * Because each flushes the other, at most one is ever non-empty — which is
    * why the flush pairs below can run in either order.
@@ -599,6 +601,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
 
       case "step_start": {
         flushReasoning();
+        flushStreaming();
         const key = toolVerbKey(event.tool);
         const msg = makeMsg("step", key ? `${i18n.t(key)}…` : "…", {
           tool: event.tool,
@@ -612,6 +615,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
 
       case "step": {
         flushReasoning();
+        flushStreaming();
         const settled: Partial<Message> = {
           content: event.summary,
           ok: event.ok,
@@ -916,7 +920,25 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         if (!runTargetTouched) set({ runTarget });
       });
       void listConversations().then((conversations) => set({ conversations }));
-      unwatchConversations ??= watchConversations((conversations) => set({ conversations }));
+      unwatchConversations ??= watchConversations((conversations) => {
+        set({ conversations });
+        // A panel WATCHING a run rather than streaming it — reopened onto one,
+        // or a second window on the same thread — gets no port events, so its
+        // transcript would sit frozen for the length of the run. Every append
+        // re-heads the index, so this watch is already the signal: pull what
+        // the worker just wrote. Never while we own the stream — storage holds
+        // no live rows, and adopting it would wipe the one in flight.
+        const s = get();
+        const id = s.activeId;
+        if (s.status === "running" || id === null) return;
+        if (s.board.running?.conversationId !== id) return;
+        void getMessages(id).then((messages) => {
+          const now = get();
+          if (now.activeId === id && now.status !== "running") {
+            set({ messages: capMessages(messages) });
+          }
+        });
+      });
       void runBoardItem.get().then((board) => {
         set({ board });
         // Mounting into a run already in flight: the live band's clock would

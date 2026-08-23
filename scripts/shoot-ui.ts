@@ -149,6 +149,10 @@ async function seedConversation() {
           current: 1,
         }),
         msg({ role: "reasoning", content: "Checking which tab is in front…", elapsed: 4200 }),
+        // The shape a run really has: what the model says between two calls
+        // sits between their rows. Runs of calls with nothing said fold; a
+        // lone call stays a row of its own.
+        msg({ role: "assistant", content: "The inbox is already open — starting there." }),
         msg({
           role: "step",
           tool: "navigate",
@@ -162,6 +166,10 @@ async function seedConversation() {
           ok: true,
           content: "",
           detail: "Read 214 elements",
+        }),
+        msg({
+          role: "assistant",
+          content: "Found the March invoice at the top. Opening the expense report.",
         }),
         msg({ role: "step", tool: "click", ok: true, content: "", args: { ref: "e42" } }),
         msg({
@@ -209,6 +217,7 @@ async function seedLongThread() {
         content: "",
         detail: "Read 118 elements",
       }),
+      msg({ role: "assistant", content: "Order page is up — opening the shipping panel." }),
       msg({ role: "step", tool: "click", ok: true, content: "", args: { ref: "e12" } }),
       msg({ role: "assistant", content: `Order #${1000 + i} ships on the 12th.` }),
     ]).flat();
