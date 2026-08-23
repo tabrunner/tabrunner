@@ -111,6 +111,47 @@ describe("a stamped event reaches only the thread it names", () => {
   });
 });
 
+describe("following the conversation another window opened", () => {
+  it("lands on it and asks what is live there", () => {
+    useConversationStore.setState({
+      messages: [{ id: "m", role: "user", content: "old", timestamp: 0 }],
+    });
+    port.fake.postMessage.mockClear();
+
+    useConversationStore.getState().followActive("c9");
+
+    const s = useConversationStore.getState();
+    expect(s.activeId).toBe("c9");
+    expect(s.messages).toEqual([]);
+    expect(port.fake.postMessage).toHaveBeenCalledWith({
+      type: "query_run",
+      conversationId: "c9",
+    });
+  });
+
+  it("keeps the half-typed message — another window changed the subject, not the user", () => {
+    useConversationStore.setState({ draft: "check the invoice tot", collapseDisabled: true });
+
+    useConversationStore.getState().followActive("c9");
+
+    const s = useConversationStore.getState();
+    expect(s.draft).toBe("check the invoice tot");
+    expect(s.collapseDisabled).toBe(true);
+    // Everything a switch DOES reset still resets.
+    expect(s.planApproval).toBeNull();
+    expect(s.status).toBe("idle");
+  });
+
+  it("stands aside while a send is in flight", async () => {
+    useConversationStore.setState({ runTarget: "background" });
+    const send = useConversationStore.getState().sendTask("book the flights");
+    // The slot moves mid-send — the message must still land where it was aimed.
+    useConversationStore.getState().followActive("c9");
+    expect(useConversationStore.getState().activeId).toBe("c1");
+    await send;
+  });
+});
+
 describe("adopting a run this panel did not dispatch", () => {
   it("goes live on the run's own clock, not on panel-open", () => {
     useConversationStore.setState({ board: boardRun("c1") });

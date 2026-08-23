@@ -24,6 +24,7 @@ import {
   MAX_MESSAGES,
   renameConversation,
   setActiveConversation,
+  watchActiveConversation,
   watchConversations,
 } from "../conversations";
 import { closingSummary } from "../transcript";
@@ -123,6 +124,13 @@ export interface ConversationState {
    *  `resume` re-runs the failed task once the summary lands: the CTA's promise
    *  is "compact and carry on", one click. */
   compact: (opts?: { resume?: boolean }) => void;
+  /**
+   * Land on a conversation somebody else opened — the shared slot moved. Same
+   * switch as `openConversation` without the write that caused it; the composer
+   * survives, because another window changing the subject must not eat a half
+   * typed message.
+   */
+  followActive: (id: string | null) => void;
   /** Park a command until nothing is running here (see `deferred`). */
   deferCommand: (name: string, run: () => void) => void;
   /** Drop the parked command — the card's ×. */
@@ -204,6 +212,12 @@ let pingTimer: ReturnType<typeof setInterval> | null = null;
 let unwatchConversations: (() => void) | null = null;
 /** Storage watch on the run board — the widget's state, mirrored here. */
 let unwatchBoard: (() => void) | null = null;
+let unwatchActive: (() => void) | null = null;
+/** A send between "the user pressed Enter" and "the message is stored". The
+ *  follow stands aside for it: the send resolves the thread it lands in from
+ *  what this panel shows, and another window moving that out from under it
+ *  would file the message under the thread the user just left. */
+let sending = false;
 /** Did this run stream any prose? Governs done-summary dedup, never its display. */
 let sawAssistantText = false;
 /** The user flipped the run target already — the stored read must not land on
@@ -543,6 +557,11 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       pushMsg(makeMsg("error", i18n.t("chat.reloaded")));
       return;
     }
+    // From here to the stored message this panel's thread is fixed: the tab
+    // query below is an await, and a slot moved in another window during it
+    // would file the user's message under the thread they just left — the
+    // "conversation switched itself" bug, now remotely triggerable.
+    sending = true;
     // Where the run drives — not always what the toggle says. Chrome forbids
     // extensions on chrome:// and Web Store pages, so "this page" has no page
     // to drive there: the run opens a tab of its own instead of dying on
@@ -575,6 +594,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     const conversationId = await pushMsg(
       makeMsg("user", task, { ...(images?.length ? { images } : {}), ...(tab ? { tab } : {}) }),
     );
+    sending = false;
     startRun(p, conversationId, task, images, thisPage || undefined);
     // The panel stays up through the plan: a background run's FIRST act is to
     // read the page and ask you to approve what it intends to do, and closing
@@ -1101,6 +1121,9 @@ export const useConversationStore = create<ConversationState>((set, get) => {
             : undefined;
         if (running) set({ runStartedAt: running.startedAt });
       });
+      // Chrome draws one panel per window and they share the open-conversation
+      // slot, so a thread opened anywhere is the thread every window is on.
+      unwatchActive ??= watchActiveConversation((id) => get().followActive(id));
       unwatchBoard ??= runBoardItem.watch((board) => {
         const prev = get().board;
         set({ board });
@@ -1152,6 +1175,8 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       unwatchConversations = null;
       unwatchBoard?.();
       unwatchBoard = null;
+      unwatchActive?.();
+      unwatchActive = null;
       if (!port) return;
       intentionalDisconnect = true;
       port.disconnect();
@@ -1380,6 +1405,24 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     newConversation: () => {
       void setActiveConversation(null);
       set({ ...resetRun(), messages: [], activeId: null });
+    },
+
+    followActive: (id) => {
+      // Someone else opened this — a click in another window, a notification, a
+      // pill on the page. Same switch as opening it here, minus the slot write
+      // that caused it, and minus the composer: losing half a typed message
+      // because another window changed the subject is worse than a draft that
+      // outlives the thread it was started on. `sending` holds it off entirely
+      // (see the flag) — that window is where a moved slot does real damage.
+      if (sending || get().activeId === id) return;
+      // Everything a switch resets, then the composer's three put back.
+      const { draft, pastedTexts, collapseDisabled } = get();
+      set({ ...resetRun(), draft, pastedTexts, collapseDisabled, messages: [], activeId: id });
+      post({ type: "query_run", ...(id !== null ? { conversationId: id } : {}) });
+      if (id === null) return;
+      void getMessages(id).then((messages) => {
+        if (get().activeId === id) set({ messages });
+      });
     },
 
     openConversation: (id) => {

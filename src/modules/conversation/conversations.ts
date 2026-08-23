@@ -125,6 +125,17 @@ export function getActiveId(): Promise<string | null> {
   return activeItem.get();
 }
 
+/**
+ * Follow the open conversation. Chrome draws one side panel per window and
+ * they share this slot, so a thread opened in one window is the thread every
+ * window is on — otherwise a notification click re-points the slot and only a
+ * panel that was CLOSED at the time ever notices (`sidePanel.open()` is a no-op
+ * on one already up).
+ */
+export function watchActiveConversation(cb: (id: string | null) => void): () => void {
+  return activeItem.watch(cb);
+}
+
 export function getMessages(id: string): Promise<Message[]> {
   return messagesItem(id).get();
 }
