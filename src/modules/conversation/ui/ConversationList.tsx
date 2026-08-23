@@ -35,21 +35,43 @@ function HistoryIcon() {
   );
 }
 
+/**
+ * Why the panel may not leave this thread right now, as the tooltip that says
+ * so — undefined when it may. Both controls in this row switch conversations
+ * (New Chat outright, History by way of a row), and every window follows the
+ * open one, so leaving does not just move this panel: it takes the others off
+ * a run somebody may be watching, plan card and all.
+ *
+ * `status`, not `runsHere`: it means this panel is drawing the stream, so the
+ * run is the thing on screen. A schedule's or the bridge's run deliberately
+ * does not count — it sends this panel nothing, the transcript refetch keeps
+ * the thread current on its own, and the board and the toolbar badge go on
+ * saying it is alive. Holding the extension shut for the length of an
+ * overnight schedule would cost more than it protects.
+ *
+ * It is no longer "the stream would be misrouted". That stopped being true
+ * when run events started carrying the conversation they belong to, and a
+ * panel showing another thread began dropping them.
+ */
+function useSwitchBlocked(): string | undefined {
+  const { t } = useTranslation();
+  const running = useConversationStore((s) => s.status === "running");
+  return running ? t("sidepanel.busyRunning") : undefined;
+}
+
 /** Quiet icon toggle to browse the stored transcripts. */
 export function HistoryToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const { t } = useTranslation();
-  const running = useConversationStore((s) => s.status === "running");
-  // Switching transcripts mid-run would misroute the stream — finish or stop first.
-  const busyTitle = running ? t("sidepanel.busyRunning") : undefined;
+  const blocked = useSwitchBlocked();
 
   return (
     <Button
       variant="ghost"
       size="sm"
       className={`shrink-0 px-1.5 ${open ? "bg-neutral-100 dark:bg-neutral-800" : ""}`}
-      disabled={running}
+      disabled={blocked !== undefined}
       aria-pressed={open}
-      title={busyTitle ?? t("history.title")}
+      title={blocked ?? t("history.title")}
       aria-label={t("history.title")}
       onClick={onToggle}
     >
@@ -64,19 +86,18 @@ export function HistoryToggle({ open, onToggle }: { open: boolean; onToggle: () 
  */
 export function NewChatButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const { t } = useTranslation();
-  const running = useConversationStore((s) => s.status === "running");
+  const blocked = useSwitchBlocked();
   const newConversation = useConversationStore((s) => s.newConversation);
   // Only emptiness matters here — select the boolean, not the whole array.
   const empty = useConversationStore((s) => s.messages.length === 0);
-  const busyTitle = running ? t("sidepanel.busyRunning") : undefined;
 
   return (
     <Button
       variant="outline"
       size="sm"
       className="ml-1 flex shrink-0 items-center gap-1"
-      disabled={running || (empty && !open)}
-      title={busyTitle ?? t("history.newChat")}
+      disabled={blocked !== undefined || (empty && !open)}
+      title={blocked ?? t("history.newChat")}
       onClick={() => {
         newConversation();
         if (open) onToggle();
