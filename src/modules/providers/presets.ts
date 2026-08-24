@@ -174,7 +174,10 @@ export const PRESETS: ProviderPreset[] = [
     name: "DeepSeek",
     shape: "openai",
     baseUrl: "https://api.deepseek.com",
-    models: ["deepseek-chat", "deepseek-reasoner"],
+    // The chat/reasoner aliases were retired 2026-07-24 (they 400 now; both
+    // resolved to v4-flash). Thinking is a request-level mode on the flash
+    // model, not an id of its own.
+    models: ["deepseek-v4-flash", "deepseek-v4-pro"],
     apiKeyUrl: "https://platform.deepseek.com/api_keys",
     color: "#4D6BFE",
     icon: "deepseek",

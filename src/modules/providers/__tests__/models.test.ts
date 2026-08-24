@@ -177,7 +177,7 @@ describe("resolveProviderModel", () => {
       shape: "openai",
       baseUrl: "https://api.deepseek.com",
       apiKey: "sk-test",
-      model: "deepseek-chat",
+      model: "deepseek-v4-flash",
       createdAt: 0,
     });
     expect(resolved.supportsImages).toBe(false);
