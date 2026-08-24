@@ -21,6 +21,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  CopyIcon,
   DotIcon,
   Icon,
   XIcon,
@@ -673,14 +674,46 @@ const SummaryCard = memo(function SummaryCard({ msg }: { msg: Message }) {
  * The typing caret rides the last markdown block as an ::after, not a sibling
  * span: markdown renders block elements, so a span after them dropped the caret
  * onto a line of its own — a stray grey brick under the text.
+ *
+ * A hover-revealed copy sits just outside the bubble's ragged right edge — the
+ * answer is the thing worth lifting, and the gutter is the only space that
+ * doesn't fight the text for room. It copies the stored markdown source, which
+ * is what the message IS; a rendered-HTML copy would be a second flavor of the
+ * same bytes, and a menu to choose between them is ceremony for one action.
  */
 function AssistantBubble({ content, cursor }: { content: string; cursor?: boolean }) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    // A denied write (unfocused document, permissions policy) just skips the
+    // confirm — there is no fix to offer at this size.
+    void navigator.clipboard.writeText(content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }, () => {});
+  };
   return (
-    <Bubble>
-      <BubbleContent className={cursor ? CARET : ""}>
-        <Markdown>{content}</Markdown>
-      </BubbleContent>
-    </Bubble>
+    <div className="group relative w-fit max-w-[85%]">
+      <Bubble className="max-w-full">
+        <BubbleContent className={cursor ? CARET : ""}>
+          <Markdown>{content}</Markdown>
+        </BubbleContent>
+      </Bubble>
+      {!cursor && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`absolute -right-7 top-1 h-6 w-7 pl-1 ${
+            copied ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          }`}
+          title={copied ? t("chat.copied") : t("chat.copyMessage")}
+          aria-label={copied ? t("chat.copied") : t("chat.copyMessage")}
+          onClick={copy}
+        >
+          {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+        </Button>
+      )}
+    </div>
   );
 }
 

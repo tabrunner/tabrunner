@@ -508,7 +508,9 @@
       "action_one": "{{count}} outra ação",
       "action_other": "{{count}} outras ações"
     },
-    "emptyExampleDoc": "Acrescente “e documente isso” a qualquer tarefa e você recebe um guia para compartilhar."
+    "emptyExampleDoc": "Acrescente “e documente isso” a qualquer tarefa e você recebe um guia para compartilhar.",
+    "copyMessage": "Copiar mensagem",
+    "copied": "Copiado"
   },
   "commands": {
     "menuAria": "Comandos",

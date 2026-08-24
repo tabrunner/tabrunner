@@ -467,3 +467,26 @@ describe("error bubble report affordance", () => {
     await unmount(view);
   });
 });
+
+describe("MessageList assistant copy", () => {
+  it("offers a copy that writes the message's markdown source", async () => {
+    const written: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: (text: string) => {
+          written.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
+    const view = await renderList();
+    const button = [...view.container.querySelectorAll("button")].find(
+      (b) => b.getAttribute("aria-label") === i18n.t("chat.copyMessage"),
+    );
+    expect(button).toBeDefined();
+    await act(async () => button!.click());
+    expect(written).toEqual(["Done."]);
+    await unmount(view);
+  });
+});
