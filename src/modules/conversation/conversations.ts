@@ -203,37 +203,47 @@ export async function getThreadTabsFor(id: string): Promise<ThreadTabs> {
 }
 
 /**
+ * Rewrites one conversation's index row inside the write chain — the shape
+ * every meta-field writer here shares. Returning undefined leaves the row
+ * alone (no rewrite at all), which is how a patch expresses "not mine to
+ * change". A row that isn't there stays gone: no writer here resurrects a
+ * deleted conversation's record — append is the only path allowed to.
+ */
+async function patchConversation(
+  id: string,
+  patch: (c: ConversationMeta) => ConversationMeta | undefined,
+): Promise<void> {
+  return serialized(async () => {
+    const list = await indexItem.get();
+    const row = list.find((c) => c.id === id);
+    if (!row) return;
+    const next = patch(row);
+    if (!next) return;
+    await indexItem.set(list.map((c) => (c.id === id ? next : c)));
+  });
+}
+
+/**
  * Records where a run drove — re-driving a tab moves it back to the front —
- * and, when the run had a strip, what that strip holds now.
- *
- * Serialized like every other index write: this lands in the same tick as the
- * run's closing append and summary, and an unserialized read-modify-write here
- * loses the whole tabs list to theirs — which is what made every follow-up run
- * forget the thread's strip and mint a second one. Both fields ride one write
- * for the same reason.
+ * and, when the run had a strip, what that strip holds now. Serialized like
+ * every other index write: this lands in the same tick as the run's closing
+ * append and summary, and an unserialized read-modify-write here loses the
+ * whole tabs list to theirs — which is what made every follow-up run forget
+ * the thread's strip and mint a second one. Both fields ride one patch for
+ * the same reason.
  *
  * `stripUrls` undefined means "this run had no strip" — the thread's last known
  * one stands. A run that only read a page must not erase the memory of it.
  */
 export function recordDrivenTabFor(id: string, tab: LastTab, stripUrls?: string[]): Promise<void> {
-  return serialized(async () => {
-    const list = await indexItem.get();
-    if (!list.some((c) => c.id === id)) return;
-    await indexItem.set(
-      list.map((c) =>
-        c.id === id
-          ? {
-              ...c,
-              tabs: [tab, ...(c.tabs ?? []).filter((t) => t.url !== tab.url)].slice(
-                0,
-                MAX_CONVERSATION_TABS,
-              ),
-              ...(stripUrls ? { stripUrls: stripUrls.slice(0, MAX_STRIP_URLS) } : {}),
-            }
-          : c,
-      ),
-    );
-  });
+  return patchConversation(id, (c) => ({
+    ...c,
+    tabs: [tab, ...(c.tabs ?? []).filter((t) => t.url !== tab.url)].slice(
+      0,
+      MAX_CONVERSATION_TABS,
+    ),
+    ...(stripUrls ? { stripUrls: stripUrls.slice(0, MAX_STRIP_URLS) } : {}),
+  }));
 }
 
 /**
@@ -248,24 +258,14 @@ export function recordRunSummary(
   run: RunSummary,
   contextTokens?: number,
 ): Promise<void> {
-  return serialized(async () => {
-    const list = await indexItem.get();
-    if (!list.some((c) => c.id === id)) return;
-    await indexItem.set(
-      list.map((c) =>
-        c.id === id
-          ? {
-              ...c,
-              lastRun: run,
-              ...(contextTokens ? { contextTokens } : {}),
-              // The lifetime total grows only when this run priced — an
-              // unpriced run adds nothing rather than resetting the total.
-              ...(run.cost !== undefined ? { spentTotal: (c.spentTotal ?? 0) + run.cost } : {}),
-            }
-          : c,
-      ),
-    );
-  });
+  return patchConversation(id, (c) => ({
+    ...c,
+    lastRun: run,
+    ...(contextTokens ? { contextTokens } : {}),
+    // The lifetime total grows only when this run priced — an unpriced run
+    // adds nothing rather than resetting the total.
+    ...(run.cost !== undefined ? { spentTotal: (c.spentTotal ?? 0) + run.cost } : {}),
+  }));
 }
 
 /**
@@ -280,13 +280,10 @@ export function recordRunSummary(
  */
 export function noteContextFreed(id: string, freed: number): Promise<void> {
   if (freed <= 0) return Promise.resolve();
-  return serialized(async () => {
-    const list = await indexItem.get();
-    const measured = list.find((c) => c.id === id)?.contextTokens;
+  return patchConversation(id, (c) => {
     // Never measured means nothing to correct — the next run measures fresh.
-    if (!measured) return;
-    const contextTokens = Math.max(0, measured - freed);
-    await indexItem.set(list.map((c) => (c.id === id ? { ...c, contextTokens } : c)));
+    if (!c.contextTokens) return undefined;
+    return { ...c, contextTokens: Math.max(0, c.contextTokens - freed) };
   });
 }
 
@@ -301,11 +298,7 @@ export async function getConversationMeta(id: string): Promise<ConversationMeta 
  * the run can never disagree for longer than one run.
  */
 export function recordEngine(id: string, engine: ConversationEngine): Promise<void> {
-  return serialized(async () => {
-    const list = await indexItem.get();
-    if (!list.some((c) => c.id === id)) return;
-    await indexItem.set(list.map((c) => (c.id === id ? { ...c, engine } : c)));
-  });
+  return patchConversation(id, (c) => ({ ...c, engine }));
 }
 
 /**
@@ -315,18 +308,11 @@ export function recordEngine(id: string, engine: ConversationEngine): Promise<vo
  * this conversation already said yes to.
  */
 export function recordApprovedPlan(id: string, steps: string[] | null): Promise<void> {
-  return serialized(async () => {
-    const list = await indexItem.get();
-    if (!list.some((c) => c.id === id)) return;
-    await indexItem.set(
-      list.map((c) => {
-        if (c.id !== id) return c;
-        const next = { ...c };
-        if (steps) next.approvedPlan = steps;
-        else delete next.approvedPlan;
-        return next;
-      }),
-    );
+  return patchConversation(id, (c) => {
+    const next = { ...c };
+    if (steps) next.approvedPlan = steps;
+    else delete next.approvedPlan;
+    return next;
   });
 }
 
@@ -385,12 +371,7 @@ export function isPartialTitle(text: string): boolean {
  * message (appendTo fills a blank title), which is what clearing the field means.
  */
 export function renameConversation(id: string, title: string): Promise<void> {
-  return serialized(async () => {
-    const list = await indexItem.get();
-    if (!list.some((c) => c.id === id)) return;
-    const next = conversationTitle(title);
-    await indexItem.set(list.map((c) => (c.id === id ? { ...c, title: next } : c)));
-  });
+  return patchConversation(id, (c) => ({ ...c, title: conversationTitle(title) }));
 }
 
 /**
@@ -400,13 +381,12 @@ export function renameConversation(id: string, title: string): Promise<void> {
  * the comparison IS the flag and no stored field is needed.
  */
 export function retitleIfDerived(id: string, derived: string, title: string): Promise<void> {
-  return serialized(async () => {
-    const list = await indexItem.get();
-    const row = list.find((c) => c.id === id);
-    if (!row || row.title !== derived) return;
+  return patchConversation(id, (row) => {
+    // A title still equal to what the first message derived is provably
+    // untouched — the comparison is the flag, no stored field needed.
+    if (row.title !== derived) return undefined;
     const next = conversationTitle(title);
-    if (!next) return;
-    await indexItem.set(list.map((c) => (c.id === id ? { ...c, title: next } : c)));
+    return next ? { ...row, title: next } : undefined;
   });
 }
 
