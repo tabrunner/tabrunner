@@ -689,9 +689,10 @@ const SummaryCard = memo(function SummaryCard({ msg }: { msg: Message }) {
  * span: markdown renders block elements, so a span after them dropped the caret
  * onto a line of its own — a stray grey brick under the text.
  *
- * A hover-revealed copy sits just outside the bubble's ragged right edge — the
- * answer is the thing worth lifting, and the gutter is the only space that
- * doesn't fight the text for room. It copies the stored markdown source, which
+ * A hover-revealed copy sits just outside the bubble's ragged right edge,
+ * anchored to the last line — where reading finishes — so on a long answer it
+ * doesn't linger at the top, far from the text being lifted. It copies the
+ * stored markdown source, which
  * is what the message IS; a rendered-HTML copy would be a second flavor of the
  * same bytes, and a menu to choose between them is ceremony for one action.
  */
@@ -720,7 +721,7 @@ function AssistantBubble({ content, cursor }: { content: string; cursor?: boolea
         <Button
           variant="ghost"
           size="icon"
-          className={`absolute -right-7 top-1 h-6 w-7 pl-1 ${
+          className={`absolute -right-7 bottom-2 h-6 w-7 pl-1 ${
             copied ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
           }`}
           title={copied ? t("chat.copied") : t("chat.copyMessage")}
