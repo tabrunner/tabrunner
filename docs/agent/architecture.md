@@ -214,9 +214,10 @@ steering (a later self-initiated deviation asks on its own). The judgment is the
 writer's, not a diff's: string equality re-asked on every reworded step, which taught
 users to approve without reading. The flag's own description states the bar: ask again
 only when the new work could cost something the user didn't sign up for (money spent,
-a message sent, data deleted, a new destination) — a different route to the same
-approved end is not a deviation, and dropping work never is: doing less cannot exceed
-the yes already given. The yes is also the conversation's, not the run's. Each
+something sent or posted in their name, data deleted or exposed, their data or money
+handed to a service, account, or place the plan never named) — any new page, tab, or
+route toward the same approved end is not a deviation, and dropping work never is:
+doing less cannot exceed the yes already given. The yes is also the conversation's, not the run's. Each
 acceptance is persisted on the conversation's index row (`approvedPlan`, via the
 loop's `onApprovedPlanChange`), and a later run seeds it as `standingPlan`: its first
 plan call re-sends the approved arc with the flag off and is applied without
