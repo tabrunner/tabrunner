@@ -33,8 +33,7 @@ interface Entry {
 
 /** A model id plus the one snapshot suffix vendors ship: a compact date
  *  (Anthropic, xAI) or an ISO one (OpenAI). Same model, pinned build. */
-const snap = (prefix: string) =>
-  new RegExp(`^${prefix}(-\\d{8}|-\\d{4}-\\d{2}-\\d{2})?$`);
+const snap = (prefix: string) => new RegExp(`^${prefix}(-\\d{8}|-\\d{4}-\\d{2}-\\d{2})?$`);
 
 /**
  * Most specific first. Each pattern prices exactly the versions its rates were
@@ -66,7 +65,10 @@ const TABLE: Entry[] = [
     pattern: snap("gpt-5\\.4-mini"),
     price: { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0.75 },
   },
-  { pattern: snap("gpt-5\\.4"), price: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 2.5 } },
+  {
+    pattern: snap("gpt-5\\.4"),
+    price: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 2.5 },
+  },
   {
     pattern: snap("gpt-5\\.3-codex"),
     price: { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 1.75 },
@@ -121,7 +123,10 @@ const TABLE: Entry[] = [
   },
 
   // Z.ai, Moonshot, Qwen — cached input at their published read rates
-  { pattern: snap("glm-5\\.2"), price: { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 1.4 } },
+  {
+    pattern: snap("glm-5\\.2"),
+    price: { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 1.4 },
+  },
   { pattern: /^k3(-|$)/, price: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3 } },
   {
     pattern: snap("qwen3\\.8-max"),

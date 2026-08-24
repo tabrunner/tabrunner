@@ -687,10 +687,13 @@ function AssistantBubble({ content, cursor }: { content: string; cursor?: boolea
   const copy = () => {
     // A denied write (unfocused document, permissions policy) just skips the
     // confirm — there is no fix to offer at this size.
-    void navigator.clipboard.writeText(content).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }, () => {});
+    void navigator.clipboard.writeText(content).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => {},
+    );
   };
   return (
     <div className="group relative w-fit max-w-[85%]">
