@@ -761,9 +761,12 @@ let notifiedPlanFor: string | null = null;
 async function notifyPlanParked(conversationId: string, ask: PlanApprovalPayload): Promise<void> {
   if (notifiedPlanFor === conversationId) return;
   const title = ask.reapproval ? i18n.t("plan.reapprovalTitle") : i18n.t("plan.approvalTitle");
-  // Only what is still ahead: on a re-ask the finished steps would read as work
-  // the run wants to redo, in the one place with no room to mark them done.
-  const ahead = ask.steps.slice(ask.current).join(" · ");
+  // A flagged re-ask leads with the model's own "what changed" line — the one
+  // sentence the user needs to gauge it from the lock screen; the step list can
+  // wait for the card. Every other gate shows only what is still ahead: on a
+  // re-ask the finished steps would read as work the run wants to redo, in the
+  // one place with no room to mark them done.
+  const ahead = ask.deviationReason ?? ask.steps.slice(ask.current).join(" · ");
   if (await notifyIfAway("tabrunner-plan", `${title} ${ahead}`, conversationId)) {
     notifiedPlanFor = conversationId;
   }
