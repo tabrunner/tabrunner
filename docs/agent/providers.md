@@ -22,6 +22,19 @@ The load-bearing details of talking to each provider shape. Read this when a tas
   need no reconciling.
   All three call `logCacheUsage` (`http.ts`) — one debug line per turn, silent on a miss, and
   the only evidence prompt caching is working at all.
+- **Cost is estimated, never reported.** No first-party API returns a price — only token
+  counts — so `pricing.ts` holds list rates (USD/Mtok, input/output/cacheRead/cacheWrite,
+  hand-maintained and dated; drift is the accepted ceiling) and `tokenCost` prices a call
+  from the usage delta's cache split. The split is why the adapters carry `cacheRead`/
+  `cacheWrite` on the `{type:"usage"}` delta at all: `input` stays the FULL figure (context
+  size semantics above), and the slices bill at their own rates — Anthropic reads 0.1× /
+  writes 1.25×; the auto-caching shapes discount only reads, per model (gpt-5-family 0.1×,
+  gpt-4o 0.5×). A gateway that prices its own calls (OpenRouter `usage.cost`) rides through
+  `UsageTick.cost` and wins over the table. An unknown model prices nothing — `undefined`
+  means "no estimate", and every surface shows no money rather than a guessed $0.00. The
+  running total lives on the run slot, stamps `RunSummary.cost` at settle, accumulates
+  `ConversationMeta.spentTotal` per thread, and shows in the band, the per-run receipt line
+  and the history row.
 - **Prompt caching is explicit on Anthropic, automatic everywhere else.** Two `cache_control`
   breakpoints of the four the API allows: one on the **last system block** (Anthropic builds
   its prefix tools → system → messages, so it covers the tool defs above it — never mark the

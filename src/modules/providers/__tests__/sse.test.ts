@@ -234,7 +234,13 @@ describe("Anthropic provider SSE parsing", () => {
       deltas.push(d);
     }
 
-    expect(deltas).toContainEqual({ type: "usage", input: 10000, output: 42 });
+    expect(deltas).toContainEqual({
+      type: "usage",
+      input: 10000,
+      output: 42,
+      cacheRead: 9000,
+      cacheWrite: 700,
+    });
     vi.restoreAllMocks();
   });
 
@@ -258,7 +264,13 @@ describe("Anthropic provider SSE parsing", () => {
       deltas.push(d);
     }
 
-    expect(deltas).toContainEqual({ type: "usage", input: 1234, output: 7 });
+    expect(deltas).toContainEqual({
+      type: "usage",
+      input: 1234,
+      output: 7,
+      cacheRead: 0,
+      cacheWrite: 0,
+    });
     vi.restoreAllMocks();
   });
 

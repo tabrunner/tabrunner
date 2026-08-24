@@ -28,6 +28,10 @@ export interface RunSummary {
    *  Absent on summaries from before the engine event existed. */
   model?: string;
   effort?: ReasoningEffort;
+  /** The run's dollar estimate at list price, summed across its calls. Absent
+   *  when nothing priced — a model outside the pricing table, or a summary
+   *  from before costs were tracked. Unknown is not zero. */
+  cost?: number;
   /** False when the run ended on an error — the band names it, never "done". */
   ok?: boolean;
   /** True when the user halted it — the band says "Stopped", not "Done". */
@@ -87,6 +91,14 @@ export interface ConversationMeta {
    * report any.
    */
   contextTokens?: number;
+  /**
+   * The thread's lifetime spend — every run's cost summed as its summary
+   * lands. A running total rather than a sum over transcripts: usage lives on
+   * the index row, never on messages, so there is nothing to re-derive it
+   * from, and the one write that already stamps the summary is the one place
+   * that can add to it for free. Absent until a first priced run.
+   */
+  spentTotal?: number;
   /**
    * What drove this conversation, when it wasn't the user's own panel — an
    * external client's name ("Claude Code"), or the standing label a schedule's
@@ -233,7 +245,16 @@ export function recordRunSummary(
     if (!list.some((c) => c.id === id)) return;
     await indexItem.set(
       list.map((c) =>
-        c.id === id ? { ...c, lastRun: run, ...(contextTokens ? { contextTokens } : {}) } : c,
+        c.id === id
+          ? {
+              ...c,
+              lastRun: run,
+              ...(contextTokens ? { contextTokens } : {}),
+              // The lifetime total grows only when this run priced — an
+              // unpriced run adds nothing rather than resetting the total.
+              ...(run.cost !== undefined ? { spentTotal: (c.spentTotal ?? 0) + run.cost } : {}),
+            }
+          : c,
       ),
     );
   });

@@ -49,8 +49,10 @@ export interface ConversationState {
   reasoningText: string;
   /** Epoch ms when the open reasoning segment began — powers its "for 3m 48s" clock */
   reasoningStartedAt: number | null;
-  /** Cumulative token usage for the current/last run */
-  usage: { input: number; output: number };
+  /** Cumulative token usage for the current/last run. `cost` is the running
+   *  dollar estimate — absent until a call prices, absent forever when the
+   *  model isn't in the pricing table (unknown is not free). */
+  usage: { input: number; output: number; cost?: number };
   /** Epoch ms when the current run started (drives the elapsed display) */
   runStartedAt: number | null;
   /** Epoch ms when it finished — keeps the summary line up after the run ends */
@@ -785,7 +787,11 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // Running totals, so this sets rather than adds — which is also what
         // lets one of these bring a panel that joined mid-run fully up to date.
         set({
-          usage: { input: event.input, output: event.output },
+          usage: {
+            input: event.input,
+            output: event.output,
+            ...(event.cost !== undefined ? { cost: event.cost } : {}),
+          },
           // A different measurement, not a slice of the one above: the last
           // turn's input IS how full the window is right now, and it drops back
           // down when the run folds its own history.

@@ -23,8 +23,10 @@ export interface ActiveRun {
    * the only number it could show is the PREVIOUS run's, stamped on the
    * conversation at the last run's end. `contextTokens` is the last turn's
    * input — how full the window is, which the cumulative input cannot say.
+   * `cost` is the running dollar estimate; absent until a call prices (a model
+   * outside the pricing table never produces one — absent means unknown, not $0).
    */
-  usage: { input: number; output: number; contextTokens: number };
+  usage: { input: number; output: number; contextTokens: number; cost?: number };
   /**
    * A parked plan-approval prompt — resolved by the panel's plan_approval
    * command. `feedback` rides along on a revision request (a "no" that keeps

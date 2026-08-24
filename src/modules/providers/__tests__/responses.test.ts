@@ -179,7 +179,7 @@ describe("ChatGPT provider SSE parsing", () => {
     expect(deltas).toContainEqual({ type: "reasoning", text: " look at" });
     expect(deltas).toContainEqual({ type: "text", text: "Hello" });
     expect(deltas).toContainEqual({ type: "text", text: " world" });
-    expect(deltas).toContainEqual({ type: "usage", input: 10, output: 5 });
+    expect(deltas).toContainEqual({ type: "usage", input: 10, output: 5, cacheRead: 0 });
     expect(deltas).toContainEqual({ type: "finish", reason: "stop" });
     expect(deltas[deltas.length - 1]).toEqual({ type: "done" });
   });

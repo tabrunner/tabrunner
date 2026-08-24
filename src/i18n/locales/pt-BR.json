@@ -426,7 +426,8 @@
     "emptyTitle": "Nada aqui ainda",
     "emptyBody": "Cada tarefa que você envia fica guardada aqui — abra uma para reler o que aconteceu, ou exclua as que você já não precisa.",
     "emptyAction": "Começar uma tarefa",
-    "storedNote": "Guardadas neste dispositivo · ficam as 50 mais recentes"
+    "storedNote": "Guardadas neste dispositivo · ficam as 50 mais recentes",
+    "spentTip": "Gasto estimado nesta conversa, pelos preços de tabela do modelo"
   },
   "chat": {
     "inputAria": "Descrição da tarefa",
@@ -733,7 +734,9 @@
     "backgroundNow": "Rodar em segundo plano",
     "backgroundNowTitle": "Fecha o painel e deixa esta tarefa terminar sozinha — ela nunca mexe na sua tela. Reabra quando quiser acompanhar.",
     "backgroundNowGated": "Aprove o plano primeiro — fechar agora deixaria a aprovação presa em uma notificação.",
-    "modeTitle": "“Em primeiro plano” mantém o painel aberto para você acompanhar, e a tarefa traz para a frente a aba que ela abrir; “Em segundo plano” fecha o painel quando você aprova o plano e nunca mexe na sua tela. As duas dirigem a aba em que você está — trocar durante a tarefa já vale (com o plano aprovado)"
+    "modeTitle": "“Em primeiro plano” mantém o painel aberto para você acompanhar, e a tarefa traz para a frente a aba que ela abrir; “Em segundo plano” fecha o painel quando você aprova o plano e nunca mexe na sua tela. As duas dirigem a aba em que você está — trocar durante a tarefa já vale (com o plano aprovado)",
+    "receiptIn": "{{tokens}} de entrada",
+    "receiptOut": "{{tokens}} de saída"
   },
   "queue": {
     "position": "Na fila · nº {{position}}",

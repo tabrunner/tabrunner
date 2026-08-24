@@ -426,7 +426,8 @@
     "emptyTitle": "Aquí todavía no hay nada",
     "emptyBody": "Cada tarea que envías se guarda aquí — abre una para releer lo que pasó, o elimina las que ya no necesites.",
     "emptyAction": "Empezar una tarea",
-    "storedNote": "Guardado en este dispositivo · se conservan las 50 más recientes"
+    "storedNote": "Guardado en este dispositivo · se conservan las 50 más recientes",
+    "spentTip": "Gasto estimado en esta conversación, a los precios de lista del modelo"
   },
   "chat": {
     "inputAria": "Descripción de la tarea",
@@ -733,7 +734,9 @@
     "backgroundNow": "Ejecutar en segundo plano",
     "backgroundNowTitle": "Cierra el panel y deja que esta tarea termine sola — nunca mueve tu pantalla. Vuelve a abrirlo cuando quieras verla.",
     "backgroundNowGated": "Aprueba el plan primero — cerrar ahora dejaría la aprobación esperando en una notificación.",
-    "modeTitle": "“En primer plano” deja el panel abierto para que la veas, y la tarea trae al frente la pestaña a la que cambia; “En segundo plano” cierra el panel cuando apruebas el plan y nunca mueve tu pantalla. Ambas manejan la pestaña en la que estás — cambiar durante la tarea se aplica al momento (con el plan aprobado)"
+    "modeTitle": "“En primer plano” deja el panel abierto para que la veas, y la tarea trae al frente la pestaña a la que cambia; “En segundo plano” cierra el panel cuando apruebas el plan y nunca mueve tu pantalla. Ambas manejan la pestaña en la que estás — cambiar durante la tarea se aplica al momento (con el plan aprobado)",
+    "receiptIn": "{{tokens}} de entrada",
+    "receiptOut": "{{tokens}} de salida"
   },
   "queue": {
     "position": "En cola · n.º {{position}}",

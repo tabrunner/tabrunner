@@ -52,11 +52,21 @@ export function createOpenAIProvider(config: ResolvedProviderConfig): ChatProvid
           // This shape caches automatically off a stable prefix — nothing is
           // asked for and nothing is echoed back but this count, so it is the
           // only evidence the prefix is holding.
-          logCacheUsage(input, chunk.usage.prompt_tokens_details?.cached_tokens ?? 0);
+          const cached =
+            chunk.usage.prompt_tokens_details?.cached_tokens ??
+            // DeepSeek names the same slice itself and leaves the details
+            // object empty — same number, its own field.
+            chunk.usage.prompt_cache_hit_tokens ??
+            0;
+          logCacheUsage(input, cached);
           yield {
             type: "usage",
             input,
             output: chunk.usage.completion_tokens ?? 0,
+            cacheRead: cached,
+            // Gateways that price their own calls (OpenRouter) — rides through
+            // verbatim; first-party shapes leave it absent.
+            ...(chunk.usage.cost !== undefined ? { cost: chunk.usage.cost } : {}),
           };
           continue;
         }
@@ -144,6 +154,10 @@ interface OpenAIChunk {
     prompt_tokens?: number;
     completion_tokens?: number;
     prompt_tokens_details?: { cached_tokens?: number };
+    /** DeepSeek's own name for the cached slice. */
+    prompt_cache_hit_tokens?: number;
+    /** OpenRouter-style gateways price the call at the source. */
+    cost?: number;
   };
 }
 

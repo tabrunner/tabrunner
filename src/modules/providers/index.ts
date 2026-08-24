@@ -1,6 +1,7 @@
 export { createProvider } from "./factory";
 export { resolveProviderModel } from "./models";
 export { ensureProviderCredential } from "./credential";
+export { tokenCost } from "./pricing";
 export { engineOf, sameEngine } from "./engine";
 export {
   getProviders,

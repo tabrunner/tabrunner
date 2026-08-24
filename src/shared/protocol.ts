@@ -207,9 +207,12 @@ export type Event =
    * would otherwise dress a live run in the last one's numbers; one of these
    * answers it completely, which is what `query_run` re-sends. `contextTokens`
    * is a different measurement riding along: the last turn's input, i.e. how
-   * full the model's window is, which cumulative `input` cannot say.
+   * full the model's window is, which cumulative `input` cannot say. `cost` is
+   * the running dollar estimate at list price — absent until a call prices,
+   * and absent forever on a model the pricing table doesn't know (unknown is
+   * not zero).
    */
-  | { type: "usage"; input: number; output: number; contextTokens: number }
+  | { type: "usage"; input: number; output: number; contextTokens: number; cost?: number }
   /** kind is the classified provider failure — the bubble then shows its own lead line, no generic hint */
   | {
       type: "error";

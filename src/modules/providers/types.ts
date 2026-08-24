@@ -187,6 +187,24 @@ export interface JSONSchemaProperty {
   required?: string[];
 }
 
+/**
+ * One call's token counts, as the adapters report them. `input` is the FULL
+ * input — every token the request put in the window, cached or not — because
+ * that is what context size means everywhere else (the gauge, compaction).
+ * `cacheRead`/`cacheWrite` are the cached slices OF that input, kept because
+ * they bill at different rates and cost cannot be computed without them.
+ * `cost` rides through only from gateways that price the call themselves
+ * (OpenRouter-style `usage.cost`); absent everywhere else.
+ */
+export interface UsageTick {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  /** What the gateway says this call cost, USD — used verbatim when present. */
+  cost?: number;
+}
+
 /** Streaming delta from the provider. */
 export type Delta =
   | { type: "text"; text: string }
@@ -195,7 +213,7 @@ export type Delta =
    *  demand it echoed (see ChatMessage.reasoning). */
   | { type: "reasoning"; text: string }
   | { type: "tool_use"; id: string; name: string; args: Record<string, unknown> }
-  | { type: "usage"; input: number; output: number }
+  | ({ type: "usage" } & UsageTick)
   | { type: "finish"; reason: "stop" | "length" | "tool_use" | "unknown" }
   | { type: "done" };
 

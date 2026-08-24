@@ -23,6 +23,8 @@ export function createAnthropicProvider(config: ResolvedProviderConfig): ChatPro
     async *stream(messages, tools, signal): AsyncIterable<Delta> {
       let toolCallBuffer: { id: string; name: string; args: string } | null = null;
       let inputTokens = 0;
+      let cacheRead = 0;
+      let cacheWritten = 0;
 
       const stream = streamSse({
         url: apiUrl(config.baseUrl, "/v1/messages"),
@@ -64,6 +66,8 @@ export function createAnthropicProvider(config: ResolvedProviderConfig): ChatPro
             const read = usage?.cache_read_input_tokens ?? 0;
             const written = usage?.cache_creation_input_tokens ?? 0;
             inputTokens = (usage?.input_tokens ?? 0) + read + written;
+            cacheRead = read;
+            cacheWritten = written;
             logCacheUsage(inputTokens, read, written);
             break;
           }
@@ -76,6 +80,10 @@ export function createAnthropicProvider(config: ResolvedProviderConfig): ChatPro
               type: "usage",
               input: inputTokens,
               output: event.usage?.output_tokens ?? 0,
+              // The cache split of that input — reads and writes bill at their
+              // own rates, so cost cannot be estimated from the sum alone.
+              cacheRead: cacheRead,
+              cacheWrite: cacheWritten,
             };
             break;
           }

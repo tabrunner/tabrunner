@@ -22,6 +22,7 @@ import {
   getProviderFor,
   resolveProviderModel,
   sameEngine,
+  tokenCost,
 } from "@/modules/providers";
 import type { ResolvedProviderConfig } from "@/modules/providers/types";
 import {
@@ -358,14 +359,18 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
               );
             });
           },
-          onUsage: (input, output) => {
+          onUsage: (tick) => {
             // Accumulated here rather than by each consumer: this is the one
             // adapter turning loop callbacks into events, so it is the one
             // place that can answer "what has this run spent" to a panel that
             // arrived late. The panel and the transcript writer both just set.
-            run.usage.input += input;
-            run.usage.output += output;
-            if (input > 0) run.usage.contextTokens = input;
+            run.usage.input += tick.input;
+            run.usage.output += tick.output;
+            if (tick.input > 0) run.usage.contextTokens = tick.input;
+            // A gateway that priced the call wins over the table's estimate;
+            // an unknown model prices nothing and the run stays costless.
+            const spent = tick.cost ?? tokenCost(resolvedProvider.model, tick);
+            if (spent !== undefined) run.usage.cost = (run.usage.cost ?? 0) + spent;
             emit({ type: "usage", ...run.usage });
           },
           onError: (message, kind) => {

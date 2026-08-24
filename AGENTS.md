@@ -97,7 +97,8 @@ never reach the service-worker bundle.
   Background-only. The badge and the pill are injected, so both are best-effort and can be
   absent (PDF, `file://`, CSP, or the `widgetHidden` pref); the toolbar badge is the one run
   signal that never is. Never let the injected marks be the only thing saying a run is alive.
-- `providers/` — OpenAI/Anthropic/Responses adapters, presets, storage, config UI. Adding a
+- `providers/` — OpenAI/Anthropic/Responses adapters, presets, pricing (spend estimates —
+  `pricing.ts`, see docs/agent/providers.md), storage, config UI. Adding a
   provider is a data change in `presets.ts` — never a code change elsewhere. **The engine
   (provider · model · effort) belongs to the conversation, not to the app**: `engine.ts` holds
   the one rule — the conversation's pin, else the stored pick (`active-provider` + the

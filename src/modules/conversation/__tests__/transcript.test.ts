@@ -37,7 +37,36 @@ describe("TranscriptWriter", () => {
       ["assistant", "Opening the inbox"],
       ["step", "Navigated successfully"],
       ["assistant", "Two unread invoices."],
+      // The run's receipt — the band retires it at the next message; this line
+      // is the record scrollback keeps. No cost segment: the event carried none.
+      ["step", "0s · 10 in · 4 out"],
     ]);
+  });
+
+  it("closes the receipt with the run's cost when one priced", async () => {
+    const rows = await replay("run-cost", [
+      { type: "usage", input: 1200, output: 300, contextTokens: 1200, cost: 0.0012 },
+      { type: "done", summary: "Booked." },
+    ]);
+
+    const receipt = rows.find(([role, content]) => role === "step" && content.includes("·"));
+    expect(receipt?.[1]).toMatch(/^0s · 1\.2k in · 300 out · \$0\.001$/);
+  });
+
+  it("writes no receipt for a run that never measured anything", async () => {
+    const rows = await replay("run-free", [{ type: "done", summary: "Nothing ran." }]);
+    expect(rows).toEqual([["assistant", "Nothing ran."]]);
+  });
+
+  it("writes one receipt, not two, when an error's abort unwinds as a done", async () => {
+    const rows = await replay("run-receipt-once", [
+      { type: "usage", input: 900, output: 100, contextTokens: 900, cost: 0.02 },
+      { type: "error", message: "The tab “Cart” was closed" },
+      // The abort that error triggered unwinds the loop right behind it.
+      { type: "done" },
+    ]);
+
+    expect(rows.filter(([, content]) => content.includes(" in · "))).toHaveLength(1);
   });
 
   it("rewrites the plan card in place instead of stacking copies", async () => {

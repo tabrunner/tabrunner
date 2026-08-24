@@ -426,7 +426,8 @@
     "emptyTitle": "Nothing here yet",
     "emptyBody": "Every task you send is kept here — open one to reread what happened, or delete the ones you're done with.",
     "emptyAction": "Start a task",
-    "storedNote": "Stored on this device · the 50 most recent are kept"
+    "storedNote": "Stored on this device · the 50 most recent are kept",
+    "spentTip": "Estimated spend on this conversation, at the model's list prices"
   },
   "chat": {
     "inputAria": "Task description",
@@ -733,7 +734,9 @@
     "backgroundNow": "Run in background",
     "backgroundNowTitle": "Close the panel and let this task finish on its own — it never moves your screen. Reopen any time to watch.",
     "backgroundNowGated": "Approve the plan first — closing now would leave the approval waiting on a notification.",
-    "modeTitle": "“In foreground” keeps the panel open so you can watch, and the run brings a tab it switches to forward; “In background” closes the panel once you approve the plan and never moves your screen. Both drive the tab you're on — flipping mid-task applies at once (once the plan is approved)"
+    "modeTitle": "“In foreground” keeps the panel open so you can watch, and the run brings a tab it switches to forward; “In background” closes the panel once you approve the plan and never moves your screen. Both drive the tab you're on — flipping mid-task applies at once (once the plan is approved)",
+    "receiptIn": "{{tokens}} in",
+    "receiptOut": "{{tokens}} out"
   },
   "queue": {
     "position": "Queued · #{{position}}",

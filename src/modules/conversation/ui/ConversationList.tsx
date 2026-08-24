@@ -8,6 +8,7 @@ import { Button } from "@/components/Button";
 import { CometPose } from "@/components/CometPose";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Icon, PencilIcon, TrashIcon } from "@/components/Icon";
+import { formatMoney } from "@/lib/format";
 import { TitleInput } from "./TitleInput";
 
 function BackIcon() {
@@ -212,6 +213,18 @@ function ConversationRow({
                   : ""}
                 {relativeTime(conversation.updatedAt, i18n.language)}
               </span>
+              {/* The thread's lifetime spend — the one number a history row has
+                  that the transcript doesn't. Gold because it measures, and it
+                  only lands once a run priced: an unpriced model shows nothing
+                  rather than a $0.00 that reads as free. */}
+              {conversation.spentTotal !== undefined && conversation.spentTotal > 0 && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span className="telemetry shrink-0" title={t("history.spentTip")}>
+                    {formatMoney(conversation.spentTotal)}
+                  </span>
+                </>
+              )}
             </div>
           </button>
           <Button

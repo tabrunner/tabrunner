@@ -11,7 +11,7 @@ import { Button } from "@/components/Button";
 import { ChevronRightIcon } from "@/components/Icon";
 import type { BridgeActive } from "@/shared/protocol";
 import { EFFORT_LABEL_KEYS } from "@/modules/providers/types";
-import { formatDuration, formatTokens } from "@/lib/format";
+import { formatDuration, formatMoney, formatTokens } from "@/lib/format";
 
 export function RunStatus() {
   const { t } = useTranslation();
@@ -112,6 +112,9 @@ export function RunStatus() {
   const totalTokens = usage.input + usage.output;
   const tokenNote =
     totalTokens > 0 ? ` · ${t("run.tokens", { count: formatTokens(totalTokens) })}` : "";
+  // Money rides the same slot: gold telemetry, after the tokens it prices.
+  // Absent on an unpriced model — no estimate, never a fake $0.00.
+  const costNote = usage.cost !== undefined ? ` · ${formatMoney(usage.cost)}` : "";
 
   // What the last run cost, kept up after it ends: while it streams the numbers
   // move too fast to read, and they are gone by the time you look.
@@ -145,12 +148,14 @@ export function RunStatus() {
             // settle — same fill-in pattern as the token totals above.
             model: lastRun?.model,
             effort: lastRun?.effort,
+            cost: lastRun?.cost ?? usage.cost,
           }
         : lastRun;
     if (!finished) return null;
     const finishedTokens = finished.input + finished.output;
     const finishedNote =
       finishedTokens > 0 ? ` · ${t("run.tokens", { count: formatTokens(finishedTokens) })}` : "";
+    const finishedCost = finished.cost !== undefined ? ` · ${formatMoney(finished.cost)}` : "";
     const failed = finished.ok === false;
     // The ink is the panel's one quiet-text pair, not its inverse: this band
     // carries the verdict, and at neutral-400/500 it read fainter than the gold
@@ -184,6 +189,7 @@ export function RunStatus() {
           <span className="telemetry">
             {formatDuration(finished.endedAt - finished.startedAt)}
             {finishedNote}
+            {finishedCost}
           </span>
         </div>
         {/* The tab the work happened on, named — same row and same chip the live
@@ -292,6 +298,7 @@ export function RunStatus() {
         >
           {formatDuration(now - liveStartedAt)}
           {tokenNote}
+          {costNote}
         </span>
         {/* The composer's send/stop morphs away the moment a draft exists, so
             the band carries the one Stop that is always there — same control

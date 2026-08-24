@@ -5,6 +5,7 @@ import { appendMessageTo, recordRunSummary, replaceMessageTo } from "./conversat
 import { buildProgressNote } from "./progress-note";
 import type { ProgressStep } from "./progress-note";
 import { createLogger } from "@/lib/logger";
+import { formatDuration, formatMoney, formatTokens } from "@/lib/format";
 import { i18n } from "@/i18n";
 
 const log = createLogger("transcript");
@@ -65,8 +66,9 @@ export class TranscriptWriter {
   private progressSteps: ProgressStep[] = [];
   /** Constructed at run launch — the summary's start line. */
   private readonly startedAt = Date.now();
-  /** Cumulative tokens, from the run's usage events. */
-  private usage = { input: 0, output: 0 };
+  /** Cumulative tokens, from the run's usage events. `cost` rides along as a
+   *  running total once a call prices — absent forever when none does. */
+  private usage: { input: number; output: number; cost?: number } = { input: 0, output: 0 };
   /** The newest turn's input alone — the context's real size, which the
    *  cumulative total cannot express. Drops when the loop folds its own turns.
    *  Stamped on the CONVERSATION, not on the run summary: the run is over, the
@@ -74,6 +76,8 @@ export class TranscriptWriter {
   private lastInput = 0;
   /** done after an error is the same end unwinding — stamp the summary once. */
   private summaryRecorded = false;
+  /** The receipt rides the same rule: an error's unwind lands here as a done. */
+  private receiptWritten = false;
   /** What answered — the run's resolved engine, from its one early event. */
   private engine: { model: string; effort?: ReasoningEffort } | null = null;
 
@@ -107,6 +111,7 @@ export class TranscriptWriter {
         endedAt: Date.now(),
         input: this.usage.input,
         output: this.usage.output,
+        ...(this.usage.cost !== undefined ? { cost: this.usage.cost } : {}),
         ...(this.engine ? { model: this.engine.model } : {}),
         ...(this.engine?.effort ? { effort: this.engine.effort } : {}),
         ok,
@@ -116,6 +121,28 @@ export class TranscriptWriter {
     ).catch((e) => {
       log.debug("run summary write failed:", e instanceof Error ? e.message : String(e));
     });
+  }
+
+  /**
+   * The run's receipt, as a quiet note where its last word landed. The band
+   * above the composer says these numbers only until the next message retires
+   * it; scrolled back a week later, this line is the only record a run's
+   * length and spend has — the same reason the stop seam exists. Skipped when
+   * nothing was measured: a run that died on provider setup spent nothing
+   * worth a line.
+   */
+  private writeReceipt(): void {
+    if (this.receiptWritten) return;
+    const { input, output, cost } = this.usage;
+    if (input + output <= 0) return;
+    this.receiptWritten = true;
+    const parts = [
+      formatDuration(Date.now() - this.startedAt),
+      i18n.t("run.receiptIn", { tokens: formatTokens(input) }),
+      i18n.t("run.receiptOut", { tokens: formatTokens(output) }),
+    ];
+    if (cost !== undefined) parts.push(formatMoney(cost));
+    this.append(makeMsg("step", parts.join(" · ")));
   }
 
   /**
@@ -259,8 +286,14 @@ export class TranscriptWriter {
         // spend, so this sets rather than adds. `contextTokens` is the last
         // turn's input, which is the occupancy the conversation records;
         // cumulative input would report a short thread as several windows full
-        // and turn the gauge red on nothing.
-        this.usage = { input: event.input, output: event.output };
+        // and turn the gauge red on nothing. `cost` is the same kind of
+        // absolute — and absent stays absent, so an unpriced run never reads
+        // as a free one.
+        this.usage = {
+          input: event.input,
+          output: event.output,
+          ...(event.cost !== undefined ? { cost: event.cost } : {}),
+        };
         if (event.contextTokens > 0) this.lastInput = event.contextTokens;
         break;
 
@@ -280,6 +313,7 @@ export class TranscriptWriter {
             unexpected: event.unexpected,
           }),
         );
+        this.writeReceipt();
         this.recordSummary(false);
         break;
 
@@ -311,6 +345,7 @@ export class TranscriptWriter {
           // that reuses the work — doesn't start from nothing.
           this.writeProgressNote();
         }
+        this.writeReceipt();
         this.recordSummary(true, event.stopped === true);
         break;
       }

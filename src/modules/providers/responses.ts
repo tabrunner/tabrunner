@@ -323,6 +323,14 @@ const num = (v: unknown): number | undefined =>
 function usageDelta(usage: Record<string, unknown>): Delta {
   const input = num(usage.input_tokens) ?? 0;
   const details = isRec(usage.input_tokens_details) ? usage.input_tokens_details : undefined;
-  logCacheUsage(input, num(details?.cached_tokens) ?? 0);
-  return { type: "usage", input, output: num(usage.output_tokens) ?? 0 };
+  const cached = num(details?.cached_tokens) ?? 0;
+  logCacheUsage(input, cached);
+  return {
+    type: "usage",
+    input,
+    output: num(usage.output_tokens) ?? 0,
+    cacheRead: cached,
+    // Gateways that price their own calls ride the figure through verbatim.
+    ...(num(usage.cost) !== undefined ? { cost: num(usage.cost) } : {}),
+  };
 }

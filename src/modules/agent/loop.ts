@@ -4,6 +4,7 @@ import type {
   ChatMessage,
   ToolCall,
   Delta,
+  UsageTick,
   ToolResult as ProviderToolResult,
 } from "@/modules/providers/types";
 import { isRetryable, ProviderError } from "@/modules/providers/types";
@@ -197,7 +198,7 @@ export interface LoopCallbacks {
   onPlanApproval?: (ask: PlanApprovalPayload) => Promise<PlanApprovalOutcome>;
   /** A queued mid-run message was consumed — the panel turns its pending line into a real one. */
   onInjected?: (id: string, text: string) => void;
-  onUsage?: (input: number, output: number) => void;
+  onUsage?: (usage: UsageTick) => void;
   /**
    * The provider refused a turn for length at `observedInput` tokens — so the
    * real context window is below it. The caller records it, and every later run
@@ -328,7 +329,14 @@ async function streamTurn(
         // Committed for provider echo (ChatMessage.reasoning) — display happens in handleDelta.
         if (delta.type === "reasoning") reasoning += delta.text;
         if (delta.type === "tool_use") emitted = true;
-        if (delta.type === "usage") callbacks.onUsage?.(delta.input, delta.output);
+        if (delta.type === "usage")
+          callbacks.onUsage?.({
+            input: delta.input,
+            output: delta.output,
+            cacheRead: delta.cacheRead,
+            cacheWrite: delta.cacheWrite,
+            cost: delta.cost,
+          });
         if (delta.type === "finish" && delta.reason === "length") truncated = true;
       }
       return { text, reasoning, toolCalls, truncated };
@@ -384,9 +392,9 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
   let lastInput = 0;
   const callbacks: LoopCallbacks = {
     ...rawCallbacks,
-    onUsage: (input, output) => {
-      if (input > 0) lastInput = input;
-      rawCallbacks.onUsage?.(input, output);
+    onUsage: (usage) => {
+      if (usage.input > 0) lastInput = usage.input;
+      rawCallbacks.onUsage?.(usage);
     },
   };
   const supportsImages = supportsImagesOpt ?? true;
