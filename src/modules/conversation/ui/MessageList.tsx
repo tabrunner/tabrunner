@@ -293,6 +293,7 @@ function PlanApprovalCard({
   current,
   previous,
   reapproval,
+  deviationReason,
   onApprove,
   onReject,
 }: {
@@ -301,6 +302,8 @@ function PlanApprovalCard({
   /** The list the user was shown at the last gate — what this one is diffed against. */
   previous?: string[];
   reapproval: boolean;
+  /** The model's own line for why it's asking again — re-asks it flagged only. */
+  deviationReason?: string;
   onApprove: () => void;
   onReject: () => void;
 }) {
@@ -338,6 +341,17 @@ function PlanApprovalCard({
           </span>
         )}
       </div>
+      {/* The model's own answer to "what changed?" — sits between the question
+          (the title) and the evidence (the list), so the user reads the cost
+          before diffing steps. The list's "new" chips still back it up. */}
+      {deviationReason && (
+        <p className="text-xs text-neutral-600 dark:text-neutral-300">
+          <span className="font-medium text-neutral-700 dark:text-neutral-200">
+            {t("plan.deviationWhy")}
+          </span>{" "}
+          {deviationReason}
+        </p>
+      )}
       <ol className="flex flex-col gap-0.5 text-xs text-neutral-600 dark:text-neutral-300">
         {steps.map((step, i) => {
           const isNew = before !== null && i >= done && !before.has(step);
@@ -1353,6 +1367,7 @@ function Transcript() {
                 current={planApproval.current}
                 previous={planApproval.previous}
                 reapproval={planApproval.reapproval}
+                deviationReason={planApproval.deviationReason}
                 onApprove={approvePlan}
                 onReject={rejectPlan}
               />

@@ -52,11 +52,12 @@ const call = (name: string, args: Record<string, unknown> = {}): ToolCall => ({
   args,
 });
 
-const planCall = (steps: string[], current = 0, deviates?: boolean): ToolCall =>
+const planCall = (steps: string[], current = 0, deviates?: boolean, reason?: string): ToolCall =>
   call("plan", {
     steps,
     current,
     ...(deviates !== undefined ? { deviates_from_approved: deviates } : {}),
+    ...(reason !== undefined ? { deviation_reason: reason } : {}),
   });
 
 describe("runAgentLoop plan approval gate", () => {
@@ -292,7 +293,7 @@ describe("runAgentLoop plan approval gate", () => {
     const provider = scriptedProvider([
       [planCall(["Go to X", "Read X"])],
       [call("navigate", { url: "https://x.com" })],
-      [planCall(["Go to X", "Buy the thing"], 1, true)], // flagged deviation — must re-ask
+      [planCall(["Go to X", "Buy the thing"], 1, true, "adds buying the thing")], // flagged — must re-ask
       [call("click")],
     ]);
     await runAgentLoop({
@@ -310,7 +311,8 @@ describe("runAgentLoop plan approval gate", () => {
 
     // The re-ask carries the cursor and the list it replaces, not just the new
     // steps: the card marks the finished step done and the changed one new,
-    // instead of asking for the whole trip again.
+    // instead of asking for the whole trip again. And it carries the model's
+    // own one-line reason — the card's answer to "what changed?".
     expect(approvals).toEqual([
       { steps: ["Go to X", "Read X"], current: 0, reapproval: false },
       {
@@ -318,9 +320,32 @@ describe("runAgentLoop plan approval gate", () => {
         current: 1,
         reapproval: true,
         previous: ["Go to X", "Read X"],
+        deviationReason: "adds buying the thing",
       },
     ]);
     expect(calls).toEqual(["navigate", "click"]);
+  });
+
+  it("never forwards a reason on the first proposal — there is no deviation to explain", async () => {
+    const approvals: PlanApprovalPayload[] = [];
+    // A model can flag deviates_from_approved on a conversation's very first
+    // plan; with nothing approved yet there is no deviation, so the reason
+    // would only dress a fresh proposal up as a change.
+    const provider = scriptedProvider([[planCall(["Go to X"], 0, true, "adds buying the thing")]]);
+    await runAgentLoop({
+      provider,
+      driver: makeDriver(),
+      task: "go to x",
+      signal: new AbortController().signal,
+      callbacks: {
+        onPlanApproval: async (ask) => {
+          approvals.push(ask);
+          return { approved: true };
+        },
+      },
+    });
+
+    expect(approvals).toEqual([{ steps: ["Go to X"], current: 0, reapproval: false }]);
   });
 
   it("does not re-ask a replan that answers the user's own mid-run message", async () => {

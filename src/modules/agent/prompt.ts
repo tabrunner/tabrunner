@@ -611,6 +611,11 @@ const TOOL_DEFS: ToolDef[] = [
           description:
             "Your judgment, not a diff. One test: does the change alter WHAT the user is on the hook for, or only HOW an approved end is reached? true only when the upcoming work could cost them something they didn't sign up for — money spent, something sent or posted in their name, data deleted or exposed, or their data or money handed to a service, account, or place the approved plan never named — the kind of thing they'd want to veto before it happens. false for everything on the way to the same approved end: rewording, reordering, splitting a step, marking progress, dropping work (doing less never exceeds the yes you already have), and any new page, tab, or route taken to get there — adding 'switch back to the invoices tab' beside an approved 'read the invoices' is false, adding 'upload them to Dropbox' is true. false too for anything the user just asked for in a message — their message is its own approval — and for re-sending approved work on a fresh run of this conversation. true parks the run for a fresh approval, so reserve it for changes worth the interruption.",
         },
+        deviation_reason: {
+          type: "string",
+          description:
+            "One line naming the NEW cost this plan adds — shown to the user on the approval card, so write it in their language and make it concrete: 'adds uploading the invoices to Dropbox', 'sends the reply now, not just drafts it'. Required whenever deviates_from_approved is true; omit when false. If you cannot name the cost, the flag should be false.",
+        },
       },
       required: ["steps", "current", "deviates_from_approved"],
     },

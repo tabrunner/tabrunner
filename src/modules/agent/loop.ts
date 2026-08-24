@@ -788,12 +788,20 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         const needsApproval =
           (!approvedPlan && !standing) || (call.args.deviates_from_approved === true && !steered);
         if (needsApproval) {
+          // From the user's seat the standing approval is still "their plan":
+          // a first-call deviation off it is a re-ask, not a fresh proposal.
+          const reapproval = approvedPlan !== null || standing !== null;
+          // The model's one-line "what's new that costs" rides only on a
+          // re-ask — a first proposal has no deviation to explain.
+          const reason =
+            reapproval && typeof call.args.deviation_reason === "string"
+              ? call.args.deviation_reason.trim()
+              : "";
           const ask: PlanApprovalPayload = {
             ...plan,
-            // From the user's seat the standing approval is still "their plan":
-            // a first-call deviation off it is a re-ask, not a fresh proposal.
-            reapproval: approvedPlan !== null || standing !== null,
+            reapproval,
             ...(lastAsked ? { previous: lastAsked } : {}),
+            ...(reason ? { deviationReason: reason } : {}),
           };
           lastAsked = plan.steps;
           const outcome = (await callbacks.onPlanApproval?.(ask)) ?? { approved: true };

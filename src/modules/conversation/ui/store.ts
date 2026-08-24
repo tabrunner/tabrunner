@@ -758,6 +758,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
             current: event.current,
             reapproval: event.reapproval,
             previous: event.previous,
+            deviationReason: event.deviationReason,
           },
           planApproved: false,
           replanning: false,

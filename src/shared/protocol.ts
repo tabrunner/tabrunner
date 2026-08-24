@@ -135,6 +135,10 @@ export interface PlanApprovalPayload extends PlanPayload {
   /** The steps of the last plan the user was shown at a gate — absent on the
    *  first ask, when there is nothing to diff against. */
   previous?: string[];
+  /** The model's own one-line "what's new that costs" — set only on a re-ask it
+   *  flagged, so the card can say WHY instead of leaving the user to diff the
+   *  two lists. Absent when the model sent none (the diff still carries it). */
+  deviationReason?: string;
 }
 
 /**
