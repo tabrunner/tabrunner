@@ -749,7 +749,7 @@
   "widget": {
     "queued": "+{{count}} queued",
     "hide": "Hide",
-    "openHint": "Open the TabRunner panel",
+    "openHint": "Watch the run — opens the panel beside the page TabRunner is driving",
     "hideHint": "Collapse to a small dot — click the dot to bring the widget back",
     "expandHint": "Show the TabRunner status widget"
   },

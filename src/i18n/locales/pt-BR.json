@@ -749,7 +749,7 @@
   "widget": {
     "queued": "+{{count}} na fila",
     "hide": "Ocultar",
-    "openHint": "Abrir o painel do TabRunner",
+    "openHint": "Acompanhe a execução — abre o painel ao lado da página que o TabRunner está controlando",
     "hideHint": "Recolher para um ponto — clique no ponto para trazê-lo de volta",
     "expandHint": "Mostrar o widget de status do TabRunner"
   },

@@ -749,7 +749,7 @@
   "widget": {
     "queued": "+{{count}} en cola",
     "hide": "Ocultar",
-    "openHint": "Abrir el panel de TabRunner",
+    "openHint": "Sigue la ejecución — abre el panel junto a la página que TabRunner está controlando",
     "hideHint": "Contraer a un punto — haz clic en el punto para recuperarlo",
     "expandHint": "Mostrar el widget de estado de TabRunner"
   },

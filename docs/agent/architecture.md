@@ -287,12 +287,14 @@ strip signal matters; a run blocked on the user (ask_user, plan approval) settle
 marks into a still "?" and swaps the badge's label for "waiting for you" — waiting-on-you,
 not working (`waitAgentIndicator`). The badge is never pulled mid-run: it used to be, so a
 mid-flight replan stripped the page of every sign TabRunner was on it. Both marks are
-click-to-open (one `tabrunner-mark` message to the worker), which is why every coordinate
+click-to-open (one `tabrunner-mark` message to the worker; it pulls the driven tab forward —
+window included — and opens the panel beside it in that window, so a pill clicked from some
+other window lands you next to the work), which is why every coordinate
 click runs inside `withMarksClickThrough` — the agent clicks by viewport point, and a
 badge that swallowed one would both lose the step and open a panel nobody asked for. Also
 `restricted-url.ts` (`isRestrictedUrl`, the proactive form of the injection rejection) and
 `status-widget.ts`: the floating pill ("TabRunner ·" + task + queue count, the whole pill
-clicking through to the panel, and a hide button that collapses it in-page to a small
+clicking through to the run — panel beside the driven page — and a hide button that collapses it in-page to a small
 blinking status dot — the dot keeps the working/waiting mark
 and a click on it brings the pill back), injected only into each
 window's active tab while the run board is non-empty — never the driven tab, which has the

@@ -21,7 +21,7 @@ import { appendMessageTo, getActiveId, getConversationMeta } from "@/modules/con
 import { setActiveConversation } from "@/modules/conversation/conversations";
 import { panelPorts } from "@/modules/conversation/panel-ports";
 import { TranscriptWriter } from "@/modules/conversation/transcript";
-import { hideAgentIndicator, refreshAgentIndicator, syncActionBadge } from "@/modules/browser";
+import { focusTab, hideAgentIndicator, refreshAgentIndicator, syncActionBadge } from "@/modules/browser";
 import {
   reconcileStatusWidgets,
   refreshStatusWidget,
@@ -471,12 +471,34 @@ export default defineBackground(() => {
       return;
     }
     if (m?.type !== "tabrunner-mark" || m.action !== "open") return;
-    // Land on the work, not on whatever conversation happens to be active.
+    // Land on the work, not on whatever conversation happens to be active —
+    // including the question a run just ended on.
     const board = currentBoard();
-    const target = board.running?.conversationId ?? board.queue[0]?.conversationId;
+    const target =
+      board.running?.conversationId ??
+      board.pendingQuestion?.conversationId ??
+      board.queue[0]?.conversationId;
     if (target) void setActiveConversation(target);
-    const windowId = sender.tab?.windowId;
-    if (windowId !== undefined) void chrome.sidePanel.open({ windowId });
+    void (async () => {
+      // Both halves of "back to the run": the page being worked pulled to the
+      // front (its window first), and the panel open beside it — in THAT
+      // window, so a pill clicked from another window lands page and panel
+      // together instead of leaving an orphan panel behind. Only the tab
+      // lookup is awaited ahead of sidePanel.open, keeping the click's gesture
+      // alive for it.
+      const runTab = board.running?.tabId;
+      let windowId = sender.tab?.windowId;
+      if (runTab !== undefined) {
+        try {
+          const tab = await chrome.tabs.get(runTab);
+          windowId = tab.windowId;
+          void focusTab(runTab, tab.windowId);
+        } catch {
+          // The tab died mid-click — the run is unwinding; panel only.
+        }
+      }
+      if (windowId !== undefined) await chrome.sidePanel.open({ windowId });
+    })();
   });
 
   // A load wipes the badge, the favicon dot, and the status widget. The
