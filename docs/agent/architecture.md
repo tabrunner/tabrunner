@@ -212,9 +212,21 @@ replan answers the user's own injected mid-run message: their message already ap
 what it asked for, so the loop applies that one replan silently and consumes the
 steering (a later self-initiated deviation asks on its own). The judgment is the plan
 writer's, not a diff's: string equality re-asked on every reworded step, which taught
-users to approve without reading. An unflagged update — progress, rewording,
-reordering — never interrupts, and dropping work is never a deviation: doing less
-cannot exceed the yes already given. Every plan call carries the run's whole arc,
+users to approve without reading. The flag's own description states the bar: ask again
+only when the new work could cost something the user didn't sign up for (money spent,
+a message sent, data deleted, a new destination) — a different route to the same
+approved end is not a deviation, and dropping work never is: doing less cannot exceed
+the yes already given. The yes is also the conversation's, not the run's. Each
+acceptance is persisted on the conversation's index row (`approvedPlan`, via the
+loop's `onApprovedPlanChange`), and a later run seeds it as `standingPlan`: its first
+plan call re-sends the approved arc with the flag off and is applied without
+re-asking — which is what makes "continue" (typed from any tab) resume instead of
+re-opening a question the conversation already settled. The standing yes is one shot:
+it answers only the run's first plan call, a revision request drops it (so the
+revised list asks fresh rather than riding the old yes), and the gate itself is
+never seeded — every run still needs its own plan call before any action, so the
+model can never act on a run that never planned. Every plan call carries the run's
+whole arc,
 finished steps included — the card is the progress display, so a remainder-only list
 would erase what the run already did; only steps the user cancelled come off. The
 backstop for a model that narrows anyway is the cursor, not a diff: a replan whose

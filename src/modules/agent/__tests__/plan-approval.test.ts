@@ -407,6 +407,101 @@ describe("runAgentLoop plan approval gate", () => {
     expect(calls).toEqual(["navigate"]);
   });
 
+  it("a standing approval silences an unchanged first plan — but not the gate", async () => {
+    const calls: string[] = [];
+    const approvals: PlanApprovalPayload[] = [];
+    const changes: (string[] | null)[] = [];
+    const provider = scriptedProvider([
+      [call("navigate", { url: "https://x.com" })], // before any plan call this run — still bounced
+      [planCall(["Go to X", "Read X"], 1, false)], // the standing arc, cursor advanced — silent
+      [call("navigate", { url: "https://x.com" })],
+    ]);
+    await runAgentLoop({
+      provider,
+      driver: makeDriver(calls),
+      task: "continue",
+      signal: new AbortController().signal,
+      standingPlan: ["Go to X", "Read X"],
+      callbacks: {
+        onPlanApproval: async (ask) => {
+          approvals.push(ask);
+          return { approved: true };
+        },
+        onApprovedPlanChange: (steps) => changes.push(steps),
+      },
+    });
+
+    // "continue" re-asked nothing — the conversation already said yes to this arc.
+    expect(approvals).toEqual([]);
+    // The gate itself stayed armed: the plan call had to happen before acting.
+    expect(calls).toEqual(["navigate"]);
+    // The silent accept re-arms the standing yes for the run after this one.
+    expect(changes).toEqual([["Go to X", "Read X"]]);
+  });
+
+  it("a standing approval does not silence a flagged deviation — it diffs against the standing list", async () => {
+    const approvals: PlanApprovalPayload[] = [];
+    const provider = scriptedProvider([
+      [planCall(["Go to X", "Buy the thing"], 1, true)],
+      [call("click")],
+    ]);
+    await runAgentLoop({
+      provider,
+      driver: makeDriver(),
+      task: "go to x",
+      signal: new AbortController().signal,
+      standingPlan: ["Go to X", "Read X"],
+      callbacks: {
+        onPlanApproval: async (ask) => {
+          approvals.push(ask);
+          return { approved: true };
+        },
+      },
+    });
+
+    // The model's own flag reopens the question, and the diff baseline is the
+    // list the user actually approved — the standing one.
+    expect(approvals).toEqual([
+      {
+        steps: ["Go to X", "Buy the thing"],
+        current: 1,
+        reapproval: true,
+        previous: ["Go to X", "Read X"],
+      },
+    ]);
+  });
+
+  it("spends the standing approval once — a revised plan asks fresh", async () => {
+    const approvals: PlanApprovalPayload[] = [];
+    const changes: (string[] | null)[] = [];
+    const provider = scriptedProvider([
+      [planCall(["Go to X", "Buy the thing"], 1, true)], // flagged — asks despite the standing yes
+      [planCall(["Go to X", "Read X"], 1)], // the revision — asks too: the old yes was spent
+      [call("click")],
+    ]);
+    await runAgentLoop({
+      provider,
+      driver: makeDriver(),
+      task: "go to x",
+      signal: new AbortController().signal,
+      standingPlan: ["Go to X", "Read X"],
+      callbacks: {
+        onPlanApproval: async (ask) => {
+          approvals.push(ask);
+          return approvals.length === 1
+            ? { approved: false, feedback: "no buying" }
+            : { approved: true };
+        },
+        onApprovedPlanChange: (steps) => changes.push(steps),
+      },
+    });
+
+    expect(approvals).toHaveLength(2);
+    // The revision request dropped the standing yes (storage told), and the
+    // approved revision re-armed it.
+    expect(changes).toEqual([null, ["Go to X", "Read X"]]);
+  });
+
   it("nudges for the whole arc when a replan drops finished steps, and lands anyway", async () => {
     const plans: string[][] = [];
     const provider = scriptedProvider([

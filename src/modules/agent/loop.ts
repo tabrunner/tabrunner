@@ -39,6 +39,15 @@ const log = createLogger("agent");
 export const MAX_STEPS = 500;
 /** Transient stream failures are retried in place this many times before surfacing. */
 const MAX_STREAM_ATTEMPTS = 3;
+/**
+ * Auth failures get a longer trial than other retryables. Coding-plan gateways'
+ * auth blips are time-correlated — an incident lasts seconds, so the standard
+ * two fast retries (≈3s total) can all land inside it and a working credential
+ * still reports "sign in again" (seen on Kimi). Five retries on the same
+ * backoff curve span ~15–30s, past the blip; a genuinely dead key reaches the
+ * same actionable message, just slower.
+ */
+const MAX_AUTH_ATTEMPTS = 6;
 const BASE_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 15_000;
 /** Result payload kept for the panel's expandable step row — a page snapshot is far larger. */
@@ -191,6 +200,12 @@ export interface LoopCallbacks {
   onStep?: (step: StepPayload) => void;
   onPlan?: (plan: PlanPayload) => void;
   /**
+   * The conversation's standing approval changed — steps to keep it, null to
+   * drop it. Fired at each gate transition so the caller can persist what the
+   * next run's gate should honor without asking the user again.
+   */
+  onApprovedPlanChange?: (steps: string[] | null) => void;
+  /**
    * A proposed plan parked on user approval — resolves the user's answer.
    * Absent = auto-approve (tests, non-interactive callers); the panel wires
    * the real gate.
@@ -265,6 +280,13 @@ export interface LoopOptions {
    * same code path as this run's own turns.
    */
   history?: ChatMessage[];
+  /**
+   * The plan steps this conversation's earlier runs got approved — the plan
+   * gate's memory across runs. It answers only this run's FIRST plan call, and
+   * only when the model doesn't flag a deviation; the gate itself stays armed,
+   * so a plan call must still happen before any action this run takes.
+   */
+  standingPlan?: string[];
   /**
    * The model's context window in tokens, as best anyone can know it — see
    * providers/context-window.ts for how it is learned. The run folds its older
@@ -342,16 +364,18 @@ async function streamTurn(
       return { text, reasoning, toolCalls, truncated };
     } catch (e) {
       if (signal.aborted) throw e;
-      const canRetry = !emitted && attempt < MAX_STREAM_ATTEMPTS && isRetryable(e);
+      const kind = e instanceof ProviderError ? e.kind : undefined;
+      const maxAttempts = kind === "auth" ? MAX_AUTH_ATTEMPTS : MAX_STREAM_ATTEMPTS;
+      const canRetry = !emitted && attempt < maxAttempts && isRetryable(e);
       if (!canRetry) throw e;
       const reason = e instanceof Error ? e.message : String(e);
       log.warn(
-        `stream failed before any output — retrying (${attempt}/${MAX_STREAM_ATTEMPTS - 1}):`,
+        `stream failed before any output — retrying (${attempt}/${maxAttempts - 1}):`,
         reason,
       );
       callbacks.onStep?.({
         tool: "retry",
-        summary: i18n.t("errors.retrying", { attempt, max: MAX_STREAM_ATTEMPTS - 1 }),
+        summary: i18n.t("errors.retrying", { attempt, max: maxAttempts - 1 }),
         detail: reason,
       });
       // A server's retry-after (only short ones reach here — isRetryable gives
@@ -381,6 +405,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
     mode,
     startUrl,
     history,
+    standingPlan,
     contextWindow = DEFAULT_CONTEXT_WINDOW,
     drainInjected,
     signal,
@@ -485,6 +510,12 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
   // Action tools are gated on it, so a model that skips planning gets an error
   // tool-result pointing it back at the plan tool instead of a free pass.
   let approvedPlan: PlanPayload | null = null;
+  // The conversation's standing approval, seeded from storage. One shot: it
+  // answers only this run's first plan call — after that (or once a revision
+  // spends it) the run's own approved plan is the only yes that counts. The
+  // gate above is NOT seeded by it: a plan call must still happen before any
+  // action, so the model can never act on a run that never planned.
+  let standingApproval: string[] | null = standingPlan ?? null;
   // Set when the user's own mid-run message lands between plan calls: the next
   // replan answers their words, and their words already approved what they
   // asked for — parking there would be requesting permission to obey.
@@ -492,8 +523,9 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
   // The last list the user was SHOWN at a gate — what the next ask diffs
   // against. Not `approvedPlan`: a plan sent back for revision clears that one,
   // and "did it change what I asked it to?" is exactly the question the revised
-  // list has to answer.
-  let lastAsked: string[] | null = null;
+  // list has to answer. The standing approval was shown at an earlier run's
+  // gate, so it seeds this.
+  let lastAsked: string[] | null = standingApproval;
   // One retry for a `done` the output cap emptied of both summary and streamed
   // text — bounded so a model that keeps truncating still closes, never loops.
   let retriedTruncatedDone = false;
@@ -743,17 +775,24 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         // consumed either way, so a later self-initiated deviation still asks.
         const steered = steeredSincePlan;
         steeredSincePlan = false;
-        // The first proposal always asks. A later one asks again only when the
-        // model flags its own update as a deviation (`deviates_from_approved`):
-        // string-diffing re-asked on every reworded step, so what is worth a
-        // fresh approval is the plan writer's call, not the gate's. An absent
-        // flag means silent — under-asking is the chosen failure direction.
+        // The conversation's first proposal always asks. A later one asks again
+        // only when the model flags its own update as a deviation
+        // (`deviates_from_approved`): string-diffing re-asked on every reworded
+        // step, so what is worth a fresh approval is the plan writer's call,
+        // not the gate's. The standing approval covers this run's first plan
+        // call the same way — an unflagged re-send of already-approved work
+        // opens without re-asking. An absent flag means silent — under-asking
+        // is the chosen failure direction.
+        const standing = standingApproval;
+        standingApproval = null;
         const needsApproval =
-          !approvedPlan || (call.args.deviates_from_approved === true && !steered);
+          (!approvedPlan && !standing) || (call.args.deviates_from_approved === true && !steered);
         if (needsApproval) {
           const ask: PlanApprovalPayload = {
             ...plan,
-            reapproval: approvedPlan !== null,
+            // From the user's seat the standing approval is still "their plan":
+            // a first-call deviation off it is a re-ask, not a fresh proposal.
+            reapproval: approvedPlan !== null || standing !== null,
             ...(lastAsked ? { previous: lastAsked } : {}),
           };
           lastAsked = plan.steps;
@@ -770,9 +809,12 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
               return messages;
             }
             // Revision, not rejection: the gate re-arms (the REVISED plan asks
-            // again) and the run continues on the note below.
+            // again) and the run continues on the note below. The standing yes
+            // is dropped with it — the old approval no longer covers the list
+            // the user just asked to change.
             log.info("plan returned for revision:", truncate(revision, 120));
             approvedPlan = null;
+            callbacks.onApprovedPlanChange?.(null);
           }
         }
         if (!revision) {
@@ -785,6 +827,9 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
             note = i18n.t("plan.narrowedNote");
           }
           approvedPlan = plan;
+          // The gate just said yes to this list — silently (progress, a
+          // standing approval) or by the user — so the next run honors it too.
+          callbacks.onApprovedPlanChange?.(plan.steps);
         }
       } else {
         callbacks.onStep?.({

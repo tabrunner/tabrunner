@@ -6,6 +6,7 @@ export {
   getThreadTabsFor,
   noteContextFreed,
   openAgentConversation,
+  recordApprovedPlan,
   recordDrivenTabFor,
   recordEngine,
 } from "./conversations";

@@ -114,6 +114,14 @@ export interface ConversationMeta {
    */
   engine?: ConversationEngine;
   /**
+   * The plan steps the user last approved here — the plan gate's memory across
+   * runs. A later run that re-sends the same arc (cursor advanced) doesn't
+   * re-ask what was already said yes to; only the model's own deviation flag
+   * reopens the question. Cleared when a plan comes back for revision, so the
+   * revised list asks fresh instead of riding the old yes.
+   */
+  approvedPlan?: string[];
+  /**
    * The thread belongs to a scheduled task rather than an MCP client. Both wear
    * a label in `agent`, but only one of them arrived over MCP — and the history
    * row says which in its accessible name, so the two must stay tellable apart.
@@ -297,6 +305,28 @@ export function recordEngine(id: string, engine: ConversationEngine): Promise<vo
     const list = await indexItem.get();
     if (!list.some((c) => c.id === id)) return;
     await indexItem.set(list.map((c) => (c.id === id ? { ...c, engine } : c)));
+  });
+}
+
+/**
+ * Sets (or clears) the conversation's standing plan approval. The loop calls
+ * this at every gate transition — a plan accepted or approved keeps its steps,
+ * one sent back for revision drops them — so the next run's gate knows what
+ * this conversation already said yes to.
+ */
+export function recordApprovedPlan(id: string, steps: string[] | null): Promise<void> {
+  return serialized(async () => {
+    const list = await indexItem.get();
+    if (!list.some((c) => c.id === id)) return;
+    await indexItem.set(
+      list.map((c) => {
+        if (c.id !== id) return c;
+        const next = { ...c };
+        if (steps) next.approvedPlan = steps;
+        else delete next.approvedPlan;
+        return next;
+      }),
+    );
   });
 }
 

@@ -13,6 +13,7 @@ import {
   isPartialTitle,
   listConversations,
   openScheduledConversation,
+  recordApprovedPlan,
   recordDrivenTabFor,
   recordEngine,
   renameConversation,
@@ -308,6 +309,32 @@ describe("conversations", () => {
     expect(tabs).toHaveLength(5);
     expect(tabs[0]?.url).toBe("https://site7.com/"); // newest work first
     expect(tabs.map((t) => t.url)).not.toContain("https://site2.com/"); // oldest evicted
+  });
+});
+
+/**
+ * The standing plan approval is conversation state: it survives an unrelated
+ * patch, and a revision clears it instead of letting the old yes ride along.
+ */
+describe("approved plan", () => {
+  it("round-trips, survives an unrelated meta write, and clears on null", async () => {
+    const id = await appendMessageFresh(msg("user", "book a table"));
+    await recordApprovedPlan(id, ["Open the site", "Book the table"]);
+    await recordEngine(id, { providerId: "p1" });
+
+    let meta = (await listConversations()).find((c) => c.id === id);
+    expect(meta?.approvedPlan).toEqual(["Open the site", "Book the table"]);
+    expect(meta?.engine).toEqual({ providerId: "p1" });
+
+    await recordApprovedPlan(id, null);
+    meta = (await listConversations()).find((c) => c.id === id);
+    expect(meta?.approvedPlan).toBeUndefined();
+    expect(meta?.engine).toEqual({ providerId: "p1" }); // untouched
+  });
+
+  it("ignores a conversation that is gone rather than resurrecting it", async () => {
+    await recordApprovedPlan("never-existed", ["Do X"]);
+    expect((await listConversations()).some((c) => c.id === "never-existed")).toBe(false);
   });
 });
 

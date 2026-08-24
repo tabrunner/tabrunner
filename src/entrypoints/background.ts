@@ -694,11 +694,15 @@ async function notifyRunEnded(conversationId: string, task: string, event: Event
   if (watching) return;
   const id = `tabrunner-run-${conversationId}`;
   notificationTargets.set(id, { conversationId, ...(tabId !== undefined ? { tabId } : {}) });
+  // The title names the THREAD, not this run's message: on a "continue" run
+  // the header would otherwise read "continue", which answers nothing. The
+  // conversation title is the first message's, so it still names the task.
+  const title = (await getConversationMeta(conversationId))?.title || truncate(task, 80);
   try {
     void chrome.notifications.create(id, {
       type: "basic",
       iconUrl: "icon/128.png",
-      title: truncate(task, 80),
+      title,
       message: truncate(
         done
           ? (event.summary ?? i18n.t("notify.doneFallback"))

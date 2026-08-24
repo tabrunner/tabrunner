@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { runAgentLoop, MAX_STEPS } from "../loop";
 import { i18n } from "@/i18n";
 import type { BrowserDriver } from "@/modules/browser";
 import type { SnapshotResult } from "@/modules/browser/snapshot";
 import type { ChatMessage, ChatProvider } from "@/modules/providers/types";
+import { ProviderError } from "@/modules/providers/types";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
@@ -113,6 +114,69 @@ describe("runAgentLoop mid-run queue", () => {
     // Draining on the done step would bubble a message the model never saw.
     expect(injected).toEqual([]);
     expect(queue).toHaveLength(1);
+  });
+});
+
+describe("runAgentLoop stream retries", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("gives auth failures a longer trial than the standard stream budget", async () => {
+    // Backoff is random*ceiling; pinning random to 0 makes every sleep instant.
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let attempts = 0;
+    const retrySteps: { summary?: string }[] = [];
+    const provider: ChatProvider = {
+      async *stream() {
+        attempts++;
+        // Four straight failures outlast the standard 3-attempt budget — only
+        // the auth ceiling carries the run to the fifth attempt, which lands.
+        if (attempts <= 4) throw new ProviderError("invalid credentials", 401, "auth");
+        yield { type: "tool_use", id: "d1", name: "done", args: { summary: "ok" } };
+        yield { type: "done" };
+      },
+    };
+    const summaries: (string | undefined)[] = [];
+    await runAgentLoop({
+      provider,
+      driver,
+      task: "go",
+      signal: new AbortController().signal,
+      callbacks: {
+        onStep: (s) => {
+          if (s.tool === "retry") retrySteps.push(s);
+        },
+        onDone: (s) => summaries.push(s),
+      },
+    });
+
+    expect(attempts).toBe(5);
+    expect(summaries).toEqual(["ok"]);
+    // The visible retry rows name the auth budget, not the standard one.
+    expect(retrySteps).toHaveLength(4);
+    expect(retrySteps[0]?.summary).toContain("1/5");
+  });
+
+  it("keeps the standard budget for non-auth stream errors", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let attempts = 0;
+    const provider: ChatProvider = {
+      async *stream() {
+        attempts++;
+        if (attempts > 0) throw new TypeError("fetch failed");
+        yield { type: "done" };
+      },
+    };
+    const errors: string[] = [];
+    await runAgentLoop({
+      provider,
+      driver,
+      task: "go",
+      signal: new AbortController().signal,
+      callbacks: { onError: (message) => errors.push(message) },
+    });
+
+    expect(attempts).toBe(3);
+    expect(errors).toHaveLength(1);
   });
 });
 

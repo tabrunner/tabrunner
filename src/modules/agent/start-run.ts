@@ -34,6 +34,7 @@ import {
   getConversationMeta,
   getMessages,
   getThreadTabsFor,
+  recordApprovedPlan,
   recordDrivenTabFor,
   recordEngine,
 } from "@/modules/conversation";
@@ -295,6 +296,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         images,
         supportsImages: resolvedProvider?.supportsImages,
         history: history.length > 0 ? history : undefined,
+        // The conversation's standing plan approval — what an earlier run's
+        // gate already said yes to, so a "continue" doesn't re-ask it.
+        ...(meta?.approvedPlan?.length ? { standingPlan: meta.approvedPlan } : {}),
         contextWindow,
         previousTabs: previousTabs.length > 0 ? previousTabs : undefined,
         mode: adopted ? "adopted" : "own",
@@ -313,6 +317,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
           onStepStart: (tool, args) => emit({ type: "step_start", tool, args }),
           onStep: (step) => emit({ type: "step", ...step }),
           onPlan: (plan) => emit({ type: "plan", ...plan }),
+          // The gate's yes is the conversation's, not the run's: persist each
+          // transition so the next run's first plan call doesn't re-ask it.
+          onApprovedPlanChange: (steps) => void recordApprovedPlan(conversationId, steps),
           onPlanApproval: (ask) => {
             // The gate is the panel's, because the panel is the only owner with
             // a human at the other end. A bridge client is itself an AI carrying
