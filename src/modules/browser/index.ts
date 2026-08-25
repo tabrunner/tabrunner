@@ -5,6 +5,7 @@ export { focusTab } from "./focus-tab";
 export {
   showAgentIndicator,
   hideAgentIndicator,
+  settleAgentIndicator,
   refreshAgentIndicator,
   waitAgentIndicator,
   clearAgentWait,

@@ -751,7 +751,10 @@
     "hide": "Ocultar",
     "openHint": "Sigue la ejecución — abre el panel junto a la página que TabRunner está controlando",
     "hideHint": "Contraer a un punto — haz clic en el punto para recuperarlo",
-    "expandHint": "Mostrar el widget de estado de TabRunner"
+    "expandHint": "Mostrar el widget de estado de TabRunner",
+    "settledDone": "Tarea completada",
+    "settledFailed": "La tarea falló",
+    "settledHint": "Abrir TabRunner para ver el resultado"
   },
   "board": {
     "title": "Tareas",

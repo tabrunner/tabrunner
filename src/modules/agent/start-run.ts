@@ -10,11 +10,13 @@ import {
   detachAll,
   hideAgentIndicator,
   isRestrictedUrl,
+  settleAgentIndicator,
   setAgentDocumenting,
   showAgentIndicator,
   waitAgentIndicator,
   waitForLoad,
 } from "@/modules/browser";
+import { settleStatusWidgets, type SettleOutcome } from "@/modules/browser/status-widget";
 import {
   createProvider,
   engineOf,
@@ -51,6 +53,7 @@ import { acquireRun, releaseRun } from "./active-runs";
 import type { ActiveRun, RunOwner } from "./active-runs";
 import type { PlanApprovalOutcome } from "./loop";
 import {
+  currentBoard,
   markPendingQuestion,
   clearPendingQuestion,
   markRunningAwaiting,
@@ -102,6 +105,12 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
   const claim = acquireRun(conversationId, owner);
   if (!claim.ok) return { ok: false, active: claim.active };
   const { run } = claim;
+
+  // The run's decision for the ambient pill, made in the inner finally (which
+  // can see how the run ended) and read by the release finally (which can see
+  // the board settle) — the receipt paints only after the release has pulled
+  // the working pill, and only if no queued run took the slot.
+  let ambientSettle: { outcome: SettleOutcome; tabId: number } | null = null;
 
   try {
     // What this conversation runs on: its own pin, else the stored pick. The
@@ -491,8 +500,18 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // would pin the banner on a page nothing is driving — it even outlives
       // the worker. Awaited so the slot never frees with a detach in flight.
       await detachAll();
+      // The mark's ending matches the run's: a question keeps it up as the
+      // still "?" (the answer is still owed), a stop or a rejected plan just
+      // takes it down — the user did that, and the panel already says so — and
+      // a finished or failed run settles into the receipt instead of quietly
+      // vanishing, which reads exactly like a crash.
       if (endedOnQuestion) void waitAgentIndicator(drivenTabId);
-      else void hideAgentIndicator(drivenTabId);
+      else if (run.controller.signal.aborted || planRejected) void hideAgentIndicator(drivenTabId);
+      else {
+        const outcome: SettleOutcome = runFailed ? "failed" : "done";
+        void settleAgentIndicator(drivenTabId, outcome);
+        ambientSettle = { outcome, tabId: drivenTabId };
+      }
       // The thread's strip: the one this run minted, or the seed it was told to
       // join. A run that only read a page mints nothing, yet its tab is sitting
       // in the thread's strip all the same — recording no group there is what
@@ -545,6 +564,16 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // Best effort — a stuck flush must never pin the run slot.
     }
     releaseRun(run);
+    // The ambient pill's receipt — only when the board actually emptied (a
+    // queued run owns the pill now). Fired after the release on purpose: the
+    // board change the release broadcasts removes the working pill, and the
+    // receipt paints in its place.
+    if (ambientSettle) {
+      const board = currentBoard();
+      if (!board.running && board.queue.length === 0 && !board.pendingQuestion) {
+        void settleStatusWidgets(ambientSettle.outcome, ambientSettle.tabId);
+      }
+    }
   }
   return { ok: true };
 }

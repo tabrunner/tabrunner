@@ -751,7 +751,10 @@
     "hide": "Hide",
     "openHint": "Watch the run — opens the panel beside the page TabRunner is driving",
     "hideHint": "Collapse to a small dot — click the dot to bring the widget back",
-    "expandHint": "Show the TabRunner status widget"
+    "expandHint": "Show the TabRunner status widget",
+    "settledDone": "Task finished",
+    "settledFailed": "Task failed",
+    "settledHint": "Open TabRunner to see the result"
   },
   "board": {
     "title": "Tasks",

@@ -268,7 +268,10 @@ async function injectBadge(page: Page) {
     (css, dot) => {
       const el = document.createElement("div");
       el.style.cssText = `position:fixed;top:12px;right:12px;z-index:2147483647;${css}`;
-      el.innerHTML = `<span style="${dot}"></span><span>TabRunner is controlling this tab</span>`;
+      el.innerHTML =
+        `<span style="${dot}"></span>` +
+        `<span>TabRunner is controlling this tab</span>` +
+        `<span style="color:#6ee7b7;padding:3px 8px">Hide</span>`;
       document.body.appendChild(el);
     },
     BADGE_CSS,
@@ -280,7 +283,8 @@ async function injectWidget(page: Page, task: string, queued: string) {
   await page.evaluate(
     (css, dot, t, q) => {
       const el = document.createElement("div");
-      el.style.cssText = `position:fixed;bottom:12px;right:12px;z-index:2147483647;${css}`;
+      // One mark, one corner: the ambient pill lives top-right with the badge.
+      el.style.cssText = `position:fixed;top:12px;right:12px;z-index:2147483647;${css}`;
       // The pill's content IS the open control — there is no Open button.
       el.innerHTML =
         `<span style="${dot}"></span>` +

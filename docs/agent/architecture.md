@@ -280,26 +280,32 @@ plan still crosses its event stream.
 ### `browser/` — page control and visibility
 
 Accessibility-tree snapshot (injected script), CDP driver (trusted input), unified driver
-seam, on-page "TabRunner is controlling this tab" badge plus an amber dot over the driven
-tab's favicon so the strip shows where a run is working — the dot pulses via frames pushed
+seam, and ONE on-page mark (`status-widget.ts`'s pill, top-right of every page it can
+paint): in its **driven** voice (lifecycle in `indicator.ts`, on the tab being worked) it
+reads "TabRunner is controlling this tab" — the mark that keeps a self-typing tab from
+looking possessed; in its **ambient** voice (this module's lifecycle, on every window's
+active tab but the driven one) it reads "TabRunner ·" + task + queue count. A run blocked
+on the user (ask_user, plan approval) settles the pill into a still "?" in either voice —
+waiting-on-you, not working (`waitAgentIndicator`). When a run finishes or fails, the pill
+settles into a receipt instead of vanishing — ✓ "Task finished" / ✗ "Task failed", the same
+marks the run's tab group wears — and the page clears it after a few seconds
+(`settleAgentIndicator` / `settleStatusWidgets`; a user stop or a rejected plan just
+removes the mark, the panel already says so). The driven tab also gets an amber dot over
+its favicon so the strip shows where a run is working — the dot pulses via frames pushed
 from the worker, because Chrome throttles hidden-tab timers and hidden is exactly when the
-strip signal matters; a run blocked on the user (ask_user, plan approval) settles both
-marks into a still "?" and swaps the badge's label for "waiting for you" — waiting-on-you,
-not working (`waitAgentIndicator`). The badge is never pulled mid-run: it used to be, so a
-mid-flight replan stripped the page of every sign TabRunner was on it. Both marks are
+strip signal matters; a waiting run's favicon settles into the still "?" too. The badge is
+never pulled mid-run: it used to be, so a mid-flight replan stripped the page of every sign
+TabRunner was on it. Both voices share one host id, one paint function, one Hide button
+(collapse in-page to a small blinking dot; a click on it brings the pill back) — the
+ambient half never paints over or strips a driven badge (`drivenTabs` guards eligibility),
+which is what makes the switch_tab handover safe. Every mark is
 click-to-open (one `tabrunner-mark` message to the worker; it pulls the driven tab forward —
 window included — and opens the panel beside it in that window, so a pill clicked from some
 other window lands you next to the work), which is why every coordinate
 click runs inside `withMarksClickThrough` — the agent clicks by viewport point, and a
 badge that swallowed one would both lose the step and open a panel nobody asked for. Also
-`restricted-url.ts` (`isRestrictedUrl`, the proactive form of the injection rejection) and
-`status-widget.ts`: the floating pill ("TabRunner ·" + task + queue count, the whole pill
-clicking through to the run — panel beside the driven page — and a hide button that collapses it in-page to a small
-blinking status dot — the dot keeps the working/waiting mark
-and a click on it brings the pill back), injected only into each
-window's active tab while the run board is non-empty — never the driven tab, which has the
-badge — moved on activation/focus churn, removed everywhere when idle or hidden via the
-`widgetHidden` pref.
+`restricted-url.ts` (`isRestrictedUrl`, the proactive form of the injection rejection);
+the ambient pill is removed everywhere when idle or hidden via the `widgetHidden` pref.
 
 **The tree stays primary, but it is not the whole toolbox.** Form fields carry their
 current state in the snapshot (`value="…"`, redacted when sensitive; `(checked)` on
@@ -332,10 +338,10 @@ session, so a kept attach would pin the banner on a page nothing is driving — 
 session even outlives the MV3 worker. The next run's first action re-attaches, and the
 banner's return while the agent is actually working is honest signal.
 
-**Three ambient signals, and only one of them is guaranteed.** The indicator and the pill
-are both `chrome.scripting.executeScript`, which a restricted page, a PDF viewer, a
+**Three ambient signals, and only one of them is guaranteed.** The on-page pill (either
+voice) is `chrome.scripting.executeScript`, which a restricted page, a PDF viewer, a
 `file://` url without file access, or a hostile CSP can refuse — silently, because a run
-must never fail because its marks could not be drawn. The pill has two more holes:
+must never fail because its marks could not be drawn. The ambient voice has two more holes:
 `widgetHidden` turns it off for good, and it skips the driven tab, which under tab adoption
 IS the tab the user is looking at. So the injected layer can be entirely absent, and closing
 the panel would leave nothing on screen. `action-badge.ts` is the floor beneath it: a

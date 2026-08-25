@@ -1,22 +1,26 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
-  paintIndicator,
-  removeIndicator,
+  paintFavicon,
+  restoreFavicon,
   setMarksInert,
   stepFaviconFrame,
   showAgentIndicator,
   refreshAgentIndicator,
   hideAgentIndicator,
+  settleAgentIndicator,
   waitAgentIndicator,
   clearAgentWait,
   withMarksClickThrough,
 } from "../indicator";
+import { paintWidget, removeWidget, type WidgetState } from "../status-widget";
 
 // The page-side halves of the indicator, run directly in jsdom the way
 // snapshot-script is tested — the chrome.scripting wrapper is a thin try/catch.
+// The pill itself is the shared paintWidget (status-widget.test.ts); what is
+// asserted here through it is the driven lifecycle's choice of state.
 
 const ARGS = {
-  hostId: "tabrunner-agent-indicator",
+  hostId: "tabrunner-status-widget",
   linkId: "tabrunner-agent-favicon",
   restoreId: "tabrunner-agent-favicon-restore",
   dot: "data:image/svg+xml,dot",
@@ -26,23 +30,15 @@ function iconLinks(): HTMLLinkElement[] {
   return [...document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')];
 }
 
-function paint(waiting = false, favicon = ARGS.dot) {
-  paintIndicator(
-    ARGS.hostId,
-    waiting ? "TabRunner is waiting for you" : "TabRunner is driving",
-    "Open the TabRunner panel",
-    ARGS.linkId,
-    favicon,
-    ARGS.restoreId,
-    waiting,
-  );
+function paint(favicon = ARGS.dot) {
+  paintFavicon(ARGS.linkId, favicon, ARGS.restoreId);
 }
 
-function remove() {
-  removeIndicator(ARGS.hostId, ARGS.linkId, ARGS.restoreId);
+function restore() {
+  restoreFavicon(ARGS.linkId, ARGS.restoreId);
 }
 
-describe("indicator page marks", () => {
+describe("favicon marks", () => {
   beforeEach(() => {
     document.head.innerHTML = "";
     document.body.innerHTML = "";
@@ -55,35 +51,32 @@ describe("indicator page marks", () => {
     const links = iconLinks();
     expect(links).toHaveLength(2);
     expect(links[links.length - 1]?.href).toBe(ARGS.dot); // last link wins in Chrome
-    expect(document.getElementById(ARGS.hostId)).not.toBeNull();
   });
 
-  it("painting twice leaves one badge and one dot, not a pile", () => {
+  it("painting twice leaves one dot, not a pile", () => {
     paint();
     paint();
     expect(iconLinks()).toHaveLength(1);
-    expect(document.querySelectorAll(`#${ARGS.hostId}`)).toHaveLength(1);
   });
 
-  it("hands the favicon back to the page's own icon on remove", () => {
+  it("hands the favicon back to the page's own icon on restore", () => {
     document.head.innerHTML =
       '<link rel="icon" href="/old.png"><link rel="icon" href="/current.png">';
     paint();
-    remove();
+    restore();
 
     // The page's own links stay untouched; a trailing restore link re-asserts
     // the one Chrome was showing — removal alone doesn't make Chrome re-resolve.
     const links = iconLinks();
-    const restore = links[links.length - 1];
+    const back = links[links.length - 1];
     expect(links).toHaveLength(3);
-    expect(restore?.id).toBe(ARGS.restoreId);
-    expect(restore?.href.endsWith("/current.png")).toBe(true);
-    expect(document.getElementById(ARGS.hostId)).toBeNull();
+    expect(back?.id).toBe(ARGS.restoreId);
+    expect(back?.href.endsWith("/current.png")).toBe(true);
   });
 
   it("falls back to the root favicon.ico when the page declared no icon", () => {
     paint();
-    remove();
+    restore();
 
     const links = iconLinks();
     expect(links).toHaveLength(1);
@@ -92,7 +85,7 @@ describe("indicator page marks", () => {
 
   it("a new paint clears the restore link before dotting again", () => {
     paint();
-    remove();
+    restore();
     paint();
     expect(iconLinks()).toHaveLength(1);
     expect(iconLinks()[0]?.href).toBe(ARGS.dot);
@@ -120,59 +113,6 @@ describe("indicator page marks", () => {
   });
 });
 
-describe("the badge as a control", () => {
-  const WAITING_URL = "data:image/svg+xml,question";
-  const original = Element.prototype.attachShadow;
-  const chromeBackup = globalThis.chrome;
-
-  beforeEach(() => {
-    document.head.innerHTML = "";
-    document.body.innerHTML = "";
-    // Closed in production so the page can't reach in; forced open to assert.
-    Element.prototype.attachShadow = function () {
-      return original.call(this, { mode: "open" });
-    };
-  });
-
-  afterEach(() => {
-    Element.prototype.attachShadow = original;
-    (globalThis as Record<string, unknown>).chrome = chromeBackup;
-  });
-
-  const badge = () =>
-    document.getElementById(ARGS.hostId)!.shadowRoot!.querySelector<HTMLElement>(".badge")!;
-
-  it("keeps the badge through a wait, swapping the pulse for the still ?", () => {
-    paint(true, WAITING_URL);
-
-    // The mark never leaves the page mid-run: a parked run is when the user is
-    // needed most, so the badge says so instead of vanishing.
-    expect(badge().textContent).toContain("waiting");
-    expect(badge().querySelector(".wait")?.textContent).toBe("?");
-    expect(badge().querySelector(".dot")).toBeNull();
-    const links = iconLinks();
-    expect(links).toHaveLength(1);
-    expect(links[0]?.href).toBe(WAITING_URL);
-  });
-
-  it("clicking it asks the worker for the panel", () => {
-    const sendMessage = vi.fn();
-    (globalThis as Record<string, unknown>).chrome = { ...chromeBackup, runtime: { sendMessage } };
-    paint();
-    badge().click();
-    expect(sendMessage).toHaveBeenCalledWith({ type: "tabrunner-mark", action: "open" });
-  });
-
-  it("goes click-through while the agent clicks, so it can't eat its own click", () => {
-    paint();
-    const host = document.getElementById(ARGS.hostId)!;
-    setMarksInert([ARGS.hostId], true);
-    expect(host.dataset.inert).toBe("1");
-    setMarksInert([ARGS.hostId], false);
-    expect(host.dataset.inert).toBeUndefined();
-  });
-});
-
 describe("worker-driven favicon heartbeat", () => {
   // The pulse lives in the worker because Chrome throttles hidden-tab timers
   // into silence — hidden is exactly when the strip signal matters.
@@ -195,6 +135,14 @@ describe("worker-driven favicon heartbeat", () => {
 
   const frameBeats = () =>
     executeScript.mock.calls.filter((c) => (c[0] as { func: unknown }).func === stepFaviconFrame);
+
+  const paintCalls = () =>
+    executeScript.mock.calls
+      .filter((c) => (c[0] as { func: unknown }).func === paintWidget)
+      .map((c) => (c[0] as { args: [string, WidgetState] }).args);
+
+  const removeCalls = () =>
+    executeScript.mock.calls.filter((c) => (c[0] as { func: unknown }).func === removeWidget);
 
   it("alternates two frames every beat while shown, and stops on hide", async () => {
     await showAgentIndicator(1);
@@ -228,9 +176,6 @@ describe("worker-driven favicon heartbeat", () => {
     await hideAgentIndicator(9);
   });
 
-  const paintCalls = () =>
-    executeScript.mock.calls.filter((c) => (c[0] as { func: unknown }).func === paintIndicator);
-
   it("wait marks the strip without a pulse, and clear removes the mark", async () => {
     await waitAgentIndicator(2);
     // No pulse beats, ever — the wait is a still state.
@@ -238,22 +183,55 @@ describe("worker-driven favicon heartbeat", () => {
     expect(frameBeats()).toHaveLength(0);
     // One paint, in the waiting state — the badge stays, saying it needs you.
     expect(paintCalls()).toHaveLength(1);
-    expect((paintCalls()[0]?.[0] as { args: unknown[] }).args.at(-1)).toBe(true);
+    expect(paintCalls()[0]?.[1].awaiting).toBe(true);
 
     // A repaint after a navigation lands the same waiting state, not "driving".
     await refreshAgentIndicator(2);
-    expect((paintCalls()[1]?.[0] as { args: unknown[] }).args.at(-1)).toBe(true);
+    expect(paintCalls()[1]?.[1].awaiting).toBe(true);
 
-    // clear in a new run calls hideAgentIndicator → removeIndicator.
+    // clear in a new run calls hideAgentIndicator → removeWidget.
     await clearAgentWait();
-    const removes = executeScript.mock.calls.filter(
-      (c) => (c[0] as { func: unknown }).func === removeIndicator,
-    );
-    expect(removes).toHaveLength(1);
+    expect(removeCalls()).toHaveLength(1);
   });
 
-  it("hands the corner back around an agent click, then takes it again", async () => {
-    const clicked = await withMarksClickThrough(4, () => Promise.resolve("done"));
+  it("show drives again on a waiting tab — wait is cleared, paint and restore follow", async () => {
+    await waitAgentIndicator(3);
+
+    await showAgentIndicator(3);
+    // Both states paint the same pill; only `awaiting` differs, and an approved
+    // plan puts the run back to work — waiting first, driving second.
+    expect(paintCalls().map((c) => c[1].awaiting)).toEqual([true, false]);
+    // hide runs normally once — no wait-specific cleanup, since show already cleared it.
+    await hideAgentIndicator(3);
+    expect(removeCalls()).toHaveLength(1);
+  });
+
+  it("a finished run settles into the receipt and leaves tracking", async () => {
+    await showAgentIndicator(4);
+    executeScript.mockClear();
+
+    await settleAgentIndicator(4, "done");
+    // Favicon back to the page, then the receipt in the pill's place — the
+    // same ✓ the strip's group title wears, instead of a silent vanish.
+    const settle = paintCalls()[0]?.[1];
+    expect(settle?.settle).toEqual({ ok: true, text: expect.any(String) });
+    expect(
+      executeScript.mock.calls.some((c) => (c[0] as { func: unknown }).func === restoreFavicon),
+    ).toBe(true);
+
+    // The receipt self-clears page-side, so the tab is untracked: a navigation
+    // repaint must not resurrect it.
+    await refreshAgentIndicator(4);
+    expect(paintCalls()).toHaveLength(1);
+  });
+
+  it("a failed run settles into the ✗ receipt", async () => {
+    await settleAgentIndicator(5, "failed");
+    expect(paintCalls()[0]?.[1].settle?.ok).toBe(false);
+  });
+
+  it("goes click-through while the agent clicks, so it can't eat its own click", async () => {
+    const clicked = await withMarksClickThrough(6, () => Promise.resolve("done"));
     expect(clicked).toBe("done");
     const toggles = executeScript.mock.calls
       .filter((c) => (c[0] as { func: unknown }).func === setMarksInert)
@@ -263,29 +241,11 @@ describe("worker-driven favicon heartbeat", () => {
 
   it("restores the marks even when the click throws", async () => {
     await expect(
-      withMarksClickThrough(5, () => Promise.reject(new Error("target gone"))),
+      withMarksClickThrough(7, () => Promise.reject(new Error("target gone"))),
     ).rejects.toThrow("target gone");
     const toggles = executeScript.mock.calls
       .filter((c) => (c[0] as { func: unknown }).func === setMarksInert)
       .map((c) => (c[0] as { args: unknown[] }).args[1]);
     expect(toggles).toEqual([true, false]);
-  });
-
-  it("show drives again on a waiting tab — wait is cleared, paint and restore follow", async () => {
-    await waitAgentIndicator(3);
-
-    await showAgentIndicator(3);
-    // Both states paint the same badge; only the last argument differs, and an
-    // approved plan puts the run back to work — waiting first, driving second.
-    expect(paintCalls().map((c) => (c[0] as { args: unknown[] }).args.at(-1))).toEqual([
-      true,
-      false,
-    ]);
-    // hide runs normally once — no wait-specific cleanup, since show already cleared it.
-    await hideAgentIndicator(3);
-    const removes = executeScript.mock.calls.filter(
-      (c) => (c[0] as { func: unknown }).func === removeIndicator,
-    );
-    expect(removes).toHaveLength(1);
   });
 });

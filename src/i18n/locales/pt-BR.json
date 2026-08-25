@@ -751,7 +751,10 @@
     "hide": "Ocultar",
     "openHint": "Acompanhe a execução — abre o painel ao lado da página que o TabRunner está controlando",
     "hideHint": "Recolher para um ponto — clique no ponto para trazê-lo de volta",
-    "expandHint": "Mostrar o widget de status do TabRunner"
+    "expandHint": "Mostrar o widget de status do TabRunner",
+    "settledDone": "Tarefa concluída",
+    "settledFailed": "A tarefa falhou",
+    "settledHint": "Abrir o TabRunner para ver o resultado"
   },
   "board": {
     "title": "Tarefas",

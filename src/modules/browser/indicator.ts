@@ -1,29 +1,30 @@
 import type { TabId } from "@/shared/types";
 import { createLogger } from "@/lib/logger";
 import { i18n } from "@/i18n";
-import { WIDGET_HOST_ID } from "./status-widget";
+import {
+  WIDGET_HOST_ID,
+  drivenTabs,
+  paintWidget,
+  removeWidget,
+  settleState,
+  type WidgetState,
+} from "./status-widget";
 
 const log = createLogger("indicator");
-const HOST_ID = "tabrunner-agent-indicator";
 const FAVICON_LINK_ID = "tabrunner-agent-favicon";
 /** The link that hands the favicon back to the page when the run lets go. */
 const RESTORE_LINK_ID = "tabrunner-agent-favicon-restore";
-/** Every mark we inject into a page — what a coordinate click must see through. */
-const MARK_HOST_IDS = [HOST_ID, WIDGET_HOST_ID];
+/** The one on-page mark — the pill both lifecycles paint (see status-widget.ts). */
+const MARK_HOST_IDS = [WIDGET_HOST_ID];
 
 /**
- * Driving marks on the tab an agent is driving — two halves, one lifecycle:
+ * The driven half of the on-page mark — the lifecycle for the tab an agent is
+ * driving (the pill itself, its states and its Hide button live in
+ * status-widget.ts; this module owns what only the driven tab needs):
  *
- * - an on-page badge, because the only other signal lives in a side panel you
- *   may have scrolled away from, and a tab typing by itself looks possessed.
- *   Clicking it opens the panel — the mark you can see is the way back to the
- *   run, which matters most in the waiting state, where answering IS the next
- *   step. That costs a guard: the agent clicks by viewport coordinate, so a
- *   badge that swallowed a click in the top-right would break its own run.
- *   `withMarksClickThrough` makes every mark inert around each click;
- * - an amber dot over the tab's favicon, because once the user switches to
- *   another tab the badge is invisible and the strip is all they have left.
- *   A still dot, not a blink: motion in a 16px favicon reads as a broken page.
+ * - the favicon dot, because once the user switches to another tab the pill is
+ *   invisible and the strip is all they have left. A still dot, not a blink:
+ *   motion in a 16px favicon reads as a broken page.
  *
  * One tab per run, and runs move one at a time (switch_tab hides before it
  * shows), so at most one tab per run is marked. Marks are repainted after any
@@ -39,10 +40,14 @@ const MARK_HOST_IDS = [HOST_ID, WIDGET_HOST_ID];
  * dot does not vanish — that is the moment the agent needs you most. It settles
  * into a still amber "?": working became waiting-on-you. Still, not pulsing —
  * the pulse is the "alive" language, and the agent is now blocked on the human.
- * The badge stays too, saying so and offering the way back; it used to be
- * pulled here, which meant a run that re-planned mid-flight silently stripped
- * the page of every sign TabRunner was on it. The wait clears when the next run
- * starts (an answer is a run) or the tab is otherwise unmarked.
+ * The badge stays too (the pill's waiting state), saying so and offering the
+ * way back; it used to be pulled here, which meant a run that re-planned
+ * mid-flight silently stripped the page of every sign TabRunner was on it.
+ * The wait clears when the next run starts (an answer is a run) or the tab is
+ * otherwise unmarked.
+ *
+ * When the run finishes, the pill settles into the receipt (✓/✗, self-clearing)
+ * instead of vanishing — see settleAgentIndicator.
  *
  * Best-effort by design: restricted pages (chrome://, the Web Store), a PDF
  * viewer, a `file://` url without file access and a hostile CSP all reject
@@ -51,12 +56,6 @@ const MARK_HOST_IDS = [HOST_ID, WIDGET_HOST_ID];
  * group and the toolbar badge (action-badge.ts) need no injection at all.
  */
 
-/**
- * Tabs currently bearing the marks — one per live run; concurrent runs in
- * different windows each keep theirs. Refresh and hide consult this set, so
- * one run ending never blanks another run's marks.
- */
-const markedTabs = new Set<TabId>();
 /**
  * The tab whose run is blocked on the user — a plan waiting for a yes, or a
  * question it ended on. Its marks carry the still "?" until the answer comes,
@@ -89,120 +88,31 @@ const PULSE_BEAT_MS = 700;
 const pulseTimers = new Map<TabId, ReturnType<typeof setInterval>>();
 
 /**
- * Runs in the page. Must be fully self-contained — it is serialized, not closed over.
- * The favicon link is appended last, so it wins over the page's own; a page that
- * manages its favicon dynamically (unread counters) can still out-vote it mid-run —
- * we don't fight the page, the badge keeps carrying the signal.
- *
- * scripts/shoot-store.ts hand-mirrors this markup for store screenshots —
- * change one, change both.
- *
- * `waiting` swaps the pulsing dot for the still "?" the favicon and the pill
- * speak: the run is alive but blocked on the user, and motion would be a lie.
+ * Runs in the page: the strip half only — the pill is the shared paintWidget.
+ * The link is appended last, so it wins over the page's own; a page that
+ * manages its favicon dynamically (unread counters) can still out-vote it
+ * mid-run — we don't fight the page, the pill keeps carrying the signal.
  */
-export function paintIndicator(
-  hostId: string,
-  label: string,
-  hint: string,
-  linkId: string,
-  faviconUrl: string,
-  restoreId: string,
-  waiting: boolean,
-): void {
-  document.getElementById(hostId)?.remove();
+export function paintFavicon(linkId: string, faviconUrl: string, restoreId: string): void {
   document.getElementById(linkId)?.remove();
   document.getElementById(restoreId)?.remove();
-
-  const host = document.createElement("div");
-  host.id = hostId;
-  // The host stays click-through; only the badge itself takes pointer events,
-  // so the corner around it is the page's. `data-inert` gives that back for the
-  // length of an agent click — see withMarksClickThrough. All of it goes in
-  // with priority: the host lives in page CSS space, where an author
-  // `!important` rule could otherwise pin, move, or click-block the mark.
-  host.style.setProperty("position", "fixed", "important");
-  host.style.setProperty("top", "12px", "important");
-  host.style.setProperty("right", "12px", "important");
-  host.style.setProperty("z-index", "2147483647", "important");
-  host.style.setProperty("pointer-events", "none", "important");
-
-  // Closed shadow root — page CSS cannot restyle the badge and page scripts
-  // cannot reach in to hide it.
-  const root = host.attachShadow({ mode: "closed" });
-  const style = document.createElement("style");
-  /* Hexes mirror theme.css tokens (a page function can't import them):
-     #0b1224 = neutral-900, #e8eefb = neutral-100, #34d399 = brand-400,
-     #fbbf24 = amber-400, #451a03 = amber-950. Recolor both sides together. */
-  style.textContent = `
-    .badge {
-      display: flex; align-items: center; gap: 6px;
-      padding: 6px 10px; border-radius: 9999px;
-      border: 0; background: #0b1224ee; color: #e8eefb;
-      font: 500 12px/1.2 ui-sans-serif, system-ui, sans-serif;
-      /* The resting ring keeps the near-black pill an object on dark pages —
-         the shadow alone vanishes there. */
-      box-shadow: 0 2px 12px #0000004d, 0 0 0 1px #34d39966;
-      pointer-events: auto; cursor: pointer;
-    }
-    .badge:hover { background: #0b1224; }
-    :host([data-inert]) .badge { pointer-events: none }
-    .dot {
-      width: 6px; height: 6px; border-radius: 9999px; flex: none;
-      background: #fbbf24; animation: pulse 1.4s ease-in-out infinite;
-    }
-    .wait {
-      width: 14px; height: 14px; border-radius: 9999px; flex: none;
-      display: flex; align-items: center; justify-content: center;
-      background: #fbbf24; color: #451a03; font-size: 10px; font-weight: 700;
-    }
-    @keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .25 } }
-    @media (prefers-reduced-motion: reduce) { .dot { animation: none } }
-  `;
-
-  // A button, not a div: the mark is the way back to the run, so it answers to
-  // Enter and to a screen reader as the control it is.
-  const badge = document.createElement("button");
-  badge.className = "badge";
-  badge.type = "button";
-  badge.title = hint;
-  badge.addEventListener("click", () => {
-    void chrome.runtime.sendMessage({ type: "tabrunner-mark", action: "open" });
-  });
-  // The status glyph is decorative — the badge's name is its label text, and a
-  // leading "?" must never be what a screen reader announces.
-  const dot = document.createElement("span");
-  dot.setAttribute("aria-hidden", "true");
-  if (waiting) {
-    dot.className = "wait";
-    dot.textContent = "?";
-  } else {
-    dot.className = "dot";
-  }
-  const text = document.createElement("span");
-  text.textContent = label;
-  badge.append(dot, text);
-  root.append(style, badge);
 
   const link = document.createElement("link");
   link.id = linkId;
   link.rel = "icon";
   link.href = faviconUrl;
-
-  // The badge must stay out of <head> — the UA stylesheet hides it and its
-  // children. documentElement covers the window between parse start and <body>/<head>.
-  (document.body ?? document.documentElement).appendChild(host);
   (document.head ?? document.documentElement).appendChild(link);
 }
 
 /**
- * Runs in the page. Removing our link alone is not enough: Chrome keeps showing
- * the last-set favicon until an icon link CHANGES, and the implicit /favicon.ico
- * fallback only applies at load — so the dot would linger on the strip. Re-assert
- * the page's own icon (the last one, mirroring Chrome's pick) — or the root
- * favicon.ico a fresh load would fall back to, when the page declared none.
+ * Runs in the page: hand the favicon back. Removing our link alone is not
+ * enough — Chrome keeps showing the last-set favicon until an icon link
+ * CHANGES, and the implicit /favicon.ico fallback only applies at load — so
+ * the dot would linger on the strip. Re-assert the page's own icon (the last
+ * one, mirroring Chrome's pick) — or the root favicon.ico a fresh load would
+ * fall back to, when the page declared none.
  */
-export function removeIndicator(hostId: string, linkId: string, restoreId: string): void {
-  document.getElementById(hostId)?.remove();
+export function restoreFavicon(linkId: string, restoreId: string): void {
   document.getElementById(linkId)?.remove();
   document.getElementById(restoreId)?.remove();
 
@@ -262,7 +172,7 @@ export function setMarksHidden(hostIds: string[], hidden: boolean): void {
  * ponytail: a repaint landing mid-capture rebuilds the host without the hidden
  * flag, so a navigation finishing at exactly the wrong moment can still put a
  * badge in one frame. The ceiling is one blemished frame; the upgrade path is
- * a paint suppression flag consulted by paintIndicator itself.
+ * a paint suppression flag consulted by paintWidget itself.
  */
 export async function withMarksHidden<T>(tabId: TabId, act: () => Promise<T>): Promise<T> {
   await inject(tabId, setMarksHidden, [MARK_HOST_IDS, true]);
@@ -326,29 +236,42 @@ async function inject<A extends unknown[]>(
   }
 }
 
+/** The driven pill's content — a state sentence, never the task excerpt. */
+function drivenState(waiting: boolean): WidgetState {
+  return {
+    mode: "driven",
+    task: i18n.t(
+      waiting ? "indicator.waiting" : documenting ? "indicator.documenting" : "indicator.driving",
+    ),
+    queuedText: "",
+    awaiting: waiting,
+    awaitingText: "",
+    hideLabel: i18n.t("widget.hide"),
+    openHint: i18n.t("indicator.open"),
+    hideHint: i18n.t("widget.hideHint"),
+    expandHint: i18n.t("widget.expandHint"),
+  };
+}
+
 /**
  * A page that refuses the paint refuses every heartbeat frame too — a PDF
  * viewer, a `file://` url without file access, a CSP that blocks injection. So
- * the pulse only starts once the badge is actually on the page; otherwise the
- * run would spend an `executeScript` every 700ms, forever, drawing nothing. The
- * marks stay tracked either way: a navigation onto a page that does accept them
- * repaints through refreshAgentIndicator, which picks the heartbeat back up.
+ * the pulse only starts once the favicon is actually on the page; otherwise the
+ * run would spend an `executeScript` every 700ms, forever, drawing nothing.
+ * The marks stay tracked either way: a navigation onto a page that does accept
+ * them repaints through refreshAgentIndicator, which picks the heartbeat back
+ * up. (The pill's own dot pulses in CSS — it needs no frames from here.)
  *
  * Losing the marks is a degradation, not a dead end — the run's green tab group
  * and the toolbar badge (action-badge.ts) carry the signal on any page.
  */
 async function paintMarks(tabId: TabId, waiting: boolean): Promise<void> {
-  const painted = await inject(tabId, paintIndicator, [
-    HOST_ID,
-    i18n.t(
-      waiting ? "indicator.waiting" : documenting ? "indicator.documenting" : "indicator.driving",
-    ),
-    i18n.t("indicator.open"),
+  const painted = await inject(tabId, paintFavicon, [
     FAVICON_LINK_ID,
     waiting ? FAVICON_WAITING_URL : FAVICON_DATA_URL,
     RESTORE_LINK_ID,
-    waiting,
   ]);
+  await inject(tabId, paintWidget, [WIDGET_HOST_ID, drivenState(waiting)]);
   // A still state has nothing to beat; a refused paint would beat at nothing.
   if (painted && !waiting) startPulse(tabId);
   else stopPulse(tabId);
@@ -362,27 +285,53 @@ async function paintMarks(tabId: TabId, waiting: boolean): Promise<void> {
 export async function setAgentDocumenting(on: boolean): Promise<void> {
   if (documenting === on) return;
   documenting = on;
-  await Promise.all([...markedTabs].map((tabId) => paintMarks(tabId, waitingTabId === tabId)));
+  await Promise.all([...drivenTabs].map((tabId) => paintMarks(tabId, waitingTabId === tabId)));
 }
 
 export async function showAgentIndicator(tabId: TabId): Promise<void> {
   waitingTabId = null;
-  markedTabs.add(tabId);
+  drivenTabs.add(tabId);
   await paintMarks(tabId, false);
 }
 
 /** Repaint after a load wiped the document. No-op unless this tab is marked. */
 export async function refreshAgentIndicator(tabId: TabId): Promise<void> {
-  if (!markedTabs.has(tabId)) return;
+  if (!drivenTabs.has(tabId)) return;
   await paintMarks(tabId, waitingTabId === tabId);
+}
+
+/** Take the driven marks off a tab — favicon back to the page, pill removed. */
+async function clearMarks(tabId: TabId): Promise<void> {
+  await inject(tabId, restoreFavicon, [FAVICON_LINK_ID, RESTORE_LINK_ID]);
+  await inject(tabId, removeWidget, [WIDGET_HOST_ID]);
 }
 
 export async function hideAgentIndicator(tabId: TabId): Promise<void> {
   if (waitingTabId === tabId) waitingTabId = null;
   documenting = false;
-  markedTabs.delete(tabId);
+  drivenTabs.delete(tabId);
   stopPulse(tabId);
-  await inject(tabId, removeIndicator, [HOST_ID, FAVICON_LINK_ID, RESTORE_LINK_ID]);
+  await clearMarks(tabId);
+}
+
+/**
+ * The run finished (or failed) with its mark on this tab: settle the pill into
+ * the receipt — the same ✓/✗ the strip's group title wears — instead of
+ * stripping every sign TabRunner was here, which reads exactly like a crash.
+ * The receipt self-clears page-side (SETTLE_MS), so the tab leaves tracking
+ * now: a later navigation must not repaint it, and the favicon goes back to
+ * the page — the receipt lives on the page, not the strip.
+ */
+export async function settleAgentIndicator(
+  tabId: TabId,
+  outcome: "done" | "failed",
+): Promise<void> {
+  if (waitingTabId === tabId) waitingTabId = null;
+  documenting = false;
+  drivenTabs.delete(tabId);
+  stopPulse(tabId);
+  await clearMarks(tabId);
+  await inject(tabId, paintWidget, [WIDGET_HOST_ID, settleState(outcome, "driven")]);
 }
 
 /**
@@ -393,7 +342,7 @@ export async function hideAgentIndicator(tabId: TabId): Promise<void> {
  */
 export async function waitAgentIndicator(tabId: TabId): Promise<void> {
   waitingTabId = tabId;
-  markedTabs.add(tabId);
+  drivenTabs.add(tabId);
   await paintMarks(tabId, true);
 }
 

@@ -21,7 +21,12 @@ import { appendMessageTo, getActiveId, getConversationMeta } from "@/modules/con
 import { setActiveConversation } from "@/modules/conversation/conversations";
 import { panelPorts } from "@/modules/conversation/panel-ports";
 import { TranscriptWriter } from "@/modules/conversation/transcript";
-import { focusTab, hideAgentIndicator, refreshAgentIndicator, syncActionBadge } from "@/modules/browser";
+import {
+  focusTab,
+  hideAgentIndicator,
+  refreshAgentIndicator,
+  syncActionBadge,
+} from "@/modules/browser";
 import {
   reconcileStatusWidgets,
   refreshStatusWidget,
@@ -613,6 +618,7 @@ function boardToWidget(board: RunBoard): WidgetState | null {
   if (!lead) {
     if (!board.pendingQuestion) return null;
     return {
+      mode: "ambient",
       // The question itself leads — it is the ask, more informative than a
       // generic "waiting" line. The "?" badge carries the blocked state.
       task: truncate(board.pendingQuestion.question, 120),
@@ -628,6 +634,7 @@ function boardToWidget(board: RunBoard): WidgetState | null {
   const extra = board.running ? board.queue.length : board.queue.length - 1;
   const parked = board.running?.awaiting === true;
   return {
+    mode: "ambient",
     task: truncate(lead.task, 120),
     queuedText: extra > 0 ? i18n.t("widget.queued", { count: extra }) : "",
     awaiting: parked,
