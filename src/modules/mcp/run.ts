@@ -24,12 +24,24 @@ const log = createLogger("mcp");
 
 const EMPTY_HANDLE: McpHandle = { resolve: () => undefined, close: async () => {} };
 
-export async function loadMcpForRun(signal?: AbortSignal): Promise<McpRunSnapshot> {
+/** Answers a server→client request mid-call. `serverName` says WHO asked, so
+ *  the panel can put a face on the question. Injected by start-run — the human
+ *  policy lives there; this module stays transport. */
+export type McpRequestHandler = (
+  method: string,
+  params: Record<string, unknown> | undefined,
+  serverName: string,
+) => Promise<"decline" | Record<string, unknown>>;
+
+export async function loadMcpForRun(
+  signal?: AbortSignal,
+  onRequest?: McpRequestHandler,
+): Promise<McpRunSnapshot> {
   const servers = (await listMcpServers()).filter((s) => s.enabled);
   if (servers.length === 0)
     return { tools: [], handle: EMPTY_HANDLE, failures: [] };
 
-  const opened = await Promise.all(servers.map((cfg) => openServer(cfg, signal)));
+  const opened = await Promise.all(servers.map((cfg) => openServer(cfg, signal, onRequest)));
 
   const catalog = buildCatalog(
     opened.flatMap((o) => (o.session ? [{ config: o.config, advertised: o.advertised }] : [])),
@@ -85,10 +97,19 @@ interface OpenResult {
   failureLine: string;
 }
 
-async function openServer(config: McpServerConfig, signal?: AbortSignal): Promise<OpenResult> {
+async function openServer(
+  config: McpServerConfig,
+  signal?: AbortSignal,
+  onRequest?: McpRequestHandler,
+): Promise<OpenResult> {
   let session: OpenResult["session"];
   try {
-    session = new McpSession({ url: config.url, headers: config.headers });
+    // Bind the server's name into every callback so answers can say who asked.
+    const bound = onRequest
+      ? (method: string, params: Record<string, unknown> | undefined) =>
+          onRequest(method, params, config.name)
+      : undefined;
+    session = new McpSession({ url: config.url, headers: config.headers, onRequest: bound });
     await session.initialize();
     const advertised = await session.listTools(signal);
     await stampServerStatus(config.id, {

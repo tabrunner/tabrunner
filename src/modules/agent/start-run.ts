@@ -163,7 +163,54 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
 
     // Remote MCP servers open alongside tab resolution — a slow server costs
     // latency only where it overlaps, and its failure never blocks the run.
-    mcpPromise = loadMcpForRun(run.controller.signal);
+    mcpPromise = loadMcpForRun(run.controller.signal, async (_method, params, serverName) => {
+      // The gate's twin: only a panel run has a human at the other end. A
+      // bridge client is an AI that should re-ask its own user; a scheduled
+      // run's consent was given at creation — neither can answer a question,
+      // and declining is the safe direction (the gate auto-approves plans;
+      // handing data to a server is not ours to approve for them).
+      if (owner !== "panel") return "decline";
+      return new Promise<{ action: "accept" | "decline"; value?: Record<string, unknown> }>(
+        (resolve) => {
+          const requestId = crypto.randomUUID();
+          const message = typeof params?.message === "string" ? params.message : "";
+          const requestedSchema =
+            typeof params?.requestedSchema === "object" && params.requestedSchema !== null
+              ? (params.requestedSchema as Record<string, unknown>)
+              : undefined;
+          emit({
+            type: "elicitation",
+            requestId,
+            message,
+            serverName,
+            ...(requestedSchema ? { requestedSchema } : {}),
+          });
+          markRunningAwaiting(conversationId, true);
+          void waitAgentIndicator(drivenTabId);
+          run.elicitation = {
+            requestId,
+            resolve: (result) => {
+              // Answered: the run works again, so the working marks return.
+              markRunningAwaiting(conversationId, false);
+              void showAgentIndicator(drivenTabId);
+              resolve(result);
+            },
+          };
+          // A stop (or panel close) while parked declines, so the loop unwinds
+          // instead of hanging on a promise nobody resolves.
+          run.controller.signal.addEventListener(
+            "abort",
+            () => {
+              if (run.elicitation?.requestId === requestId) {
+                run.elicitation.resolve({ action: "decline" });
+                run.elicitation = undefined;
+              }
+            },
+            { once: true },
+          );
+        },
+      );
+    });
 
     // Where the run drives: the user's current tab by default (adopted or
     // this-page), a tab of the run's own only when there's no page to work —

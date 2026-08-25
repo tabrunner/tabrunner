@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { runsHere, useConversationStore, retryTargetFrom } from "./store";
 import { Markdown } from "./Markdown";
 import { PlanMark } from "./PlanMark";
+import { ElicitationCard } from "./ElicitationCard";
 import { groupBursts, type Burst } from "./bursts";
 import { useEngine, useNow } from "./hooks";
 import { toolVerbKey, toolHint, displacedHint } from "./tool-labels";
@@ -1199,6 +1200,10 @@ function Transcript() {
   const planApproval = useConversationStore((s) => s.planApproval);
   const approvePlan = useConversationStore((s) => s.approvePlan);
   const rejectPlan = useConversationStore((s) => s.rejectPlan);
+  // The remote server's question — parked like the gate above it, answered by
+  // the same hand.
+  const elicitation = useConversationStore((s) => s.elicitation);
+  const answerElicitation = useConversationStore((s) => s.answerElicitation);
   // The same provider every other surface calls active — the error bubble's
   // "Update your API key" must open the config the failed run actually used.
   // The provider THIS conversation runs on — the error came from it, so the
@@ -1377,12 +1382,17 @@ function Transcript() {
               />
             </MessageScrollerItem>
           )}
+          {elicitation && (
+            <MessageScrollerItem className="settle">
+              <ElicitationCard ask={elicitation} onAnswer={answerElicitation} />
+            </MessageScrollerItem>
+          )}
           <LiveText running={live} />
           {/* Dots cover the gaps only — a live tool row carries its own spinner,
               and a parked approval is not a gap: the run is waiting on the user,
               not working, so "working…" under the card would rush a decision
-              that has all the time it needs. */}
-          {live && !planApproval && !hasLiveStep && <WorkingDots />}
+              that has all the time it needs. The server's question parks too. */}
+          {live && !planApproval && !elicitation && !hasLiveStep && <WorkingDots />}
         </MessageScrollerContent>
       </MessageScrollerViewport>
       {offEnd && (

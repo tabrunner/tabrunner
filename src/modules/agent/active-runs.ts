@@ -40,6 +40,15 @@ export interface ActiveRun {
     ask: PlanApprovalPayload;
     resolve: (approved: boolean, feedback?: string) => void;
   };
+  /**
+   * A parked elicitation from a remote MCP server — the plan gate's twin for
+   * server-asked questions. One slot: a second request arriving while one is
+   * parked gets an immediate decline rather than queueing behind it.
+   */
+  elicitation?: {
+    requestId: string;
+    resolve: (result: { action: "accept" | "decline"; value?: Record<string, unknown> }) => void;
+  };
 }
 
 let active: ActiveRun | null = null;
@@ -93,4 +102,17 @@ export function answerPlanApproval(approved: boolean, feedback?: string): void {
   if (!active?.planApproval) return;
   active.planApproval.resolve(approved, feedback);
   active.planApproval = undefined;
+}
+
+/** The panel's answer to a parked elicitation. No-op when nothing is parked or
+ *  the answer names an older request than the one now holding the slot. */
+export function answerElicitation(
+  requestId: string,
+  action: "accept" | "decline",
+  value?: Record<string, unknown>,
+): boolean {
+  if (!active?.elicitation || active.elicitation.requestId !== requestId) return false;
+  active.elicitation.resolve({ action, ...(action === "accept" && value ? { value } : {}) });
+  active.elicitation = undefined;
+  return true;
 }

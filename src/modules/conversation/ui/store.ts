@@ -6,6 +6,7 @@ import type {
   DrivingPayload,
   Event,
   PanelMessage,
+  ElicitationAsk,
   PlanApprovalPayload,
 } from "@/shared/protocol";
 import { PORT_NAME } from "@/shared/protocol";
@@ -76,6 +77,8 @@ export interface ConversationState {
   recording: boolean;
   /** A proposed plan parked on the user's answer — the run resumes on approve, ends on reject. */
   planApproval: PlanApprovalPayload | null;
+  /** A remote MCP server asking for input mid-tool-call — the plan card's twin. */
+  elicitation: ElicitationAsk | null;
   /** This run's plan has the user's yes — the walk-away gate. Closing the panel
    *  before it strands the approval prompt on an OS notification. */
   planApproved: boolean;
@@ -171,6 +174,8 @@ export interface ConversationState {
   /** Answer a parked plan prompt — the loop resumes on approve, unwinds on reject. */
   approvePlan: () => void;
   rejectPlan: () => void;
+  /** Answer a parked elicitation — accept with the form's values, or decline. */
+  answerElicitation: (action: "accept" | "decline", value?: Record<string, unknown>) => void;
   /** Send a parked plan back with changes — the model replans and asks again. */
   revisePlan: (feedback: string) => void;
   /** Start a fresh transcript — the current one stays in history */
@@ -376,6 +381,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     pendingStepId: null,
     planMsgId: null,
     planApproval: null,
+    elicitation: null,
     planApproved: false,
     recording: false,
     queued: [],
@@ -453,6 +459,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       pendingStepId: null,
       planMsgId: null,
       planApproval: null,
+      elicitation: null,
       drivingTab: null,
       queuedRun: null,
       planApproved: false,
@@ -533,6 +540,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       // A new run draws its own card — never revives the last run's checklist.
       planMsgId: null,
       planApproval: null,
+      elicitation: null,
       planApproved: false,
       recording: false,
     });
@@ -773,6 +781,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // learn, and it settles the walk-away for all of them at once.
         set({
           planApproval: null,
+          elicitation: null,
           planApproved: event.approved,
           // Only a revision replans. A bare rejection ends the run, and saying
           // "Revising the plan…" would promise a card that is never coming.
@@ -782,6 +791,26 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // panel that sent it persisted it; this is display only, so it reaches
         // the windows that were watching without writing the transcript twice.
         if (event.feedback) pushDisplay(makeMsg("user", event.feedback));
+        break;
+
+      case "elicitation":
+        // A remote server asked a question mid-tool-call — the plan card's
+        // twin. Parked like a gate: blocked-on-you, not working, so the same
+        // walk-away release applies.
+        cancelPanelClose();
+        set({
+          elicitation: {
+            requestId: event.requestId,
+            message: event.message,
+            serverName: event.serverName,
+            ...(event.requestedSchema ? { requestedSchema: event.requestedSchema } : {}),
+          },
+        });
+        break;
+
+      case "elicitation_done":
+        // Settled here or in another window; only the matching card disarms.
+        if (get().elicitation?.requestId === event.requestId) set({ elicitation: null });
         break;
 
       case "usage":
@@ -1113,6 +1142,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     pendingStepId: null,
     planMsgId: null,
     planApproval: null,
+    elicitation: null,
     planApproved: false,
     recording: false,
     queued: [],
@@ -1412,6 +1442,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         runEndedAt: Date.now(),
         pendingStepId: null,
         planApproval: null,
+        elicitation: null,
         queued: [],
         pendingSend: pending,
       }));
@@ -1438,6 +1469,20 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       if (!get().planApproval) return;
       post({ type: "plan_approval", approved: false });
       set({ planApproval: null });
+    },
+
+    answerElicitation: (action, value) => {
+      const current = get().elicitation;
+      if (!current) return;
+      // The panel that clicked disarms its own card here; every other panel
+      // showing the thread learns from the elicitation_done broadcast.
+      post({
+        type: "elicitation_result",
+        requestId: current.requestId,
+        action,
+        ...(action === "accept" && value ? { value } : {}),
+      });
+      set({ elicitation: null });
     },
 
     revisePlan: (feedback) => {

@@ -5,6 +5,7 @@ import {
   getActiveRun,
   releaseRun,
   answerPlanApproval,
+  answerElicitation,
   type ActiveRun,
 } from "@/modules/agent/active-runs";
 import {
@@ -294,6 +295,19 @@ export default defineBackground(() => {
               ...(msg.feedback ? { feedback: msg.feedback } : {}),
             });
           }
+          break;
+        }
+
+        case "elicitation_result": {
+          // The user's answer to a parked elicitation — same owner-scoping as
+          // plan_approval: bridge and schedule runs never park, so nothing here
+          // can be theirs. A stale requestId (answered from another window
+          // first) finds no slot; the done event carries the id, so panels
+          // clear only the card that was actually settled.
+          const answering = getActiveRun();
+          if (!answering || answering.owner !== "panel") break;
+          answerElicitation(msg.requestId, msg.action, msg.value);
+          broadcast(answering.conversationId, { type: "elicitation_done", requestId: msg.requestId });
           break;
         }
 

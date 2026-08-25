@@ -47,6 +47,13 @@ export type Command =
    */
   | { type: "plan_approval"; approved: boolean; feedback?: string }
   /**
+   * The user answered a remote server's elicitation request mid-tool-call —
+   * `value` carries the form fields it asked for, or a bare decline. Resolves
+   * the run's parked wait; owner-scoped like plan_approval, since bridge and
+   * schedule runs never park (nobody is present to answer).
+   */
+  | { type: "elicitation_result"; requestId: string; action: "accept" | "decline"; value?: Record<string, unknown> }
+  /**
    * Ask what is live: an external agent in the browser (answered with
    * run_active), and — for the thread this panel is showing — its driven tab,
    * its spend, a parked plan gate and the steers still waiting.
@@ -88,6 +95,17 @@ export type Command =
  * Payload shapes named once here — the agent loop and the panel store import
  * them instead of maintaining their own field-for-field copies.
  */
+
+/** A remote MCP server's question, wire-shaped — any panel showing the thread
+ *  renders it, and the answer routes back through elicitation_result. */
+export interface ElicitationAsk {
+  requestId: string;
+  message: string;
+  /** Which configured server asked — the card names it, so the question has a face. */
+  serverName: string;
+  /** JSON Schema for the fields wanted; absent/empty means accept carries {}. */
+  requestedSchema?: Record<string, unknown>;
+}
 
 /** One finished tool call, as the panel renders it. */
 export interface StepPayload {
@@ -193,6 +211,11 @@ export type Event =
    * card was (the panel that sent it persists it — this only draws it).
    */
   | { type: "plan_answered"; approved: boolean; feedback?: string }
+  /** A remote MCP server asked the user for input mid-tool-call. Parked until
+   *  an elicitation_result — the twin of the plan-approval card. */
+  | ({ type: "elicitation" } & ElicitationAsk)
+  /** Answered somewhere — every panel showing the thread disarms its card. */
+  | { type: "elicitation_done"; requestId: string }
   /** A queued message was inserted into the conversation at a tool boundary */
   | { type: "injected"; id: string; text: string }
   /**
