@@ -47,6 +47,16 @@ export function declineResponse(id: number | string): string {
 
 export type MessageKind = "response" | "request" | "notification" | "invalid";
 
+/** Wire-narrowing guards shared by every module that reads untyped envelopes
+ *  (client, results) — one definition so the guards cannot drift apart. */
+export function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+export function str(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
 /** Sort a parsed SSE/JSON payload into what the session's pump needs to do. */
 export function classifyMessage(msg: unknown): MessageKind {
   if (typeof msg !== "object" || msg === null) return "invalid";
@@ -89,18 +99,15 @@ export class SseFrameReader {
     return out;
   }
 
-  /** Flush a body that ended mid-frame: the leftover buffer is one last line. */
+  /** Flush a body that ended mid-frame: the leftover buffer is one last line —
+   *  a `data:` payload to append, then whatever frame it completed. */
   end(): unknown[] {
     const out: unknown[] = [];
     if (this.#buffer !== "") {
       const line = this.#buffer.replace(/\r$/, "");
       this.#buffer = "";
-      if (line === "") {
-        out.push(...this.#flushFrame());
-      } else {
-        if (line.startsWith("data:")) this.#frame.push(line.slice(5).trimStart());
-        out.push(...this.#flushFrame());
-      }
+      if (line.startsWith("data:")) this.#frame.push(line.slice(5).trimStart());
+      out.push(...this.#flushFrame());
     }
     return out;
   }

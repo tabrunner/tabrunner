@@ -110,9 +110,8 @@ export function answerElicitation(
   requestId: string,
   action: "accept" | "decline",
   value?: Record<string, unknown>,
-): boolean {
-  if (!active?.elicitation || active.elicitation.requestId !== requestId) return false;
+): void {
+  if (!active?.elicitation || active.elicitation.requestId !== requestId) return;
   active.elicitation.resolve({ action, ...(action === "accept" && value ? { value } : {}) });
   active.elicitation = undefined;
-  return true;
 }

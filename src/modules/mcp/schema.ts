@@ -2,6 +2,7 @@ import type { ExternalJsonSchema, ToolDef } from "@/modules/providers/types";
 import { exposedPrefix, exposedToolName } from "./names";
 import {
   MAX_TOOL_DESC_CHARS,
+  MAX_TOOL_SCHEMA_CHARS,
   MAX_TOOLS_PER_SERVER,
   MAX_TOTAL_DESC_CHARS,
   type McpAdvertisedTool,
@@ -71,6 +72,12 @@ export function buildCatalog(inputs: CatalogInput[]): Catalog {
       if (usedNames.has(exposed)) {
         // Within one server: a misbehaving duplicate; across servers: a
         // truncation collision. First wins either way.
+        slice.rejected++;
+        continue;
+      }
+      // The schema rides every turn just like the description, so it gets the
+      // same kind of ceiling — enforced before any budget is spent on the tool.
+      if (JSON.stringify(schema).length > MAX_TOOL_SCHEMA_CHARS) {
         slice.rejected++;
         continue;
       }

@@ -3,9 +3,11 @@ import {
   SseFrameReader,
   classifyMessage,
   declineResponse,
+  isRecord,
   methodNotFoundResponse,
   notification,
   request,
+  str,
 } from "./jsonrpc";
 import type { McpAdvertisedTool, McpCallResult } from "./types";
 
@@ -62,7 +64,6 @@ export interface McpSessionOptions {
   headers?: Record<string, string>;
   onRequest?: ServerRequestHandler;
   /** Test seam — production callers take the defaults. */
-  initTimeoutMs?: number;
   callTimeoutMs?: number;
 }
 
@@ -81,6 +82,7 @@ export class McpSession {
    * stamp the server's status row and move on.
    */
   async initialize(): Promise<void> {
+    const id = this.#nextId++;
     const { result, sessionId } = await this.#exchange(
       request(
         "initialize",
@@ -89,9 +91,10 @@ export class McpSession {
           capabilities: { elicitation: {} },
           clientInfo: { name: "TabRunner", version: "0" },
         },
-        this.#nextId++,
+        id,
       ),
-      this.opts.initTimeoutMs ?? INIT_TIMEOUT_MS,
+      INIT_TIMEOUT_MS,
+      { expectId: id },
     );
     if (sessionId) this.#sessionId = sessionId;
     if (isRecord(result) && typeof result.protocolVersion === "string")
@@ -104,8 +107,9 @@ export class McpSession {
 
   /** Advertised tools. Throws — the run snapshot owns failure presentation. */
   async listTools(signal?: AbortSignal): Promise<McpAdvertisedTool[]> {
+    const id = this.#nextId++;
     const result = await this.#withReinit(() =>
-      this.#exchange(request("tools/list", {}, this.#nextId++), INIT_TIMEOUT_MS, { signal }),
+      this.#exchange(request("tools/list", {}, id), INIT_TIMEOUT_MS, { signal, expectId: id }),
     );
     const tools = isRecord(result) && Array.isArray(result.tools) ? result.tools : [];
     return tools.filter(isRecord).map((t) => ({
@@ -123,11 +127,12 @@ export class McpSession {
     signal?: AbortSignal,
   ): Promise<McpCallResult> {
     try {
+      const id = this.#nextId++;
       const result = await this.#withReinit(() =>
         this.#exchange(
-          request("tools/call", { name: toolName, arguments: args }, this.#nextId++),
+          request("tools/call", { name: toolName, arguments: args }, id),
           this.opts.callTimeoutMs ?? CALL_TIMEOUT_MS,
-          { signal },
+          { signal, expectId: id },
         ),
       );
       return toCallResult(result);
@@ -144,18 +149,14 @@ export class McpSession {
   async close(): Promise<void> {
     if (this.#closed || !this.#sessionId) return;
     this.#closed = true;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), CLOSE_TIMEOUT_MS);
     try {
       await fetch(this.opts.url, {
         method: "DELETE",
         headers: this.#headers(),
-        signal: controller.signal,
+        signal: AbortSignal.timeout(CLOSE_TIMEOUT_MS),
       });
     } catch {
       // The session expires server-side on its own; nothing to do here.
-    } finally {
-      clearTimeout(timer);
     }
   }
 
@@ -197,9 +198,9 @@ export class McpSession {
   async #exchange(
     body: string,
     timeoutMs: number,
-    o: { signal?: AbortSignal; expectId?: number } = {},
+    o: { signal?: AbortSignal; expectId: number },
   ): Promise<{ result: unknown; sessionId?: string }> {
-    const expectId = o.expectId ?? extractId(body);
+    const expectId = o.expectId;
     const timeout = AbortSignal.timeout(timeoutMs);
     let res: Response;
     try {
@@ -245,11 +246,11 @@ export class McpSession {
     return new Promise((resolve, reject) => {
       const reader = new SseFrameReader();
       const decoder = new TextDecoder();
-      const stream = body.getReader();
+      const wire = body.getReader();
       void (async () => {
         try {
           while (true) {
-            const { done, value } = await stream.read();
+            const { done, value } = await wire.read();
             if (done) break;
             for (const msg of reader.push(decoder.decode(value, { stream: true }))) {
               const routed = this.#route(msg, expectId, resolve, reject);
@@ -264,7 +265,12 @@ export class McpSession {
         } catch (e) {
           reject(e);
         } finally {
-          stream.releaseLock();
+          // Settled or failed: stop reading our half. Each POST carries its own
+          // response stream, so cancelling ours cannot take another call's
+          // reply — leaving it open would hold the socket until the call
+          // timeout fired, one dangling reader per tool call.
+          await wire.cancel().catch(() => {});
+          wire.releaseLock();
         }
       })();
     });
@@ -291,9 +297,13 @@ export class McpSession {
       case "request":
         void this.#answerServerRequest(msg as Record<string, unknown>);
         return false;
-      case "notification":
-        log.debug("notification:", truncate(JSON.stringify(msg), 200));
+      case "notification": {
+        // The method name only — stringifying the payload for a log nobody is
+        // reading is work on the pump's hot path.
+        const m = msg as Record<string, unknown>;
+        log.debug("notification:", typeof m.method === "string" ? m.method : "unknown");
         return false;
+      }
       default:
         return false;
     }
@@ -326,18 +336,12 @@ export class McpSession {
 
   /** POST without waiting on the content — notifications, answers. */
   async #fireAndForget(body: string): Promise<void> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ANSWER_TIMEOUT_MS);
-    try {
-      await fetch(this.opts.url, {
-        method: "POST",
-        headers: { accept: "application/json, text/event-stream", "content-type": "application/json", ...this.#headers() },
-        body,
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
+    await fetch(this.opts.url, {
+      method: "POST",
+      headers: { accept: "application/json, text/event-stream", "content-type": "application/json", ...this.#headers() },
+      body,
+      signal: AbortSignal.timeout(ANSWER_TIMEOUT_MS),
+    });
   }
 
   #headers(): Record<string, string> {
@@ -360,24 +364,6 @@ function toCallResult(result: unknown): McpCallResult {
     content,
     ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
   };
-}
-
-/** Pull the request id back out of a serialized body so callers needn't thread it. */
-function extractId(body: string): number {
-  try {
-    const parsed = JSON.parse(body) as { id?: unknown };
-    return typeof parsed.id === "number" ? parsed.id : -1;
-  } catch {
-    return -1;
-  }
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
-
-function str(v: unknown): string {
-  return typeof v === "string" ? v : "";
 }
 
 function safeJson(text: string): unknown {

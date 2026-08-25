@@ -110,3 +110,12 @@ export function TrashIcon({ size, className }: IconProps) {
     </Icon>
   );
 }
+
+/** Add one — new rows everywhere. */
+export function PlusIcon({ size, className }: IconProps) {
+  return (
+    <Icon size={size} className={className}>
+      <path d="M12 5v14M5 12h14" />
+    </Icon>
+  );
+}

@@ -1,6 +1,7 @@
 import { createWriteQueue, defineItem } from "@/lib/storage";
 import { i18n } from "@/i18n";
-import { MAX_MCP_SERVERS, mcpServersItem, validMcpUrl } from "./config";
+import { validOutboundUrl } from "@/lib/url";
+import { MAX_MCP_SERVERS, mcpServersItem } from "./config";
 import type { McpServerConfig, McpServerStatus } from "./types";
 
 /**
@@ -58,7 +59,7 @@ export function saveServer(input: ServerInput): Promise<SaveResult> {
   return serialized(async (): Promise<SaveResult> => {
     const name = input.name.trim();
     if (!name || name.length > 32) return { ok: false, error: i18n.t(ERRORS.invalidName) };
-    if (!validMcpUrl(input.url.trim())) return { ok: false, error: i18n.t(ERRORS.invalidUrl) };
+    if (!validOutboundUrl(input.url.trim())) return { ok: false, error: i18n.t(ERRORS.invalidUrl) };
 
     const list = await mcpServersItem.get();
     const id = input.id ?? crypto.randomUUID();

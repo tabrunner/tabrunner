@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeMcpResult } from "../results";
-import { MAX_MCP_RESULT_CHARS } from "../types";
+import { MAX_MCP_RESULT_CHARS, MAX_MCP_RESULT_IMAGES } from "../types";
 
 function result(content: Array<Record<string, unknown>>, overrides: Partial<Parameters<typeof normalizeMcpResult>[0]> = {}) {
   return normalizeMcpResult({ isError: false, content, ...overrides });
@@ -25,8 +25,20 @@ describe("normalizeMcpResult", () => {
   });
 
   it("falls back to structuredContent only when there is no content at all", () => {
-    expect(result([], { structuredContent: { rows: 3 } }).data).toEqual({ rows: 3 });
+    // Serialized and capped here rather than passed through unbounded — the
+    // loop would stringify it onto the wire anyway.
+    expect(result([], { structuredContent: { rows: 3 } }).data).toBe('{"rows":3}');
     expect(result([{ type: "text", text: "x" }], { structuredContent: { rows: 3 } }).data).toBe("x");
+    const big = result([], { structuredContent: { blob: "y".repeat(MAX_MCP_RESULT_CHARS + 10) } });
+    expect(big.data).toContain("[truncated");
+  });
+
+  it("withholds images past the per-result cap, saying so", () => {
+    const out = result(
+      Array.from({ length: MAX_MCP_RESULT_IMAGES + 2 }, () => ({ type: "image", data: "QUJD" })),
+    );
+    expect(out.images).toHaveLength(MAX_MCP_RESULT_IMAGES);
+    expect(out.data).toBe("[2 more images withheld]");
   });
 
   it("degrades resources, links and audio to placeholder lines", () => {

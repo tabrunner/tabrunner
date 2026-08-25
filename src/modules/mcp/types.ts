@@ -20,6 +20,14 @@ export const MAX_TOOLS_PER_SERVER = 128;
 export const MAX_TOOL_DESC_CHARS = 2048;
 
 /**
+ * One tool's serialized input-schema cap, for the same per-turn reason as the
+ * description budget: the schema rides every request of every turn. Generous
+ * against real schemas (most land under 1KB); anything larger is a server
+ * misbehaving, not a catalog worth billing.
+ */
+export const MAX_TOOL_SCHEMA_CHARS = 4096;
+
+/**
  * The whole-catalog description budget across all servers in a run. A tool
  * schema rides every request of every turn, so this — not a system-prompt
  * listing, which would bill the same tokens twice — is where bloat stops.
@@ -28,6 +36,10 @@ export const MAX_TOTAL_DESC_CHARS = 12_000;
 
 /** Tool-result text cap before truncation. The loop trims OLD results harder. */
 export const MAX_MCP_RESULT_CHARS = 50_000;
+
+/** Per-result image cap — one call returning dozens of screenshots is a
+ *  misbehaving server, and every image rides the wire to the model. */
+export const MAX_MCP_RESULT_IMAGES = 4;
 
 /**
  * Exposed-name budget. Anthropic caps tool names at 64 and its OAuth requests

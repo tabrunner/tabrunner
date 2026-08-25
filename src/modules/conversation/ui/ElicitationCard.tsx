@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/Button";
+import { inputChrome } from "@/components/FieldShell";
 import { Switch } from "@/components/Switch";
 import type { ElicitationAsk } from "@/shared/protocol";
 
@@ -101,7 +102,7 @@ export function ElicitationCard({
                 />
               ) : options ? (
                 <select
-                  className="min-w-0 flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 focus:border-brand-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                  className={`${inputChrome} min-w-0 flex-1 px-2 py-1 text-xs text-neutral-800 dark:text-neutral-200`}
                   value={str}
                   onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
                 >
@@ -114,7 +115,7 @@ export function ElicitationCard({
                 </select>
               ) : (
                 <input
-                  className="min-w-0 flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 font-mono text-xs text-neutral-800 focus:border-brand-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                  className={`${inputChrome} min-w-0 flex-1 px-2 py-1 font-mono text-xs text-neutral-800 dark:text-neutral-200`}
                   value={str}
                   onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
                   {...(f.kind === "number" ? { inputMode: "numeric" as const } : {})}

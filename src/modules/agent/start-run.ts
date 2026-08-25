@@ -104,16 +104,74 @@ export type StartRunResult = { ok: true } | { ok: false; active: ActiveRun };
  * each caller can word it for its own audience.
  */
 export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResult> {
-  const { conversationId, owner, task, images, emit, onAskUser, onPlanApprovalRequest } = opts;
+  const { conversationId, owner, task, images, emit: baseEmit, onAskUser, onPlanApprovalRequest } = opts;
   const claim = acquireRun(conversationId, owner);
   if (!claim.ok) return { ok: false, active: claim.active };
   const { run } = claim;
+
+  // A stop (or panel close) while parked answers the safe direction — the plan
+  // a flat "no" (its reject side-effects apply), the elicitation a decline —
+  // so the loop unwinds instead of hanging on a promise nobody resolves. ONE
+  // listener for the whole run: parks install none of their own, so answered
+  // asks leave nothing behind on the signal.
+  run.controller.signal.addEventListener(
+    "abort",
+    () => {
+      if (run.planApproval) {
+        run.planApproval.resolve(false);
+        run.planApproval = undefined;
+      }
+      if (run.elicitation) {
+        run.elicitation.resolve({ action: "decline" });
+        run.elicitation = undefined;
+      }
+    },
+    { once: true },
+  );
+
+  // One narrator, two audiences: lifecycle facts cross the event stream once,
+  // and webhooks derive from that telling instead of being tapped onto the
+  // callbacks beside it — so every ending notifies everywhere or nowhere (the
+  // crashed-loop path below once drew a transcript row and fired no hook; a
+  // silently-reported error still failed the run and says so). `run_started`
+  // stays a direct fire below — it is the transition marker itself, not an
+  // event's echo. ask_user keeps its own tap beside the question's other
+  // ambient side-effects; no protocol event carries it.
+  let runIsReal = false;
+  const emit = (event: Event): void => {
+    baseEmit(event);
+    if (!runIsReal) return;
+    if (event.type === "error") {
+      fireHook("error", {
+        conversationId,
+        task,
+        message: event.message,
+        ...(event.kind ? { kind: event.kind } : {}),
+      });
+    } else if (event.type === "done") {
+      fireHook("run_finished", {
+        conversationId,
+        task,
+        ...(event.summary ? { summary: event.summary } : {}),
+        outcome: runFailed
+          ? "error"
+          : run.controller.signal.aborted
+            ? "stopped"
+            : event.question
+              ? "question"
+              : "done",
+      });
+    }
+  };
 
   // The run's decision for the ambient pill, made in the inner finally (which
   // can see how the run ended) and read by the release finally (which can see
   // the board settle) — the receipt paints only after the release has pulled
   // the working pill, and only if no queued run took the slot.
   let ambientSettle: { outcome: SettleOutcome; tabId: number } | null = null;
+  // How the run's tab group is retitled when it lets go — ✓, ? or ✗. Outer
+  // scope because the emit wrapper below reads it to word run_finished.
+  let runFailed = false;
   /** Remote MCP sessions opened mid-setup; closed in the outer finally so
    *  every ending — including the early returns below — tears them down. */
   let mcpPromise: Promise<McpRunSnapshot> | undefined;
@@ -197,18 +255,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
               resolve(result);
             },
           };
-          // A stop (or panel close) while parked declines, so the loop unwinds
-          // instead of hanging on a promise nobody resolves.
-          run.controller.signal.addEventListener(
-            "abort",
-            () => {
-              if (run.elicitation?.requestId === requestId) {
-                run.elicitation.resolve({ action: "decline" });
-                run.elicitation = undefined;
-              }
-            },
-            { once: true },
-          );
+          // Abort answers the decline — the run-level listener above.
         },
       );
     });
@@ -251,8 +298,6 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     // The run's closing word — a documented run reuses it as the walkthrough's
     // "what this accomplishes" outro.
     let doneSummary: string | undefined;
-    // How the run's tab group is retitled when it lets go — ✓, ? or ✗.
-    let runFailed = false;
     // A plain "no" to a plan: nothing ran, so the tab this run opened for the
     // job is litter to take back rather than a result to keep.
     let planRejected = false;
@@ -355,8 +400,10 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // remote is not a failed action) and silent on success: availability is
       // legible from the tools simply appearing in the model's set.
       for (const failure of mcp.failures) emit({ type: "step", tool: "mcp", summary: failure });
-      // The run's own webhook — fired after the run is real (slot claimed,
+      // The run's own webhook — armed after the run is real (slot claimed,
       // provider resolved) so a delivery can never describe a run that isn't.
+      // From here the emit wrapper above derives error/finished deliveries.
+      runIsReal = true;
       fireHook("run_started", { conversationId, task });
       const wire = await runAgentLoop({
         provider,
@@ -429,16 +476,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
                   resolve(revision ? { approved: false, feedback: revision } : { approved });
                 },
               };
-              // A stop (or the panel closing) while parked answers "no", so the
-              // loop unwinds instead of hanging on a promise nobody resolves.
-              run.controller.signal.addEventListener(
-                "abort",
-                () => {
-                  run.planApproval?.resolve(false);
-                  run.planApproval = undefined;
-                },
-                { once: true },
-              );
+              // Abort answers "no" — the run-level listener installed at the top.
             });
           },
           onUsage: (tick) => {
@@ -461,24 +499,12 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             // changed something we don't know yet — the same distinction the
             // loop draws when it picks log.error over log.warn. Classified
             // states (rate limit, quota, auth) are not bugs and carry their
-            // own fix, so they stay off the report path.
+            // own fix, so they stay off the report path. The error webhook
+            // derives from the event itself in the emit wrapper.
             emit({ type: "error", message, kind, ...(kind ? {} : { unexpected: true }) });
-            fireHook("error", { conversationId, task, message, ...(kind ? { kind } : {}) });
           },
           onDone: (summary) => {
             doneSummary = summary;
-            fireHook("run_finished", {
-              conversationId,
-              task,
-              ...(summary ? { summary } : {}),
-              outcome: runFailed
-                ? "error"
-                : run.controller.signal.aborted
-                  ? "stopped"
-                  : endedOnQuestion
-                    ? "question"
-                    : "done",
-            });
             emit({
               type: "done",
               summary,

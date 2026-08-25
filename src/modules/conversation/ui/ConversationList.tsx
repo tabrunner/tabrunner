@@ -7,7 +7,7 @@ import { useSchedules } from "@/modules/schedule/ui";
 import { Button } from "@/components/Button";
 import { CometPose } from "@/components/CometPose";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { Icon, PencilIcon, TrashIcon } from "@/components/Icon";
+import { Icon, PencilIcon, PlusIcon, TrashIcon } from "@/components/Icon";
 import { formatMoney } from "@/lib/format";
 import { TitleInput } from "./TitleInput";
 
@@ -15,14 +15,6 @@ function BackIcon() {
   return (
     <Icon>
       <path d="M19 12H5m7-7-7 7 7 7" />
-    </Icon>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <Icon>
-      <path d="M12 5v14M5 12h14" />
     </Icon>
   );
 }

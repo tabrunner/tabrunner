@@ -2,20 +2,12 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
-import { Icon, XIcon } from "@/components/Icon";
+import { inputChrome } from "@/components/FieldShell";
+import { PlusIcon, XIcon } from "@/components/Icon";
 import { TitledDialog } from "@/components/TitledDialog";
 import type { McpServerConfig } from "../types";
 import { saveServer } from "../store";
 import { probeServer } from "../run";
-
-/** Used only here — stays local, per Icon.tsx's rule. */
-function PlusIcon() {
-  return (
-    <Icon>
-      <path d="M12 5v14M5 12h14" />
-    </Icon>
-  );
-}
 
 interface HeaderRow {
   name: string;
@@ -25,14 +17,13 @@ interface HeaderRow {
 /**
  * Add/Edit for one remote MCP server. Test connection runs the same
  * initialize/list/close a run's snapshot will — what it reports is what the
- * run would see, not a friendlier lie.
+ * run would see, not a friendlier lie. Mounted only while open, so form state
+ * resets between opens; the parent owns that contract.
  */
 export function ServerDialog({
-  open,
   server,
   onClose,
 }: {
-  open: boolean;
   /** Present = edit; absent = create. */
   server?: McpServerConfig;
   onClose: () => void;
@@ -83,7 +74,7 @@ export function ServerDialog({
 
   return (
     <TitledDialog
-      open={open}
+      open
       onOpenChange={(next) => !next && onClose()}
       title={server ? t("mcpOut.editTitle", { name: server.name }) : t("mcpOut.newTitle")}
       description={t("mcpOut.dialogHelp")}
@@ -124,7 +115,7 @@ export function ServerDialog({
             {headers.map((row, i) => (
               <div key={i} className="flex items-center gap-1.5">
                 <input
-                  className="w-2/5 rounded-md border border-neutral-200 bg-white px-2 py-1.5 font-mono text-xs text-neutral-800 focus:border-brand-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                  className={`${inputChrome} w-2/5 px-2 py-1.5 font-mono text-xs text-neutral-800 dark:text-neutral-200`}
                   value={row.name}
                   onChange={(e) =>
                     setHeaders(headers.with(i, { ...row, name: e.target.value }))
@@ -134,7 +125,7 @@ export function ServerDialog({
                   aria-label={t("mcpOut.headerName")}
                 />
                 <input
-                  className="min-w-0 flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1.5 font-mono text-xs text-neutral-800 focus:border-brand-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                  className={`${inputChrome} min-w-0 flex-1 px-2 py-1.5 font-mono text-xs text-neutral-800 dark:text-neutral-200`}
                   value={row.value}
                   onChange={(e) =>
                     setHeaders(headers.with(i, { ...row, value: e.target.value }))

@@ -4,7 +4,7 @@ import { Button } from "@/components/Button";
 import { Switch } from "@/components/Switch";
 import { TextField } from "@/components/TextField";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { Icon, PencilIcon, TrashIcon } from "@/components/Icon";
+import { PencilIcon, PlusIcon, TrashIcon } from "@/components/Icon";
 import { TitledDialog } from "@/components/TitledDialog";
 import { useStoredItem } from "@/components/useStoredItem";
 import { HOOK_EVENTS, MAX_HOOKS, type HookEvent, type HookRule } from "../types";
@@ -14,15 +14,6 @@ import {
   saveHook,
   setHookEnabled,
 } from "../store";
-
-/** Used only here — stays local, per Icon.tsx's rule. */
-function PlusIcon() {
-  return (
-    <Icon>
-      <path d="M12 5v14M5 12h14" />
-    </Icon>
-  );
-}
 
 const EVENT_KEY = {
   run_started: "hooks.events.run_started",
@@ -122,7 +113,6 @@ export function HooksSection() {
           same contract as every other add/edit dialog here. */}
       {editor.open && (
         <HookDialog
-          open
           {...(editor.rule ? { rule: editor.rule } : {})}
           onClose={() => setEditor({ open: false })}
         />
@@ -160,11 +150,9 @@ function Receipt({ rule }: { rule: HookRule }) {
 }
 
 function HookDialog({
-  open,
   rule,
   onClose,
 }: {
-  open: boolean;
   /** Present = edit; absent = create. */
   rule?: HookRule;
   onClose: () => void;
@@ -176,7 +164,7 @@ function HookDialog({
 
   return (
     <TitledDialog
-      open={open}
+      open
       onOpenChange={(next) => !next && onClose()}
       title={rule ? t("hooks.editTitle") : t("hooks.newTitle")}
       description={t("hooks.dialogHelp")}

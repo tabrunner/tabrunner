@@ -1,6 +1,6 @@
 import { createWriteQueue, defineItem } from "@/lib/storage";
 import { i18n } from "@/i18n";
-import { validMcpUrl } from "@/modules/mcp/config";
+import { validOutboundUrl } from "@/lib/url";
 import { HOOK_EVENTS, MAX_HOOKS, type HookEvent, type HookRule } from "./types";
 
 /**
@@ -40,7 +40,7 @@ export interface HookInput {
 export function saveHook(input: HookInput): Promise<SaveResult> {
   return serialized(async (): Promise<SaveResult> => {
     if (!HOOK_EVENTS.includes(input.event)) return { ok: false, error: i18n.t(ERRORS.badEvent) };
-    if (!validMcpUrl(input.url.trim())) return { ok: false, error: i18n.t(ERRORS.invalidUrl) };
+    if (!validOutboundUrl(input.url.trim())) return { ok: false, error: i18n.t(ERRORS.invalidUrl) };
 
     const list = await hookRulesItem.get();
     const id = input.id ?? crypto.randomUUID();

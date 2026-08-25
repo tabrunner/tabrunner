@@ -1,4 +1,4 @@
-import { createLogger } from "@/lib/logger";
+import { createLogger, truncate } from "@/lib/logger";
 import { i18n } from "@/i18n";
 import { McpSession } from "./client";
 import { buildCatalog } from "./schema";
@@ -72,16 +72,15 @@ export async function loadMcpForRun(
  *  Stamps nothing — the caller owns the status row once it knows the server id. */
 export async function probeServer(
   config: Pick<McpServerConfig, "url" | "headers">,
-  signal?: AbortSignal,
 ): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
   const session = new McpSession({ url: config.url, headers: config.headers });
   try {
     await session.initialize();
-    const tools = await session.listTools(signal);
+    const tools = await session.listTools();
     return { ok: true, count: tools.length };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
-    log.warn("probe failed:", truncate(error));
+    log.warn("probe failed:", truncate(error, 200));
     return { ok: false, error };
   } finally {
     await session.close();
@@ -112,7 +111,10 @@ async function openServer(
     session = new McpSession({ url: config.url, headers: config.headers, onRequest: bound });
     await session.initialize();
     const advertised = await session.listTools(signal);
-    await stampServerStatus(config.id, {
+    // Display-only mirror: the row repaints whenever the write lands, so it
+    // never gates the snapshot these awaits would otherwise serialize behind
+    // one storage queue on the run-start path.
+    void stampServerStatus(config.id, {
       ok: true,
       detail: i18n.t("mcpOut.status.ok", { count: advertised.length }),
       toolCount: advertised.length,
@@ -122,16 +124,12 @@ async function openServer(
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
     await session?.close();
-    await stampServerStatus(config.id, { ok: false, detail: truncate(reason) });
-    log.warn("server unavailable:", config.name, truncate(reason));
+    void stampServerStatus(config.id, { ok: false, detail: truncate(reason, 200) });
+    log.warn("server unavailable:", config.name, truncate(reason, 200));
     return {
       config,
       advertised: [],
       failureLine: i18n.t("mcpOut.run.serverDown", { name: config.name }),
     };
   }
-}
-
-function truncate(text: string, max = 200): string {
-  return text.length > max ? `${text.slice(0, max)}…` : text;
 }

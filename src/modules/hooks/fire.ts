@@ -21,6 +21,9 @@ const inFlight = new Set<Promise<void>>();
 
 /** Fire every enabled rule matching `event`. Never throws, never awaits. */
 export function fireHook(event: HookEvent, payload: Record<string, unknown>): void {
+  // The batch joins `inFlight` synchronously, before its first delivery can
+  // even start — tracking deliveries individually on top would bookkeep the
+  // same settling twice.
   const batch = (async () => {
     let rules: HookRule[];
     try {
@@ -29,7 +32,7 @@ export function fireHook(event: HookEvent, payload: Record<string, unknown>): vo
       return; // no registry, no delivery — nothing to report to either side
     }
     const body = clip({ event, timestamp: Date.now(), ...payload });
-    await Promise.allSettled(rules.map((rule) => track(deliver(rule, body))));
+    await Promise.allSettled(rules.map((rule) => deliver(rule, body)));
   })();
   inFlight.add(batch);
   void batch.finally(() => inFlight.delete(batch));
@@ -42,14 +45,7 @@ export async function hooksPending(): Promise<void> {
   }
 }
 
-function track(p: Promise<void>): Promise<void> {
-  inFlight.add(p);
-  return p.finally(() => inFlight.delete(p)).catch(() => {});
-}
-
 async function deliver(rule: HookRule, body: string): Promise<void> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), HOOK_TIMEOUT_MS);
   let ok: boolean;
   let status: number | undefined;
   try {
@@ -58,14 +54,12 @@ async function deliver(rule: HookRule, body: string): Promise<void> {
       method: "POST",
       headers: { "content-type": "application/json", ...(rule.headers ?? {}) },
       body,
-      signal: controller.signal,
+      signal: AbortSignal.timeout(HOOK_TIMEOUT_MS),
     });
     ok = res.ok;
     status = res.status;
   } catch {
     ok = false;
-  } finally {
-    clearTimeout(timer);
   }
   await stampDelivery(rule.id, { at: Date.now(), ok, ...(status !== undefined ? { status } : {}) });
   if (!ok) log.debug("delivery failed", rule.event, status ?? "network");

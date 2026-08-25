@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MAX_MCP_SERVERS, validMcpUrl } from "../config";
+import { MAX_MCP_SERVERS } from "../config";
+import { validOutboundUrl } from "@/lib/url";
 import {
   deleteServer,
   getMcpStatus,
@@ -11,15 +12,15 @@ import {
 
 // Storage stand-in and the en catalog come from src/test-setup.ts.
 
-describe("validMcpUrl", () => {
+describe("validOutboundUrl", () => {
   it("allows https anywhere and http only on loopback", () => {
-    expect(validMcpUrl("https://api.aboard.sh/mcp")).toBe(true);
-    expect(validMcpUrl("http://127.0.0.1:8931/mcp")).toBe(true);
-    expect(validMcpUrl("http://localhost:3000")).toBe(true);
-    expect(validMcpUrl("http://[::1]:8931")).toBe(true);
-    expect(validMcpUrl("http://mcp.example.com")).toBe(false);
-    expect(validMcpUrl("ftp://mcp.example.com")).toBe(false);
-    expect(validMcpUrl("not a url")).toBe(false);
+    expect(validOutboundUrl("https://api.aboard.sh/mcp")).toBe(true);
+    expect(validOutboundUrl("http://127.0.0.1:8931/mcp")).toBe(true);
+    expect(validOutboundUrl("http://localhost:3000")).toBe(true);
+    expect(validOutboundUrl("http://[::1]:8931")).toBe(true);
+    expect(validOutboundUrl("http://mcp.example.com")).toBe(false);
+    expect(validOutboundUrl("ftp://mcp.example.com")).toBe(false);
+    expect(validOutboundUrl("not a url")).toBe(false);
   });
 });
 

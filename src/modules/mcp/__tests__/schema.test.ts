@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildCatalog } from "../schema";
 import {
   MAX_TOOL_DESC_CHARS,
+  MAX_TOOL_SCHEMA_CHARS,
   MAX_TOOLS_PER_SERVER,
   MAX_TOTAL_DESC_CHARS,
   type McpAdvertisedTool,
@@ -38,6 +39,21 @@ describe("buildCatalog", () => {
     ]);
     const slice = servers.get("s1")!;
     expect(slice.defs.map((d) => d.name)).toEqual(["mcp__a__noargs"]);
+    expect(slice.rejected).toBe(1);
+  });
+
+  it("rejects tools whose serialized schema blows the per-tool ceiling", () => {
+    const { servers } = buildCatalog([
+      {
+        config: server("s1", "a"),
+        advertised: [
+          tool("fat", "fine", { type: "object", properties: { x: { type: "string", description: "z".repeat(MAX_TOOL_SCHEMA_CHARS) } } }),
+          tool("lean", "fine", { type: "object" }),
+        ],
+      },
+    ]);
+    const slice = servers.get("s1")!;
+    expect(slice.defs.map((d) => d.name)).toEqual(["mcp__a__lean"]);
     expect(slice.rejected).toBe(1);
   });
 

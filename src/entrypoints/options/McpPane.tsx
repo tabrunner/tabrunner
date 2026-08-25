@@ -73,16 +73,12 @@ export function McpPane() {
 
   return (
     <section>
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-            {t("settings.mcp.title")}
-          </h2>
-          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-            {t("settings.mcp.help")}
-          </p>
-        </div>
-      </div>
+      <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+        {t("settings.mcp.title")}
+      </h2>
+      <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+        {t("settings.mcp.help")}
+      </p>
       {/* The whole page, orientated before any knob: MCP is two directions, and
           this pane carries both. The full manual stays one link away. */}
       <details className="mt-3 rounded-lg bg-neutral-50 px-3 py-2 dark:bg-neutral-900/50">

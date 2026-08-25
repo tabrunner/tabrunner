@@ -105,7 +105,6 @@ export function McpServersSection() {
           same contract as every other add/edit dialog here. */}
       {editor.open && (
         <ServerDialog
-          open
           {...(editor.server ? { server: editor.server } : {})}
           onClose={() => setEditor({ open: false })}
         />
