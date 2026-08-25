@@ -215,6 +215,13 @@
     "elicitAccept": "Enviar",
     "elicitDecline": "Recusar"
   },
+  "hooks": {
+    "errors": {
+      "tooMany": "No máximo {{max}} webhooks — remova um para adicionar outro.",
+      "invalidUrl": "Informe uma URL https:// (http:// só funciona para localhost).",
+      "badEvent": "Escolha um dos quatro eventos."
+    }
+  },
   "schedule": {
     "agentLabel": "Agendado",
     "lateNote": "Esta execução estava agendada para {{scheduled}} e está começando atrasada, porque o navegador esteve fechado até agora. Leve o atraso em conta e diga isso no seu resumo se mudar a resposta.",

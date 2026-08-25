@@ -215,6 +215,13 @@
     "elicitAccept": "Send",
     "elicitDecline": "Decline"
   },
+  "hooks": {
+    "errors": {
+      "tooMany": "No more than {{max}} webhooks — remove one to add another.",
+      "invalidUrl": "Enter an https:// URL (plain http:// works for localhost only).",
+      "badEvent": "Pick one of the four events."
+    }
+  },
   "schedule": {
     "agentLabel": "Scheduled",
     "lateNote": "This run was scheduled for {{scheduled}} and is starting late, because the browser was closed until now. Take the delay into account, and say so in your summary if it changes the answer.",

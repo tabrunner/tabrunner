@@ -2,6 +2,7 @@ import { i18n } from "@/i18n";
 import { buildConversationHistory, runAgentLoop } from ".";
 import { loadMcpForRun } from "@/modules/mcp";
 import type { McpRunSnapshot } from "@/modules/mcp";
+import { fireHook, hooksPending } from "@/modules/hooks";
 import { extractAndRemember } from "@/modules/memory";
 import { createRecorder } from "@/modules/walkthrough/recorder";
 import { maybeAutoTitle } from "@/modules/conversation/title";
@@ -354,6 +355,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // remote is not a failed action) and silent on success: availability is
       // legible from the tools simply appearing in the model's set.
       for (const failure of mcp.failures) emit({ type: "step", tool: "mcp", summary: failure });
+      // The run's own webhook — fired after the run is real (slot claimed,
+      // provider resolved) so a delivery can never describe a run that isn't.
+      fireHook("run_started", { conversationId, task });
       const wire = await runAgentLoop({
         provider,
         driver,
@@ -459,9 +463,22 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             // states (rate limit, quota, auth) are not bugs and carry their
             // own fix, so they stay off the report path.
             emit({ type: "error", message, kind, ...(kind ? {} : { unexpected: true }) });
+            fireHook("error", { conversationId, task, message, ...(kind ? { kind } : {}) });
           },
           onDone: (summary) => {
             doneSummary = summary;
+            fireHook("run_finished", {
+              conversationId,
+              task,
+              ...(summary ? { summary } : {}),
+              outcome: runFailed
+                ? "error"
+                : run.controller.signal.aborted
+                  ? "stopped"
+                  : endedOnQuestion
+                    ? "question"
+                    : "done",
+            });
             emit({
               type: "done",
               summary,
@@ -478,6 +495,12 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             // reopened panel would all go silent as if the run simply ended.
             markPendingQuestion(conversationId, question, choices);
             onAskUser?.(question, choices);
+            fireHook("ask_user", {
+              conversationId,
+              task,
+              question,
+              ...(choices ? { choices } : {}),
+            });
           },
         },
       });
@@ -519,7 +542,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         // One keepalive for both, cleared only once both have settled — two
         // `finally`s on one alarm name meant the quicker call pulled the
         // worker's hold out from under the slower one.
-        void Promise.allSettled([extraction, titling]).finally(() => {
+        // Webhook deliveries join the same window: a run_finished POST that
+        // outlives the run still gets its worker time without a second alarm.
+        void Promise.allSettled([extraction, titling, hooksPending()]).finally(() => {
           void chrome.alarms.clear(MEMORY_KEEPALIVE_ALARM);
         });
       }

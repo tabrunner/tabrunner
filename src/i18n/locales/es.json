@@ -215,6 +215,13 @@
     "elicitAccept": "Enviar",
     "elicitDecline": "Rechazar"
   },
+  "hooks": {
+    "errors": {
+      "tooMany": "Como mucho {{max}} webhooks — elimina uno para añadir otro.",
+      "invalidUrl": "Introduce una URL https:// (http:// solo funciona en localhost).",
+      "badEvent": "Elige uno de los cuatro eventos."
+    }
+  },
   "schedule": {
     "agentLabel": "Programado",
     "lateNote": "Esta ejecución estaba programada para {{scheduled}} y empieza tarde, porque el navegador estuvo cerrado hasta ahora. Ten en cuenta el retraso y dilo en tu resumen si cambia la respuesta.",
