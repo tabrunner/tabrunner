@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { bridgeConnected, bridgeItem, validBridgePort } from "@/modules/bridge/config";
+import { McpServersSection } from "@/modules/mcp/ui/McpServersSection";
 import { Button } from "@/components/Button";
 import { Switch } from "@/components/Switch";
 import { TextField } from "@/components/TextField";
@@ -167,6 +168,10 @@ export function McpPane() {
           </div>
         </div>
       )}
+
+      {/* The outbound half of MCP lives on this same page: clients dial IN above
+          (through the daemon), our agent dials OUT below. */}
+      <McpServersSection />
     </section>
   );
 }

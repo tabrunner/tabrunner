@@ -11,14 +11,15 @@ import type { McpServerConfig, McpServerStatus } from "./types";
 
 const serialized = createWriteQueue();
 
-const statusItem = defineItem<Record<string, McpServerStatus>>("mcp-status", {});
+/** Public so the options page can read it reactively without bundling transport code. */
+export const mcpStatusItem = defineItem<Record<string, McpServerStatus>>("mcp-status", {});
 
 export function listMcpServers(): Promise<McpServerConfig[]> {
   return mcpServersItem.get();
 }
 
 export async function getMcpStatus(id: string): Promise<McpServerStatus | undefined> {
-  return (await statusItem.get())[id];
+  return (await mcpStatusItem.get())[id];
 }
 
 /** Stamp one server's last outcome. Runs and probes both land here, which is
@@ -28,8 +29,8 @@ export async function stampServerStatus(
   outcome: { ok: boolean; detail?: string; toolCount?: number },
 ): Promise<void> {
   await serialized(async () => {
-    const all = await statusItem.get();
-    await statusItem.set({ ...all, [id]: { ...outcome, checkedAt: Date.now() } });
+    const all = await mcpStatusItem.get();
+    await mcpStatusItem.set({ ...all, [id]: { ...outcome, checkedAt: Date.now() } });
   });
 }
 
@@ -90,11 +91,11 @@ export function deleteServer(id: string): Promise<boolean> {
     const next = list.filter((s) => s.id !== id);
     if (next.length === list.length) return false;
     await mcpServersItem.set(next);
-    const statuses = await statusItem.get();
+    const statuses = await mcpStatusItem.get();
     if (id in statuses) {
       const rest = { ...statuses };
       delete rest[id];
-      await statusItem.set(rest);
+      await mcpStatusItem.set(rest);
     }
     return true;
   });
