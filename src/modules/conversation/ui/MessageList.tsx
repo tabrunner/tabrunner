@@ -178,7 +178,22 @@ const StepRow = memo(function StepRow({ msg }: { msg: Message }) {
     <>
       <StepIcon live={msg.live} ok={msg.ok} />
       {label && (
-        <span className={msg.live ? "shimmer-text font-medium" : "font-medium"}>{label}</span>
+        // The verb holds its line and the hint's truncate does the yielding —
+        // with both free to shrink, a long hint wrapped the label WHILE the
+        // hint ellipsized ("Executando / JavaScript  o conteúdo do iframe…"),
+        // the worst of both. Alone in the row (live, no hint) the label may
+        // still wrap rather than overflow.
+        <span
+          className={
+            msg.live
+              ? "shimmer-text font-medium"
+              : trailing
+                ? "shrink-0 whitespace-nowrap font-medium"
+                : "font-medium"
+          }
+        >
+          {label}
+        </span>
       )}
       {!msg.live && trailing && (
         <span
