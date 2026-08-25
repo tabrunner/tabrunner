@@ -804,15 +804,20 @@ const DOCUMENT_TOOL: ToolDef = {
 /**
  * The screenshot tool is withheld from text-only models — its output is an image
  * the wire would reject, so offering it would make the model waste turns.
+ * Remote MCP tools append last and arrive resolved ONCE per run: providers mark
+ * their cache prefix off this exact array (tools → system), so rebuilding it
+ * mid-run would cold-start every turn.
  */
 export function buildToolDefs(
   memoryOn: boolean,
   supportsImages = true,
   skillsOn = false,
   documentOn = false,
+  mcpTools: ToolDef[] = [],
 ): ToolDef[] {
   const defs = supportsImages ? TOOL_DEFS : TOOL_DEFS.filter((t) => t.name !== "screenshot");
   const withMemory = memoryOn ? [...defs, REMEMBER_TOOL] : defs;
   const withSkills = skillsOn ? [...withMemory, SKILL_TOOL] : withMemory;
-  return documentOn ? [...withSkills, DOCUMENT_TOOL] : withSkills;
+  const withDocument = documentOn ? [...withSkills, DOCUMENT_TOOL] : withSkills;
+  return mcpTools.length > 0 ? [...withDocument, ...mcpTools] : withDocument;
 }

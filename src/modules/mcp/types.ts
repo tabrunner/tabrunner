@@ -1,3 +1,5 @@
+import type { ToolDef } from "@/modules/providers/types";
+
 /**
  * The MCP client half — TabRunner dials OUT to remote servers and offers their
  * tools to its own model. (The server half lives in `modules/bridge/` + the
@@ -6,6 +8,10 @@
  * Remote HTTP only. An MV3 worker cannot spawn processes, so stdio servers are
  * out of scope; sessions are lazy — opened for a run, closed with it.
  */
+
+/** Every tool a remote server contributes is namespaced under one prefix.
+ *  Never parsed back apart — resolution goes through the run's ref map. */
+export const MCP_TOOL_PREFIX = "mcp__";
 
 /** Per-server catalog bound before budgets even look at descriptions. */
 export const MAX_TOOLS_PER_SERVER = 128;
@@ -84,4 +90,14 @@ export interface McpSessionApi {
 export interface McpHandle {
   resolve(exposedName: string): { session: McpSessionApi; ref: McpToolRef } | undefined;
   close(): Promise<void>;
+}
+
+/** What a run gets: model-facing defs appended to its tool array, the handle
+ *  that executes them, and one line per server that failed to open (start-run
+ *  surfaces each as a neutral step — success stays silent, availability is
+ *  legible from the tools simply being there). */
+export interface McpRunSnapshot {
+  tools: ToolDef[];
+  handle: McpHandle;
+  failures: string[];
 }

@@ -15,6 +15,8 @@ import { i18n, currentLanguageName } from "@/i18n";
 import { loadAgentContext } from "@/modules/memory";
 import { listSchedules } from "@/modules/schedule";
 import { loadSkillsForRun } from "@/modules/skills";
+import type { McpRunSnapshot } from "@/modules/mcp";
+import { MCP_TOOL_PREFIX } from "@/modules/mcp";
 import type { RunRecorder } from "@/modules/walkthrough/recorder";
 import type { ToolDef } from "@/modules/providers/types";
 import { executeTool, formatDetail, formatSuccessSummary } from "./tools";
@@ -104,6 +106,16 @@ const ACTION_TOOLS = new Set([
  * work, and it is how a self-paced loop ends itself.
  */
 const GATED_TOOLS = new Set([...ACTION_TOOLS, "schedule_task"]);
+
+/**
+ * The gate as the loop asks it — static names plus everything remote. MCP tools
+ * gate wholesale because their annotations are self-reported by an off-device
+ * server, and `evaluate` already set the precedent that "could be read-only"
+ * earns no bypass. One approved plan covers the run either way.
+ */
+export function isGatedTool(name: string): boolean {
+  return GATED_TOOLS.has(name) || name.startsWith(MCP_TOOL_PREFIX);
+}
 
 /**
  * Actions that work the page in place, which makes them the two things a batch
@@ -253,6 +265,11 @@ export interface LoopOptions {
   recorder?: RunRecorder;
   /** The schedule this run fired from — the only record `schedule_task` may re-time. */
   scheduleId?: string;
+  /**
+   * Remote MCP tools resolved once before turn one — defs appended to the
+   * tool array, the handle executing them. Absent when no server is enabled.
+   */
+  mcp?: McpRunSnapshot;
   /** Data-URL images the user attached to the task, referenced in the text as "[Image #1]". */
   images?: string[];
   /**
@@ -443,6 +460,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
     supportsImages,
     runSkills.all.length > 0,
     recorder !== undefined,
+    opts.mcp?.tools ?? [],
   );
 
   // Auto-snapshot merged into the task message — Anthropic rejects consecutive user messages
@@ -693,7 +711,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
 
       // The gate: no page action runs before the user has approved a plan.
       // The tool-result error tells the model exactly how to unblock itself.
-      if (GATED_TOOLS.has(call.name) && !approvedPlan) {
+      if (isGatedTool(call.name) && !approvedPlan) {
         log.warn(`tool ${call.name} blocked — no approved plan yet`, call.args);
         callbacks.onStep?.({
           tool: call.name,
@@ -741,6 +759,8 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         owner,
         scheduleId,
         skills: runSkills.all,
+        signal: opts.signal,
+        ...(opts.mcp ? { mcp: opts.mcp.handle } : {}),
         ...(recorder ? { recorder } : {}),
       });
       await recorder?.afterAction(call, result.ok, result.data);

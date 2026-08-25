@@ -2,6 +2,9 @@ import type { BrowserDriver } from "@/modules/browser";
 import type { ToolCall } from "@/modules/providers/types";
 import type { Skill } from "@/modules/skills";
 import type { RunRecorder } from "@/modules/walkthrough/recorder";
+import { normalizeMcpResult } from "@/modules/mcp";
+import { MCP_TOOL_PREFIX } from "@/modules/mcp";
+import type { McpHandle } from "@/modules/mcp";
 import { remember } from "@/modules/memory";
 import { cancelSchedule, scheduleTask } from "@/modules/schedule/agent-tools";
 import { i18n } from "@/i18n";
@@ -53,6 +56,12 @@ export interface ToolContext {
   /** This run's walkthrough recorder — the `document` tool's target. Absent when
    *  walkthroughs are off, or under direct control, which has no run to document. */
   recorder?: RunRecorder;
+  /** This run's MCP handle — resolves `mcp__` names to live sessions. Absent
+   *  when no server is enabled, or under direct control, which offers none. */
+  mcp?: McpHandle;
+  /** The run's abort signal — remote calls honor it, so Stop lands promptly
+   *  even mid-call instead of after the transport's own timeout. */
+  signal?: AbortSignal;
 }
 
 /** Execute a single tool call against the browser driver. */
@@ -271,8 +280,14 @@ export async function executeTool(
       case "done":
         return { ok: true, data: { summary: call.args.summary } };
 
-      default:
-        return { ok: false, error: i18n.t("errors.unknownTool", { name: call.name }) };
+      default: {
+        // Remote tools resolve by exposed name — the ref map, never name-
+        // parsing, is what ties a call back to its server and wire name.
+        const hit = call.name.startsWith(MCP_TOOL_PREFIX) ? ctx.mcp?.resolve(call.name) : undefined;
+        if (!hit) return { ok: false, error: i18n.t("errors.unknownTool", { name: call.name }) };
+        const remote = await hit.session.callTool(hit.ref.toolName, call.args, ctx.signal);
+        return normalizeMcpResult(remote);
+      }
     }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

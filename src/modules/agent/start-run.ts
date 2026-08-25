@@ -1,5 +1,7 @@
 import { i18n } from "@/i18n";
 import { buildConversationHistory, runAgentLoop } from ".";
+import { loadMcpForRun } from "@/modules/mcp";
+import type { McpRunSnapshot } from "@/modules/mcp";
 import { extractAndRemember } from "@/modules/memory";
 import { createRecorder } from "@/modules/walkthrough/recorder";
 import { maybeAutoTitle } from "@/modules/conversation/title";
@@ -111,6 +113,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
   // the board settle) — the receipt paints only after the release has pulled
   // the working pill, and only if no queued run took the slot.
   let ambientSettle: { outcome: SettleOutcome; tabId: number } | null = null;
+  /** Remote MCP sessions opened mid-setup; closed in the outer finally so
+   *  every ending — including the early returns below — tears them down. */
+  let mcpPromise: Promise<McpRunSnapshot> | undefined;
 
   try {
     // What this conversation runs on: its own pin, else the stored pick. The
@@ -155,6 +160,10 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       emit({ type: "error", message, unexpected: true });
       return { ok: true };
     }
+
+    // Remote MCP servers open alongside tab resolution — a slow server costs
+    // latency only where it overlaps, and its failure never blocks the run.
+    mcpPromise = loadMcpForRun(run.controller.signal);
 
     // Where the run drives: the user's current tab by default (adopted or
     // this-page), a tab of the run's own only when there's no page to work —
@@ -293,6 +302,11 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       : undefined;
 
     try {
+      const mcp = await mcpPromise;
+      // One neutral row per server that failed to open — never a red ✗ (a dead
+      // remote is not a failed action) and silent on success: availability is
+      // legible from the tools simply appearing in the model's set.
+      for (const failure of mcp.failures) emit({ type: "step", tool: "mcp", summary: failure });
       const wire = await runAgentLoop({
         provider,
         driver,
@@ -300,6 +314,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         conversationId,
         runGroup,
         owner,
+        ...(mcp.tools.length > 0 ? { mcp } : {}),
         ...(recorder ? { recorder } : {}),
         ...(opts.scheduleId ? { scheduleId: opts.scheduleId } : {}),
         images,
@@ -554,6 +569,15 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       }
     }
   } finally {
+    // Remote sessions die with the run — here, in the OUTER finally, because
+    // the early provider/target returns above never reach the inner one. The
+    // DELETE is best-effort and independent of the debugger, so ordering with
+    // detachAll is free; a hung close must not strand the unwind either way.
+    try {
+      await mcpPromise?.then((m) => m.handle.close());
+    } catch {
+      // The snapshot itself failed — nothing to close.
+    }
     // The transcript must be durable before the board moves: the panel reloads
     // it the moment the slot clears, and a read that beats a pending append
     // paints a transcript missing the run's closing messages over the live view

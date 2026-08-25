@@ -1,26 +1,16 @@
 import { createLogger } from "@/lib/logger";
 import { i18n } from "@/i18n";
-import type { ToolDef } from "@/modules/providers/types";
 import { McpSession } from "./client";
 import { buildCatalog } from "./schema";
 import { listMcpServers, stampServerStatus } from "./store";
 import type {
   McpAdvertisedTool,
   McpHandle,
+  McpRunSnapshot,
   McpServerConfig,
   McpSessionApi,
   McpToolRef,
 } from "./types";
-
-/** What a run gets: model-facing defs appended to its tool array, the handle
- *  that executes them, and one line per server that failed to open (start-run
- *  surfaces each as a warn step — success stays silent, availability is
- *  legible from the tools simply being there). */
-interface McpRunSnapshot {
-  tools: ToolDef[];
-  handle: McpHandle;
-  failures: string[];
-}
 
 /**
  * The per-run snapshot — the MCP twin of `loadSkillsForRun`. Enabled servers
