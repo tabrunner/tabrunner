@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { buildOpenAIBody } from "../openai";
 import { buildAnthropicBody } from "../anthropic";
-import type { ChatMessage, ResolvedProviderConfig } from "../types";
+import type {
+  ChatMessage,
+  ExternalJsonSchema,
+  ResolvedProviderConfig,
+  ToolDef,
+} from "../types";
 
 // Storage stand-in comes from src/test-setup.ts (vitest setupFiles).
 
@@ -256,5 +261,33 @@ describe("buildAnthropicBody", () => {
       const body = buildAnthropicBody(anthropicBase, messages, []);
       expect(markers(body)).toHaveLength(0);
     });
+  });
+});
+
+describe("external (remote MCP) tool schemas", () => {
+  // The widening contract: full JSON Schema from a remote server reaches both
+  // wire shapes untouched. If an adapter ever starts rebuilding params instead
+  // of assigning them, this is the test that fails first.
+  const schema: ExternalJsonSchema = {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "What to search for" },
+      filter: { anyOf: [{ type: "string" }, { type: "null" }], format: "custom" },
+    },
+    required: ["query"],
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+  };
+  const tools: ToolDef[] = [
+    { name: "mcp__aboard__search", description: "Search.", params: schema },
+  ];
+
+  it("rides through OpenAI parameters verbatim", () => {
+    const body = buildOpenAIBody(base, messages, tools);
+    expect((body.tools as Array<{ function: { parameters: unknown } }>)[0]?.function.parameters).toBe(schema);
+  });
+
+  it("rides through Anthropic input_schema verbatim", () => {
+    const body = buildAnthropicBody({ ...base, shape: "anthropic" }, messages, tools);
+    expect((body.tools as Array<{ input_schema: unknown }>)[0]?.input_schema).toBe(schema);
   });
 });

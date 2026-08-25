@@ -166,8 +166,22 @@ export interface ToolCall {
 export interface ToolDef {
   name: string;
   description: string;
-  params: JSONSchema;
+  params: ToolParams;
 }
+
+/**
+ * Schemas we author stay on the narrow `JSONSchema` above; schemas ingested
+ * from remote MCP servers are full JSON Schema (anyOf, $ref, string formats…)
+ * that every adapter passes to the provider verbatim (`input_schema` /
+ * `parameters` are assigned, never rebuilt). The only promise this type makes
+ * is "an object schema" — describing every keyword would buy nothing.
+ */
+export interface ExternalJsonSchema {
+  type: "object";
+  [key: string]: unknown;
+}
+
+export type ToolParams = JSONSchema | ExternalJsonSchema;
 
 export interface JSONSchema {
   type: "object";
