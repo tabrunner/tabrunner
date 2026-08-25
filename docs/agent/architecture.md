@@ -505,6 +505,52 @@ yields the document it had earned. `recorder.ts` stays out of the module barrel 
 into the CDP driver, and the barrel is imported by the panel, the viewer page, and the
 background entrypoint WXT evaluates at build time.
 
+### `mcp/` — the outbound MCP client
+
+The client half (`bridge/` is the server half): TabRunner dials OUT to remote Streamable HTTP
+servers and offers their tools to its own model. Hand-rolled transport (`client.ts`) — POST
+JSON-RPC, answers come back as JSON or an SSE stream — because the official SDK assumes Node APIs
+the worker doesn't have. The state machine is small on purpose: initialize adopts
+`Mcp-Session-Id` and the negotiated protocol version; a 404 or `-32001/-32000` mid-call means the
+session expired and earns exactly ONE single-flight re-handshake + retry; everything else fails
+that call as an error result. `callTool` never throws into the loop.
+
+**Lazy sessions.** Nothing connects between runs: start-run kicks off `loadMcpForRun()` right
+after provider setup so it overlaps tab resolution, awaits it before the loop, and closes every
+session in the OUTER finally — outer because the early provider/target returns above never reach
+the inner one. Server push between runs goes unseen (no GET listener stream); accepted, since
+tools are snapshotted at run start anyway.
+
+**One snapshot per run.** Tools resolve once into the model's tool array via `buildToolDefs`'s
+last parameter — the prompt-cache invariant (`providers/anthropic.ts` marks its prefix off this
+exact array) means the array must be byte-stable across turns. Ingestion (`schema.ts`) enforces
+the budgets at one site: object-typed schemas only, descriptions capped at 2048 chars, a total
+description budget across servers that drops whole tools deterministically in stored order.
+Exposed names are `mcp__<server>__<tool>` with a hash suffix when truncation would collide;
+resolution is always through the ref map — names are never parsed apart.
+
+**Gating.** `isGatedTool` extends the plan gate by prefix: every remote tool gates regardless of
+annotations, which are self-reported by an off-device server. A failed remote call does not cancel
+its batch siblings — it matches none of the page-work sets, correctly.
+
+**Duplex.** `elicitation/create` is the one declared server→client capability. start-run injects
+an owner-aware handler: panel owners park it like the plan gate (event → card → command → resolve,
+abort declines), bridge/schedule owners decline immediately — nobody is present, and declining is
+the safe direction where the gate auto-approving plans was theirs to give. roots/list and sampling
+are undeclared and answered -32601 from the dispatcher table, so chatty servers can't hang us.
+
+### `hooks/` — lifecycle webhooks
+
+User rules that POST run events outward — the extension-viable form of Claude Code-style hooks,
+since there is no shell here to exec. Four events tap seams start-run already owns:
+`run_started` (after the provider resolves, so a delivery never describes a run that isn't),
+`ask_user`, `error`, and `run_finished` with its outcome. Delivery (`fire.ts`) is fire-and-forget
+by contract: one attempt, 10s timeout, no retries; long strings clip at the source so payloads
+stay bounded by construction; header values ride verbatim but are never logged. Failures stamp a
+per-rule `lastDelivery` receipt the Settings row shows and stay quiet. Deliveries join the memory
+keepalive window (`Promise.allSettled([extraction, titling, hooksPending()])`) rather than arming
+a second alarm — a `run_finished` POST that outlives the run still gets its worker time.
+
 ### `tips/` — rotating tips
 
 The rotating "Tip: …" line (Claude Code's spinner-tip pattern, reduced): a dim hint under

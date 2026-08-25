@@ -320,6 +320,10 @@ change across all three shapes or a hash of the system prompt standing in for on
 caching already works without it, the gain is affinity at the margin, and we have no way to A/B it —
 so: only if the cache telemetry shows ChatGPT-shape hit rates lagging the Anthropic ones.
 
+**OAuth 2.1 for remote MCP servers** — the client half takes static per-server headers today; the
+spec-complete flow (dynamic client registration + PKCE + refresh) slots in behind the same storage
+shape when someone points TabRunner at a server that demands it.
+
 ---
 
 ## Deliberately not doing
@@ -331,3 +335,7 @@ so: only if the cache telemetry shows ChatGPT-shape hit rates lagging the Anthro
 | Sampling params                | No temperature/topP on any provider. The only knob is `reasoningEffort`.                                                                                                                      |
 | A second scheduler for "loops" | A recurring schedule **is** a loop, and self-pacing falls out of giving the agent `schedule_task`. Two clocks on a one-slot run queue is a bug generator, not a feature.                      |
 | Multi-run concurrency          | One CDP target, one run slot. A schedule firing mid-chat queues FIFO behind you. Concurrency here means two agents fighting over your keyboard.                                               |
+| stdio / native-messaging MCP   | An MV3 worker cannot spawn processes; stdio servers would need either a helper daemon running (a second install surface most users don't have) or a native host per platform (store-review friction). Remote Streamable HTTP covers the actual ask. Revisit only alongside a native-host story we'd ship anyway. |
+| A persistent MCP connection    | Sessions live for one run and die with it. Between runs there is nothing listening, so server push (`notifications/tools/list_changed`) goes unseen — accepted: tools are snapshotted at run start anyway, and a permanent link costs wake-ups for a feature that works without them. |
+| sampling/roots on MCP sessions | Undeclared capabilities, answered -32601. Declaring what we won't honor is how chatty servers hang us. Elicitation is the one server→client request with a human at this end, and it's wired.  |
+| Per-assistant-turn webhooks ("message end") | Turn boundaries mid-run are ambiguous while tokens stream; steps already give finer granularity than anyone consumes. The seam is a new LoopCallback after the assistant push in the loop, if a real consumer appears. |

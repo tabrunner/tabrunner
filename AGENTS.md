@@ -129,6 +129,21 @@ never reach the service-worker bundle.
   `extractAndRemember` distills durable facts from the transcript — capped at 3, "none" is the
   expected answer, and facts are tagged with the site they belong to. Edited on the options page
   (no filesystem in an extension — the filenames are the mental model, not a path).
+- `mcp/` — the MCP client half: TabRunner dials OUT to remote Streamable HTTP servers and offers
+  their tools to its own model (`bridge/` is the server half — external clients dial IN). Sessions
+  are lazy — opened during run start alongside tab resolution, closed in start-run's OUTER finally
+  (the early provider/target returns never reach the inner one); nothing lives between runs.
+  Tools resolve once per run into the tool array (prompt-cache invariant), namespaced
+  `mcp__<server>__<tool>` and gated wholesale behind plan approval — remote annotations are
+  self-reported. Catalog budgets (per-tool + total description chars) drop whole tools
+  deterministically; a dead server costs one connect timeout, zero tools, one neutral step row —
+  never a throw. Elicitation/create is honored: panel owners park it like the plan gate,
+  bridge/schedule owners decline; roots/sampling are undeclared and answered -32601.
+  Background-safe except `ui/`.
+- `hooks/` — lifecycle webhooks: user rules that POST run events (run_started, run_finished,
+  ask_user, error) to their own URL. Fire-and-forget by contract; deliveries join the memory
+  keepalive window instead of arming anything new, failures stamp a per-rule receipt for the
+  Settings row and stay quiet. Background-safe except `ui/`.
 - `schedule/` — unattended runs on a timer: one-shot, daily, or every-N-minutes with an optional
   weekday filter and active-hours window. Wall-clock rules recomputed after every fire (never
   `periodInMinutes` — it can't hold 9am across a DST shift), one `chrome.alarms` one-shot per
@@ -167,7 +182,8 @@ never reach the service-worker bundle.
   less than the whole truth is disclosed in the doc's own intro — partial, truncated, armed late,
   frames missed. Background-safe except `ui/`; `recorder.ts` is deliberately out of the barrel
   (it reaches into CDP, and the barrel is imported by pages and by background).
-- `bridge/` — the MCP bridge's extension half. Background-only.
+- `bridge/` — the MCP bridge's extension half — clients dial IN through the daemon. The outbound
+  twin is `mcp/`. Background-only.
 - `tips/` — the rotating "Tip: …" line; i18n data + cooldown scheduler (panel opens,
   least-recently-shown wins, re-picked on panel open / run end). Shows in the running run
   band, or above the composer card when idle — and yields whenever the zone is already

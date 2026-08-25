@@ -189,6 +189,39 @@ and the port is not exposed.
 The daemon is a pipe: it relays tasks and run events. No page content, credentials, or API keys are
 stored in it, and it never talks to anything but the extension and your MCP client.
 
+## Connecting out to remote MCP servers
+
+Everything above lets other AI clients drive TabRunner. The reverse direction also exists:
+**TabRunner itself can be an MCP client**, connecting to remote servers and adding their tools to
+its own toolkit.
+
+Add a server under Settings → MCP → "Connect to MCP servers": a name, an `https://` URL (plain
+`http://` works for localhost only), and optional auth headers — a bearer token or API key sent
+verbatim with every request. "Test connection" runs the same handshake a run will, so what it
+reports is what the run would see.
+
+What a server buys you:
+
+- **Its tools join every run** — namespaced `mcp__<server>__<tool>`, listed for the model alongside
+  the built-ins, executed over the wire when the model calls them.
+- **Behind plan approval like everything else.** A remote tool never fires before you've approved
+  the run's plan — there is no read-only bypass, because a server's own claim about its tools is
+  not ours to trust.
+- **Elicitation reaches you.** A server that asks questions mid-task (`elicitation/create`) gets a
+  card in the panel; answer it or decline. On runs nobody watches (scheduled, bridge) questions are
+  declined automatically — declining is the safe direction.
+- **Failures stay small.** A dead server costs one connect timeout per run start, contributes zero
+  tools, and shows one quiet line in the transcript. It never blocks or breaks the run.
+
+Sessions live only while a run lives. Nothing connects between runs, so a server's push
+notifications go unseen — the trade for not holding a socket open in a browser worker.
+
+On security: a remote MCP server receives whatever the agent sends it, and returns whatever it
+returns — treat its tools as third-party code with network access. Auth header values stay in this
+browser's storage and are never logged. The same lifecycle events can be mirrored outward by
+webhooks: Settings → Behavior → Webhooks POSTs run started/finished/errored/question events to a
+URL you control (fire-and-forget; one attempt, no retries).
+
 ## Developing on it
 
 ```bash
