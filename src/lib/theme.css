@@ -59,6 +59,11 @@
  * (a ticking counter must not jitter), gold in both modes. The site is
  * dark-only and uses amber-300 throughout; light mode drops to amber-700
  * because amber-300 on white is unreadable.
+ *
+ * Gold measures at rest. A number ticking mid-stream (the live band's clock
+ * and tokens, a burst's elapsed) runs neutral — unreadable at that speed, and
+ * gold on the live band's brand wash was accent on accent. The settled band's
+ * receipt keeps the gold: that is the measurement worth reading.
  */
 @utility telemetry {
   @apply font-mono text-amber-700 tabular-nums dark:text-amber-300;

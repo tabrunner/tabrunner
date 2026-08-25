@@ -625,7 +625,10 @@ const BurstCard = memo(function BurstCard({
       <summary className="flex cursor-pointer list-none items-center gap-1.5 select-none hover:text-neutral-700 dark:hover:text-neutral-300">
         <ChevronRightIcon className="shrink-0 text-neutral-400 transition-transform group-open:rotate-90 dark:text-neutral-500" />
         <StepIcon live={burst.live} ok={failed ? false : true} />
-        <span className="telemetry shrink-0">{formatDuration(elapsed)}</span>
+        {/* Neutral, not telemetry-gold — same rule as the live band's clock:
+            mid-stream numbers tick past unread, gold is for the measurement
+            at rest. */}
+        <span className="shrink-0">{formatDuration(elapsed)}</span>
         <span className="truncate">{list}</span>
       </summary>
       <div className="mt-1 ml-4 flex flex-col gap-1.5">

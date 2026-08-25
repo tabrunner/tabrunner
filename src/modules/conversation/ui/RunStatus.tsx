@@ -292,8 +292,14 @@ export function RunStatus() {
             {t("walkthrough.rec")}
           </span>
         )}
+        {/* Neutral, not telemetry-gold: mid-stream these tick too fast to read,
+            and gold on the brand wash was accent on accent. The shimmer is the
+            live signal; gold stays for the measurement at rest — the settled
+            band's receipt below keeps it. */}
         <span
-          className={`telemetry shrink-0 text-xs ${recording ? "" : "ml-auto"}`}
+          className={`shrink-0 text-xs text-neutral-500 dark:text-neutral-400 ${
+            recording ? "" : "ml-auto"
+          }`}
           aria-hidden="true"
         >
           {formatDuration(now - liveStartedAt)}

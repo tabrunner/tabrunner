@@ -183,8 +183,10 @@ never reach the service-worker bundle.
   Not a `modules/` domain because every layer needs it, background included.
 - `src/lib/` — storage helpers, logger, Tailwind theme tokens (`brand-*` comet-burn emerald scale,
   indigo-tinted neutrals; the `telemetry` utility = gold, for anything that
-  measures — elapsed, tokens, the plan step in flight. Emerald acts, gold measures;
-  never pick an `amber-*` shade by hand for a measurement.
+  measures — elapsed, tokens, the plan step in flight. Gold measures at rest:
+  a number ticking mid-stream (the live band's clock, a burst's elapsed) runs
+  neutral. Emerald acts, gold measures; never pick an `amber-*` shade by hand
+  for a measurement.
 
 ### Data flow
 
