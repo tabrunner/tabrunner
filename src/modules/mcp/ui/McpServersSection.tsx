@@ -60,9 +60,7 @@ export function McpServersSection() {
                   </p>
                   <p className="mt-1 flex items-center gap-1.5 text-[11px] text-neutral-500 dark:text-neutral-400">
                     <StatusTone ok={status?.ok} />
-                    {status
-                      ? (status.detail ?? t("mcpOut.statusNever"))
-                      : t("mcpOut.statusNever")}
+                    {status?.detail ?? t("mcpOut.statusNever")}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1 pt-0.5">
@@ -103,21 +101,23 @@ export function McpServersSection() {
         </ul>
       )}
 
-      <ServerDialog
-        open={editor.open}
-        {...(editor.server ? { server: editor.server } : {})}
-        onClose={() => setEditor({ open: false })}
-      />
+      {/* Mounted only while open — the form state must reset between opens,
+          same contract as every other add/edit dialog here. */}
+      {editor.open && (
+        <ServerDialog
+          open
+          {...(editor.server ? { server: editor.server } : {})}
+          onClose={() => setEditor({ open: false })}
+        />
+      )}
     </section>
   );
 }
 
-/** The dot only — the row's text line carries the detail next to it. */
+/** The dot only — the row's text line carries the detail next to it. Same dot
+    language as the strip's StatusDot: brand green for ok, red for down. */
 function StatusTone({ ok }: { ok: boolean | undefined }) {
-  if (ok === undefined) return <span className="inline-block h-2 w-2 rounded-full bg-neutral-300 dark:bg-neutral-600" />;
-  return (
-    <span
-      className={`inline-block h-2 w-2 rounded-full ${ok ? "bg-emerald-500" : "bg-red-400"}`}
-    />
-  );
+  const color =
+    ok === undefined ? "bg-neutral-300 dark:bg-neutral-600" : ok ? "bg-brand-500" : "bg-red-400";
+  return <span className={`inline-block h-1.5 w-1.5 rounded-full ${color}`} aria-hidden />;
 }

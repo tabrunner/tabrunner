@@ -118,12 +118,15 @@ export function HooksSection() {
         </ul>
       )}
 
-      <HookDialog
-        key={editor.rule?.id ?? "new"}
-        open={editor.open}
-        {...(editor.rule ? { rule: editor.rule } : {})}
-        onClose={() => setEditor({ open: false })}
-      />
+      {/* Mounted only while open — the form state must reset between opens,
+          same contract as every other add/edit dialog here. */}
+      {editor.open && (
+        <HookDialog
+          open
+          {...(editor.rule ? { rule: editor.rule } : {})}
+          onClose={() => setEditor({ open: false })}
+        />
+      )}
     </section>
   );
 }
@@ -206,7 +209,11 @@ function HookDialog({
         </label>
         <TextField
           label={t("hooks.urlLabel")}
-          hint={t("hooks.urlHint")}
+          hint={
+            <>
+              {t("hooks.urlHint")} {t("hooks.headersHint")}
+            </>
+          }
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://hooks.example.com/tabrunner"
@@ -223,7 +230,7 @@ function HookDialog({
             {t("common.cancel")}
           </Button>
           <Button size="sm" disabled={!url.trim()} type="submit">
-            {t("mcpOut.save")}
+            {t("hooks.save")}
           </Button>
         </div>
       </form>

@@ -60,8 +60,8 @@
       "mcpOff": "MCP: desligado"
     },
     "mcp": {
-      "title": "Ponte MCP",
-      "help": "Deixe um cliente de IA externo — Claude Code, Claude Desktop, qualquer um que fale MCP — dirigir o mesmo agente, neste navegador, com suas sessões logadas.",
+      "title": "MCP",
+      "help": "Deixe clientes de IA externos dirigirem este agente pela ponte local — e conecte-se a servidores MCP remotos cujas ferramentas entram em todas as execuções.",
       "enable": "Ativar a ponte",
       "enableHint": "A extensão se conecta a um daemon local que o seu cliente de IA inicia. Desligado não custa nada — nem porta nem despertares.",
       "port": "Porta do daemon",
@@ -241,6 +241,7 @@
     "urlLabel": "URL",
     "urlHint": "https:// em qualquer lugar; http:// simples só para localhost.",
     "headersHint": "Cabeçalhos de autenticação podem ser adicionados editando a regra no armazenamento por enquanto — webhooks simples não precisam de nenhum.",
+    "save": "Salvar",
     "enable": "Ativado",
     "edit": "Editar",
     "delete": "Remover",

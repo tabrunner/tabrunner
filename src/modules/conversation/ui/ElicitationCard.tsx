@@ -58,7 +58,15 @@ export function ElicitationCard({
     for (const f of fields) {
       const v = values[f.name];
       if (v === undefined || v === "") continue;
-      value[f.name] = f.kind === "number" ? Number(v) : v;
+      if (f.kind === "number") {
+        const n = Number(v);
+        // A half-typed number ("12a") reads as an unfilled field — it must
+        // not go out as JSON null.
+        if (!Number.isFinite(n)) continue;
+        value[f.name] = n;
+      } else {
+        value[f.name] = v;
+      }
     }
     return value;
   };
@@ -75,40 +83,46 @@ export function ElicitationCard({
       )}
 
       <div className="flex flex-col gap-1.5">
-        {fields.map((f) => (
-          <label key={f.name} className="flex items-center gap-2 text-xs">
-            <span className="w-28 shrink-0 truncate font-mono text-neutral-500 dark:text-neutral-400">
-              {f.name}
-            </span>
-            {f.kind === "boolean" ? (
-              <Switch
-                checked={values[f.name] === true}
-                onChange={(v) => setValues({ ...values, [f.name]: v })}
-                ariaLabel={f.name}
-              />
-            ) : f.values ? (
-              <select
-                className="min-w-0 flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 focus:border-brand-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-                value={typeof values[f.name] === "string" ? (values[f.name] as string) : ""}
-                onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
-              >
-                <option value="">—</option>
-                {f.values!.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                className="min-w-0 flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 font-mono text-xs text-neutral-800 focus:border-brand-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-                value={typeof values[f.name] === "string" ? (values[f.name] as string) : ""}
-                onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
-                {...(f.kind === "number" ? { inputMode: "numeric" as const } : {})}
-              />
-            )}
-          </label>
-        ))}
+        {fields.map((f) => {
+          const v = values[f.name];
+          const str = typeof v === "string" ? v : "";
+          // Aliased so narrowing survives into the option-map callback.
+          const options = f.values;
+          return (
+            <label key={f.name} className="flex items-center gap-2 text-xs">
+              <span className="w-28 shrink-0 truncate font-mono text-neutral-500 dark:text-neutral-400">
+                {f.name}
+              </span>
+              {f.kind === "boolean" ? (
+                <Switch
+                  checked={v === true}
+                  onChange={(next) => setValues({ ...values, [f.name]: next })}
+                  ariaLabel={f.name}
+                />
+              ) : options ? (
+                <select
+                  className="min-w-0 flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800 focus:border-brand-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                  value={str}
+                  onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
+                >
+                  <option value="">{t("common.selectPlaceholder")}</option>
+                  {options.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="min-w-0 flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 font-mono text-xs text-neutral-800 focus:border-brand-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                  value={str}
+                  onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
+                  {...(f.kind === "number" ? { inputMode: "numeric" as const } : {})}
+                />
+              )}
+            </label>
+          );
+        })}
       </div>
 
       <div className="mt-0.5 flex items-center justify-end gap-2">

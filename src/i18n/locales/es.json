@@ -60,8 +60,8 @@
       "mcpOff": "MCP: apagado"
     },
     "mcp": {
-      "title": "Puente MCP",
-      "help": "Deja que un cliente de IA externo — Claude Code, Claude Desktop, cualquiera que hable MCP — maneje el mismo agente, en este navegador, con tus sesiones iniciadas.",
+      "title": "MCP",
+      "help": "Deja que clientes de IA externos manejen este agente a través del puente local — y conéctate a servidores MCP remotos cuyas herramientas se unen a cada ejecución.",
       "enable": "Activar el puente",
       "enableHint": "La extensión se conecta a un daemon local que inicia tu cliente de IA. Apagado no cuesta nada — ni puerto ni despertares.",
       "port": "Puerto del daemon",
@@ -241,6 +241,7 @@
     "urlLabel": "URL",
     "urlHint": "https:// en cualquier sitio; http:// solo para localhost.",
     "headersHint": "Las cabeceras de autenticación se pueden añadir editando la regla en el almacenamiento por ahora — los webhooks simples no necesitan ninguna.",
+    "save": "Guardar",
     "enable": "Activado",
     "edit": "Editar",
     "delete": "Eliminar",

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
-import { Icon } from "@/components/Icon";
+import { Icon, XIcon } from "@/components/Icon";
 import { TitledDialog } from "@/components/TitledDialog";
 import type { McpServerConfig } from "../types";
 import { saveServer } from "../store";
@@ -149,7 +149,7 @@ export function ServerDialog({
                   aria-label={t("common.remove")}
                   onClick={() => setHeaders(headers.filter((_, j) => j !== i))}
                 >
-                  ×
+                  <XIcon />
                 </Button>
               </div>
             ))}
