@@ -57,6 +57,17 @@ export interface McpToolRef {
   toolName: string;
 }
 
+/** Last connection outcome per server id — the Settings row's status dot.
+ *  Written by runs and probes, read through storage watch; never bundled with
+ *  transport code (the bridge's config/status split). */
+export interface McpServerStatus {
+  ok: boolean;
+  /** Human-readable summary, i18n'd at write time — display-only afterwards. */
+  detail?: string;
+  toolCount?: number;
+  checkedAt: number;
+}
+
 /** Wire shape of a callTool result, normalized just enough to normalize further. */
 export interface McpCallResult {
   isError: boolean;
@@ -64,4 +75,13 @@ export interface McpCallResult {
   structuredContent?: unknown;
 }
 
-/** The session surface tools execute against (lives with client.ts). */
+/** The session surface tools execute against (McpSession implements this). */
+export interface McpSessionApi {
+  callTool(toolName: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<McpCallResult>;
+}
+
+/** Live handle for one run's set of sessions. */
+export interface McpHandle {
+  resolve(exposedName: string): { session: McpSessionApi; ref: McpToolRef } | undefined;
+  close(): Promise<void>;
+}

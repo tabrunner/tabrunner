@@ -170,6 +170,21 @@
       "tooMany": "Tienes {{max}} habilidades — el tope. Elimina una que ya no uses antes de añadir otra."
     }
   },
+  "mcpOut": {
+    "errors": {
+      "tooMany": "Como mucho {{max}} servidores MCP — elimina uno para añadir otro.",
+      "invalidUrl": "Introduce una URL https:// (http:// solo funciona en localhost).",
+      "invalidName": "Dale al servidor un nombre de hasta 32 caracteres.",
+      "duplicate": "Ya existe un servidor con este nombre."
+    },
+    "status": {
+      "ok": "{{count}} herramientas",
+      "down": "{{reason}}"
+    },
+    "run": {
+      "serverDown": "El servidor MCP \"{{name}}\" no responde — se continúa sin sus herramientas."
+    }
+  },
   "schedule": {
     "agentLabel": "Programado",
     "lateNote": "Esta ejecución estaba programada para {{scheduled}} y empieza tarde, porque el navegador estuvo cerrado hasta ahora. Ten en cuenta el retraso y dilo en tu resumen si cambia la respuesta.",

@@ -170,6 +170,21 @@
       "tooMany": "You have {{max}} skills — the cap. Delete one you no longer use before adding another."
     }
   },
+  "mcpOut": {
+    "errors": {
+      "tooMany": "No more than {{max}} MCP servers — remove one to add another.",
+      "invalidUrl": "Enter an https:// URL (plain http:// works for localhost only).",
+      "invalidName": "Give the server a name of up to 32 characters.",
+      "duplicate": "A server with this name already exists."
+    },
+    "status": {
+      "ok": "{{count}} tools",
+      "down": "{{reason}}"
+    },
+    "run": {
+      "serverDown": "MCP server \"{{name}}\" is unreachable — continuing without its tools."
+    }
+  },
   "schedule": {
     "agentLabel": "Scheduled",
     "lateNote": "This run was scheduled for {{scheduled}} and is starting late, because the browser was closed until now. Take the delay into account, and say so in your summary if it changes the answer.",
