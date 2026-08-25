@@ -73,12 +73,38 @@ export function McpPane() {
 
   return (
     <section>
-      <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-        {t("settings.mcp.title")}
-      </h2>
-      <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-        {t("settings.mcp.help")}
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+            {t("settings.mcp.title")}
+          </h2>
+          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            {t("settings.mcp.help")}
+          </p>
+        </div>
+      </div>
+      {/* The whole page, orientated before any knob: MCP is two directions, and
+          this pane carries both. The full manual stays one link away. */}
+      <details className="mt-3 rounded-lg bg-neutral-50 px-3 py-2 dark:bg-neutral-900/50">
+        <summary className="cursor-pointer select-none text-xs font-medium text-brand-700 hover:underline dark:text-brand-400">
+          {t("settings.mcp.guideTitle")}
+        </summary>
+        <div className="mt-2 flex flex-col gap-2 text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">
+          <p>{t("settings.mcp.guideIn")}</p>
+          <p>{t("settings.mcp.guideOut")}</p>
+          <p>{t("settings.mcp.guideQuestions")}</p>
+          <p>
+            <a
+              href={LINKS.mcpDocs}
+              target="_blank"
+              rel="noreferrer"
+              className="text-brand-600 hover:underline dark:text-brand-400"
+            >
+              {t("settings.mcp.docsLink")}
+            </a>
+          </p>
+        </div>
+      </details>
 
       <div className="mt-4 flex items-start justify-between gap-4">
         <div>
