@@ -220,7 +220,32 @@
       "tooMany": "Como mucho {{max}} webhooks — elimina uno para añadir otro.",
       "invalidUrl": "Introduce una URL https:// (http:// solo funciona en localhost).",
       "badEvent": "Elige uno de los cuatro eventos."
-    }
+    },
+    "title": "Webhooks",
+    "help": "Envía un payload JSON a tu propia URL cuando las ejecuciones empiezan, terminan, dan error o te preguntan algo. Fire-and-forget — un endpoint lento jamás retiene una ejecución.",
+    "add": "Añadir webhook",
+    "newTitle": "Añadir webhook",
+    "editTitle": "Editar webhook",
+    "dialogHelp": "Un evento hacia una URL. El payload son los detalles del evento en JSON; el envío es único, sin reintentos.",
+    "eventLabel": "Evento",
+    "events": {
+      "run_started": "Ejecución iniciada",
+      "run_finished": "Ejecución terminada",
+      "ask_user": "El agente te preguntó",
+      "error": "Error"
+    },
+    "urlLabel": "URL",
+    "urlHint": "https:// en cualquier sitio; http:// solo para localhost.",
+    "headersHint": "Las cabeceras de autenticación se pueden añadir editando la regla en el almacenamiento por ahora — los webhooks simples no necesitan ninguna.",
+    "enable": "Activado",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "deleteTitle": "¿Eliminar este webhook?",
+    "deleteDescription": "Los próximos eventos dejan de entregarse. Nada de lo ya enviado se ve afectado.",
+    "empty": "Sin webhooks todavía. Añade uno y TabRunner avisará a esa URL en el momento que elijas — ejecución iniciada, terminada, con error o preguntándote algo.",
+    "receiptNever": "sin disparar",
+    "receipt": "{{at}} · {{status}}",
+    "receiptFailed": "falló {{at}}"
   },
   "schedule": {
     "agentLabel": "Programado",

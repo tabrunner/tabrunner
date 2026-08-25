@@ -220,7 +220,32 @@
       "tooMany": "No more than {{max}} webhooks — remove one to add another.",
       "invalidUrl": "Enter an https:// URL (plain http:// works for localhost only).",
       "badEvent": "Pick one of the four events."
-    }
+    },
+    "title": "Webhooks",
+    "help": "POST a JSON payload to your own URL when runs start, finish, hit an error, or ask you something. Fire-and-forget — a slow endpoint never holds a run.",
+    "add": "Add webhook",
+    "newTitle": "Add webhook",
+    "editTitle": "Edit webhook",
+    "dialogHelp": "One event to one URL. The payload is the event's details as JSON; deliveries are single-shot, no retries.",
+    "eventLabel": "Event",
+    "events": {
+      "run_started": "Run started",
+      "run_finished": "Run finished",
+      "ask_user": "Agent asked you",
+      "error": "Error"
+    },
+    "urlLabel": "URL",
+    "urlHint": "https:// anywhere; plain http:// only for localhost.",
+    "headersHint": "Auth headers can be added by editing the rule in storage for now — plain webhooks need none.",
+    "enable": "Enabled",
+    "edit": "Edit",
+    "delete": "Remove",
+    "deleteTitle": "Remove this webhook?",
+    "deleteDescription": "Future events stop being delivered. Nothing already sent is affected.",
+    "empty": "No webhooks yet. Add one and TabRunner pings that URL at the moment you picked — run started, finished, errored, or asking you a question.",
+    "receiptNever": "never fired",
+    "receipt": "{{at}} · {{status}}",
+    "receiptFailed": "failed {{at}}"
   },
   "schedule": {
     "agentLabel": "Scheduled",

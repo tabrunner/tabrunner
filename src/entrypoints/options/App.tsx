@@ -8,6 +8,7 @@ import {
   activeProviderOf,
 } from "@/modules/providers/ui";
 import { InstructionsSection, MemorySection } from "@/modules/memory/ui";
+import { HooksSection } from "@/modules/hooks/ui/HooksSection";
 import { SchedulesSection } from "@/modules/schedule/ui";
 import { SkillsSection } from "@/modules/skills/ui";
 import { Button } from "@/components/Button";
@@ -288,6 +289,10 @@ function BehaviorPane() {
           />
         </div>
       </section>
+
+      {/* Outbound run events — the same dispatch-and-forget spirit as the knobs
+          above, pointed at the user's own endpoints. */}
+      <HooksSection />
     </>
   );
 }

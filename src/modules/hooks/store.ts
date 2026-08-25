@@ -9,7 +9,8 @@ import { HOOK_EVENTS, MAX_HOOKS, type HookEvent, type HookRule } from "./types";
  * URL rule is shared with the MCP client: https anywhere, loopback http only.
  */
 
-const hookRulesItem = defineItem<HookRule[]>("hook-rules", []);
+/** Public so the options page can read it reactively (useStoredItem). */
+export const hookRulesItem = defineItem<HookRule[]>("hook-rules", []);
 
 const serialized = createWriteQueue();
 
