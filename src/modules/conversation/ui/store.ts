@@ -568,7 +568,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       planApproved: false,
       recording: false,
     });
-    p.postMessage({
+    const dispatch: Command = {
       type: "run",
       // The run's home is where its task message just landed — carried here so
       // the worker never re-derives it from the shared active slot, which a
@@ -576,7 +576,29 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       conversationId,
       task,
       ...(images?.length ? { images } : {}),
-    } satisfies Command);
+    };
+    try {
+      p.postMessage(dispatch);
+    } catch {
+      // The worker died inside the handoff: every await above ran against a
+      // live port, then teardown landed before this post (MV3 idle kill, dev
+      // reload, an update). The port-drop recovery cannot cover it —
+      // onDisconnect fired while this panel was still idle with lastRun null,
+      // and it had nothing to say yet. The message is already stored (pushMsg
+      // wrote it before startRun ran), so keep both sides honest: try once on
+      // a fresh connection (connecting starts a stopped worker), and failing
+      // that, own the loss with an oriented bubble instead of pinning this
+      // panel on a run nobody ever received. A throw here is pre-delivery —
+      // postMessage on a dead port rejects synchronously — so the resend can
+      // never double-send.
+      port = null;
+      try {
+        attach().postMessage(dispatch);
+      } catch {
+        pushMsg(makeMsg("error", i18n.t("chat.reloaded")));
+        settleRun("idle");
+      }
+    }
   };
 
   /**
