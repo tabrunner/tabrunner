@@ -152,7 +152,22 @@
       "errorStatus": "O servidor respondeu {{status}} — o arquivo pode ter mudado de lugar ou ser privado. Confira a URL e tente de novo.",
       "errorTooLarge": "Esse arquivo passa de 256 KB — grande demais para uma habilidade. Aponte para o SKILL.md em si, não um arquivo compactado.",
       "errorEmpty": "O servidor respondeu com um arquivo vazio — confira se a URL aponta para o SKILL.md.",
-      "errorNothingPasted": "Cole antes o markdown da habilidade — frontmatter e instruções."
+      "errorNothingPasted": "Cole antes o markdown da habilidade — frontmatter e instruções.",
+      "multiReview": "Este repositório tem mais de uma habilidade. Desmarque o que não quiser — cada importação é validada por completo.",
+      "truncated": "A listagem do repositório veio cortada (repositório muito grande) — pode haver mais habilidades do que as exibidas.",
+      "someFailed": "Não foi possível carregar: {{list}}",
+      "selectAll": "Selecionar todas",
+      "selectNone": "Limpar seleção",
+      "importSelected_one": "Importar {{count}} habilidade",
+      "importSelected_other": "Importar {{count}} habilidades",
+      "importingSelected": "Importando…",
+      "multiDone_one": "{{count}} habilidade importada",
+      "multiDone_other": "{{count}} habilidades importadas",
+      "rowSaved": "Importada ✓",
+      "rowSkippedExists": "Já existe uma com esse nome — ficou intocada. Importe uma a uma para substituir.",
+      "rowSkippedCap": "Ignorada — o limite de 50 habilidades está cheio.",
+      "rowFailed": "{{error}}",
+      "discovering": "Varrendo o repositório…"
     },
     "draft": {
       "title": "Nova habilidade desta conversa",

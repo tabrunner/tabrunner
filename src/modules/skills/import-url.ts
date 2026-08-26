@@ -105,3 +105,131 @@ export async function fetchSkillMarkdown(url: string, signal?: AbortSignal): Pro
   if (!text.trim()) throw new Error(i18n.t("skills.import.errorEmpty"));
   return text;
 }
+
+// ---------------------------------------------------------------------------
+// Repo discovery: "is a skill file" resolves one URL; "has skill files" scans
+// a whole repo via the GitHub tree API. Same page-context fetch discipline.
+
+/** A repo-shaped input: which repo, at which ref, restricted to which directory. */
+export interface GithubRepoRef {
+  owner: string;
+  repo: string;
+  ref: string;
+  /** Subdirectory to search under — empty means the whole repo. */
+  dir: string;
+}
+
+export type RepoRefResult = { ok: true; repo: GithubRepoRef } | { ok: false };
+
+/**
+ * Does this input name a REPO to scan rather than a file to fetch? A `.md`
+ * path is always one file (`resolveSkillSource`'s flow); `owner/repo`,
+ * `owner/repo/<dir>`, and github.com tree URLs are repos. Blob URLs stay
+ * single-file: they point at one thing the user was looking at.
+ */
+export function resolveGithubRepo(input: string): RepoRefResult {
+  const raw = input.trim();
+  if (/^http:\/\//i.test(raw)) return { ok: false };
+
+  if (/^https:\/\//i.test(raw)) {
+    let url: URL;
+    try {
+      url = new URL(raw);
+    } catch {
+      return { ok: false };
+    }
+    if (url.hostname !== "github.com") return { ok: false };
+    const [owner, repo, kind, ref, ...rest] = url.pathname.split("/").filter(Boolean);
+    if (!owner || !repo || kind === "blob") return { ok: false };
+    if (kind === "tree" && ref) {
+      return { ok: true, repo: { owner, repo, ref, dir: rest.join("/") } };
+    }
+    // Bare github.com/o/r with no ref — but only when nothing else matched it:
+    // an .md-suffixed path is still one file.
+    if (!kind && !rest.join("/").endsWith(".md")) {
+      return { ok: true, repo: { owner, repo, ref: "HEAD", dir: rest.join("/") } };
+    }
+    return { ok: false };
+  }
+
+  if (SHORTHAND.test(raw)) {
+    const parts = raw.split("/");
+    const owner = parts[0];
+    const repo = parts[1];
+    if (!owner || !repo) return { ok: false };
+    const dir = parts.slice(2).join("/");
+    if (dir.endsWith(".md")) return { ok: false };
+    return { ok: true, repo: { owner, repo, ref: "HEAD", dir } };
+  }
+  return { ok: false };
+}
+
+export type DiscoveredSkills =
+  | { ok: true; files: { path: string; url: string }[]; truncated: boolean }
+  | { ok: false; reason: "rate-limit" | "network" | "status"; status?: number };
+
+/**
+ * Above this, the checklist stops being a review and becomes a dump — the
+ * response is imported as truncated so nothing is silently missing.
+ */
+const MAX_DISCOVERED = 25;
+
+const DISCOVER_TIMEOUT_MS = 10_000;
+
+/**
+ * Every SKILL.md in the repo (or its subtree), as raw fetch URLs. Unauthenticated,
+ * CORS-enabled, from the same page-context fetch the single-file path uses;
+ * one call per import attempt against the 60/hr anonymous budget. Failures are
+ * typed, never thrown — the caller degrades to the single-file flow instead of
+ * dead-ending on a repo the API could not see.
+ */
+export async function discoverRepoSkills(
+  ref: GithubRepoRef,
+  signal?: AbortSignal,
+): Promise<DiscoveredSkills> {
+  const api = `https://api.github.com/repos/${ref.owner}/${ref.repo}/git/trees/${encodeURIComponent(ref.ref)}?recursive=1`;
+  const timeout = AbortSignal.timeout(DISCOVER_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(api, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+  if (res.status === 403 || res.status === 429) {
+    return { ok: false, reason: "rate-limit", status: res.status };
+  }
+  if (!res.ok) return { ok: false, reason: "status", status: res.status };
+
+  type TreeEntry = { path?: unknown; type?: unknown };
+  try {
+    const json = (await res.json()) as { tree?: TreeEntry[]; truncated?: boolean };
+    const entries = Array.isArray(json.tree) ? json.tree : [];
+    if (entries.length === 0 && !json.truncated) {
+      // An empty or malformed tree answers as a status failure so the caller
+      // falls back to the single-file path instead of reporting success with
+      // nothing found.
+      return { ok: false, reason: "status", status: res.status };
+    }
+
+    const prefix = ref.dir ? `${ref.dir.replace(/\/+$/, "")}/` : "";
+    const files: { path: string; url: string }[] = [];
+    let hitCap = false;
+    for (const entry of entries) {
+      const path = typeof entry.path === "string" ? entry.path : "";
+      if (entry.type !== "blob") continue;
+      if (!path.endsWith("/SKILL.md") && path !== "SKILL.md") continue;
+      if (prefix && !path.startsWith(prefix)) continue;
+      if (files.length >= MAX_DISCOVERED) {
+        hitCap = true;
+        break;
+      }
+      files.push({
+        path,
+        url: `${RAW_HOST}/${ref.owner}/${ref.repo}/${ref.ref}/${path}`,
+      });
+    }
+    return { ok: true, files, truncated: hitCap || json.truncated === true };
+  } catch {
+    return { ok: false, reason: "status", status: res.status };
+  }
+}

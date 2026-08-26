@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { fetchSkillMarkdown, resolveSkillSource } from "../import-url";
+import {
+  discoverRepoSkills,
+  fetchSkillMarkdown,
+  resolveGithubRepo,
+  resolveSkillSource,
+} from "../import-url";
 
 function urlOf(input: string): string {
   const source = resolveSkillSource(input);
@@ -43,6 +48,100 @@ describe("resolveSkillSource", () => {
     });
     expect(resolveSkillSource("not a url at all")).toEqual({ ok: false, reason: "unparseable" });
     expect(resolveSkillSource("")).toEqual({ ok: false, reason: "unparseable" });
+  });
+});
+
+describe("resolveGithubRepo", () => {
+  it("accepts repo-shaped inputs: bare shorthand, dir subtree, and tree URLs", () => {
+    expect(resolveGithubRepo("acme/skills")).toEqual({
+      ok: true,
+      repo: { owner: "acme", repo: "skills", ref: "HEAD", dir: "" },
+    });
+    expect(resolveGithubRepo("acme/skills/pay-rent")).toEqual({
+      ok: true,
+      repo: { owner: "acme", repo: "skills", ref: "HEAD", dir: "pay-rent" },
+    });
+    expect(
+      resolveGithubRepo("https://github.com/acme/skills/tree/main/library"),
+    ).toEqual({
+      ok: true,
+      repo: { owner: "acme", repo: "skills", ref: "main", dir: "library" },
+    });
+  });
+
+  it("rejects anything that names one file — those stay on the single-fetch path", () => {
+    expect(resolveGithubRepo("acme/skills/pay-rent/SKILL.md")).toEqual({ ok: false });
+    expect(resolveGithubRepo("https://github.com/acme/skills/blob/main/a.md")).toEqual({
+      ok: false,
+    });
+    expect(resolveGithubRepo("https://example.com/whatever")).toEqual({ ok: false });
+    expect(resolveGithubRepo("")).toEqual({ ok: false });
+  });
+});
+
+describe("discoverRepoSkills", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const tree = (paths: string[], truncated = false) =>
+    Response.json({
+      truncated,
+      tree: paths.map((p) => ({ path: p, type: p === "docs" ? "tree" : "blob" })),
+    });
+
+  it("keeps only SKILL.md blobs under the directory, as raw fetch URLs, capped", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      tree([
+        "SKILL.md",
+        "pay-rent/SKILL.md",
+        "library/billing/pay-rent/SKILL.md",
+        "README.md",
+        "notes",
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    const found = await discoverRepoSkills({
+      owner: "acme",
+      repo: "skills",
+      ref: "HEAD",
+      dir: "library",
+    });
+    expect(found).toEqual({
+      ok: true,
+      files: [
+        {
+          path: "library/billing/pay-rent/SKILL.md",
+          url: "https://raw.githubusercontent.com/acme/skills/HEAD/library/billing/pay-rent/SKILL.md",
+        },
+      ],
+      truncated: false,
+    });
+  });
+
+  it("surfaces truncation from the response or its own cap", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(tree(["a/SKILL.md"], true)));
+    const marked = await discoverRepoSkills({ owner: "a", repo: "b", ref: "HEAD", dir: "" });
+    expect(marked.ok && marked.truncated).toBe(true);
+  });
+
+  it("maps rate limiting and junk payloads to typed failures, never a throw", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 403 })));
+    await expect(discoverRepoSkills({ owner: "a", repo: "b", ref: "HEAD", dir: "" })).resolves.toEqual(
+      { ok: false, reason: "rate-limit", status: 403 },
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("not json at all", { status: 200 })),
+    );
+    await expect(discoverRepoSkills({ owner: "a", repo: "b", ref: "HEAD", dir: "" })).resolves.toEqual(
+      { ok: false, reason: "status", status: 200 },
+    );
+  });
+
+  it("an empty tree counts as a failed scan so the caller falls back to one file", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(tree([])));
+    await expect(discoverRepoSkills({ owner: "a", repo: "b", ref: "HEAD", dir: "" })).resolves.toEqual(
+      { ok: false, reason: "status", status: 200 },
+    );
   });
 });
 

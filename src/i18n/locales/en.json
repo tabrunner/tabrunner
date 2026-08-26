@@ -152,7 +152,22 @@
       "errorStatus": "The server answered {{status}} — the file may have moved or be private. Check the URL and try again.",
       "errorTooLarge": "That file is over 256 KB — too big for a skill. Point at the SKILL.md itself, not an archive.",
       "errorEmpty": "The server answered with an empty file — check that the URL points at the SKILL.md.",
-      "errorNothingPasted": "Paste the skill's markdown first — frontmatter plus instructions."
+      "errorNothingPasted": "Paste the skill's markdown first — frontmatter plus instructions.",
+      "multiReview": "This repo carries more than one skill. Uncheck anything you don't want — each import is fully validated.",
+      "truncated": "The repo listing was cut short (very large repo) — more skills may exist than shown.",
+      "someFailed": "Couldn't load: {{list}}",
+      "selectAll": "Select all",
+      "selectNone": "Select none",
+      "importSelected_one": "Import {{count}}",
+      "importSelected_other": "Import {{count}}",
+      "importingSelected": "Importing…",
+      "multiDone_one": "Imported {{count}} skill",
+      "multiDone_other": "Imported {{count}} skills",
+      "rowSaved": "Imported ✓",
+      "rowSkippedExists": "Already saved with this name — untouched. Re-import one-by-one to replace it.",
+      "rowSkippedCap": "Skipped — the 50-skill cap is full.",
+      "rowFailed": "{{error}}",
+      "discovering": "Scanning the repo…"
     },
     "draft": {
       "title": "New skill from this chat",
