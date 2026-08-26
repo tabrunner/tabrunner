@@ -37,14 +37,15 @@ export function formatTokens(n: number): string {
 /**
  * A dollar estimate, always led by "$" — these are list-price estimates in
  * USD regardless of locale, and a localized currency symbol would dress a
- * guess in real money's clothes. Two decimals where they say something; sub-
- * cent runs get a thousandth rather than a "$0.00" that reads as free, and
- * anything below that rounds away ("<$0.001") rather than printing a zero.
+ * guess in real money's clothes. Two decimals where they say something; a
+ * sub-cent run keeps the thousandth while there is one, and below a tenth of
+ * a cent prints "$0.00" — including a gateway's literal zero (a plan-covered
+ * run), which "<$0.001" dressed up as a tiny positive charge.
  */
 export function formatMoney(usd: number): string {
   if (usd >= 0.01) return `$${usd.toFixed(2)}`;
   if (usd >= 0.001) return `$${usd.toFixed(3)}`;
-  return "<$0.001";
+  return "$0.00";
 }
 
 /** Cap the TOTAL length including the ellipsis — for UI strings that must fit a row. */

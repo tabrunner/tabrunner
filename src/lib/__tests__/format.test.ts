@@ -1,6 +1,23 @@
 import { describe, it, expect } from "vitest";
 
-import { formatDuration } from "../format";
+import { formatDuration, formatMoney } from "../format";
+
+describe("formatMoney", () => {
+  it("keeps two decimals where they say something", () => {
+    expect(formatMoney(1.5)).toBe("$1.50");
+    expect(formatMoney(0.04)).toBe("$0.04");
+  });
+
+  it("keeps the thousandth while a sub-cent run has one", () => {
+    expect(formatMoney(0.004)).toBe("$0.004");
+    expect(formatMoney(0.001)).toBe("$0.001");
+  });
+
+  it("prints a real zero as a zero, never as a tiny positive charge", () => {
+    expect(formatMoney(0)).toBe("$0.00");
+    expect(formatMoney(0.0009)).toBe("$0.00");
+  });
+});
 
 describe("formatDuration", () => {
   it("reads under a minute in seconds", () => {
