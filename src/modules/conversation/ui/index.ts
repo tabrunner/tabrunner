@@ -1,6 +1,7 @@
 export { MessageList } from "./MessageList";
 export { ConversationList, HistoryToggle, NewChatButton } from "./ConversationList";
 export { ChatInput } from "./ChatInput";
+export { QueueCards } from "./QueueCards";
 export { RunStatus } from "./RunStatus";
 export { RunBoard } from "./RunBoard";
 export { TitleInput } from "./TitleInput";

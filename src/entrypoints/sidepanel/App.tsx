@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   MessageList,
   ChatInput,
+  QueueCards,
   RunStatus,
   RunBoard,
   ConversationList,
@@ -204,6 +205,7 @@ export default function App() {
             <>
               <RunBoard />
               <MessageList />
+              <QueueCards />
               <RunStatus />
               <ChatInput />
             </>
