@@ -159,16 +159,23 @@ never reach the service-worker bundle.
 - `skills/` — named instruction recipes, importable and site-scoped: the storage is structured
   records (`store.ts`, one capped array, the schedule store's shape); SKILL.md markdown is only
   the interchange form (`skill-md.ts` — imports, pastes, drafts and exports all pass the one
-  parser, unknown frontmatter keys reported, never fatal). A run snapshots them once at start
-  (`loadSkillsForRun`): the system prompt lists applicable skills one line each (scoped via
-  `lib/host.ts`; unsited = everywhere), and the read-only `skill` tool returns a body on
-  demand — bodies are never auto-injected, and the tool is offered only when enabled skills
-  exist, resolving any of them by name so an explicit `/skill <name>` works cross-site.
+  parser, unknown frontmatter keys reported, never fatal; optional `mcp_servers:` carries MCP
+  server refs that install only by explicit opt-in at import — one-way copy into the mcp
+  registry, collisions skip). A run snapshots them once at start (`loadSkillsForRun`): the
+  system prompt lists applicable skills one line each (scoped via `lib/host.ts`; unsited =
+  everywhere), and the read-only `skill` tool returns a body on demand — bodies are never
+  auto-injected, and the tool is offered only when enabled skills exist, resolving any of them
+  by name so an explicit `/skill <name>` works cross-site. Landing on a new host mid-run
+  announces its scoped skills as a `new_skills` key on that navigation's own tool result — the
+  per-run tool array never rebuilds. Every enabled skill is also its own slash command
+  (`command-names.ts` reserves built-ins' names); `/skills` opens the library whole in a modal;
   `/skill new` distills the open conversation into an editable draft (`distill.ts`, the fourth
-  transcript distillation, panel-context). Import takes a URL, GitHub `owner/repo` shorthand, or
-  pasted markdown — fetched from the page context, https-only, size-capped, always previewed in
-  full before saving (untrusted prose headed for the system prompt). Managed in Settings →
-  Skills. Background-only except `ui/`.
+  transcript distillation, panel-context). Import takes a URL, GitHub `owner/repo` shorthand
+  (repo-shaped inputs scan the repo's tree and offer multi-import), or pasted markdown —
+  fetched from the page context, https-only, size-capped, always previewed before saving
+  (untrusted prose headed for the system prompt). One built-in ships with the binary
+  (`builtin.ts`, `tabrunner-help`) — seeded on install, refreshed on update, deletion sticks.
+  Background-only except `ui/`.
 - `walkthrough/` — walkthroughs: "do X and document it" turns the task into a shareable
   step-by-step guide. The model arms it with the `document` tool (offered only while
   `walkthroughsEnabled`, the `buildToolDefs` gate); ungated bookkeeping, since capture changes

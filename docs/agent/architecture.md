@@ -425,14 +425,16 @@ until the next user message retires the record.
 ### `skills/` — named recipes
 
 Skills are the roadmap's tier 3: a `## site:` section that grew a name. The record is
-structured — `Skill { id, name, description, sites?, body, enabled, source? }` in one capped
-array (`store.ts`, the schedule store's shape and write chain) — and SKILL.md markdown is only
-the interchange form: `skill-md.ts` is the one parser every inbound path shares (URL import,
-paste, the distillation reply) and the serializer export uses, a hand-rolled frontmatter subset
-that splits on the first colon so prose colons survive, and reports unknown keys instead of
-rejecting them — a Claude Code SKILL.md must import cleanly. Name grammar is kebab, unique,
-`"new"` reserved (it's the create subcommand); every save rule lives in `saveSkill`, nowhere
-else.
+structured — `Skill { id, name, description, sites?, body, enabled, source?, mcpServers? }` in
+one capped array (`store.ts`, the schedule store's shape and write chain) — and SKILL.md
+markdown is only the interchange form: `skill-md.ts` is the one parser every inbound path
+shares (URL import, paste, the distillation reply) and the serializer export uses, a hand-rolled
+frontmatter subset that splits on the first colon so prose colons survive, and reports unknown
+keys instead of rejecting them — a Claude Code SKILL.md must import cleanly. Name grammar is
+kebab, unique, `"new"` reserved (create subcommand) and so are all built-in slash-command names
+(`command-names.ts`, a React-free leaf so the background-safe store can import it; a parity test
+pins it to the registry). Every save rule lives in `saveSkill`, nowhere else — except
+`upsertBuiltinSkill`, the sanctioned bypass for shipped built-ins.
 
 **Activation is progressive disclosure, resolved once at run start.** `loadSkillsForRun(url)`
 joins the same `Promise.all` as `loadAgentContext` and snapshots two lists: `applicable`
@@ -446,26 +448,64 @@ skills exist to solve. The tool is read-only (never plan-gated), offered only wh
 skills exist (REMEMBER_TOOL's rule), and its transcript row leads with the loaded name while
 the drawer shows the instructions as text.
 
-**`/skill` is the user door.** `/skill <name> [args]` resolves exact-then-unique-prefix against
-the panel's synchronous catalog mirror (`ui/catalog.ts`) and sends a _localized_ task naming
-the skill — the model mirrors the message's language, and the body still arrives through the
-tool, so the transcript stays an honest record of what was sent. `/skill new` opens the draft
-dialog: the full stored transcript (display caps don't apply) is rendered by the same
+**Mid-run activation is a delta on the tool result, not a rebuilt toolkit.** When `navigate`,
+`open_tab` or `switch_tab` lands the driven tab on a host (`landedHost`, reading the result's
+own URL), `newlyApplicableSkills` finds enabled site-scoped skills not yet announced and one
+extra `new_skills` key merges into that SAME tool-result JSON — no new message types (a second
+message would butt against the tool_results one), no tool-array rebuild (the prompt-cache
+invariant). Dedupe is per skill name — site lists overlap, so counting hosts would re-announce.
+Unsited skills and start-site matches never re-announce: they were cataloged at snapshot time.
+Ceilings marked ponytail in `landedHost`: go_back carries no URL, evaluate-driven navigation is
+invisible.
+
+**Every enabled skill IS a command; `/skill` stays the explicit door.** Typing `/pay-rent args`
+resolves to the same localized citation task through one sender (`runSkillTask`) that `/skill
+<name> args` uses — derived commands appear after built-ins in the menu, disabled skills appear
+nowhere. Built-ins always win: fragment completion prefers them (`/re` still completes to
+/rename even with a resume-* skill around) and `saveSkill` rejects reserved names going forward,
+so only pre-existing records can collide (they lose just the menu slot). `/skills` opens the
+library whole — the Settings section mounted heading-less in a side-panel modal, panel-local so
+it fires mid-run, where toggling a skill off matters most. `/skill new` opens the draft dialog:
+the full stored transcript (display caps don't apply) is rendered by the same
 `renderTranscriptMessage` compaction uses, distilled by a one-shot call shaped like the other
 three (fresh provider, no reasoning effort, text-only, 90s bound) — except this one **throws**,
 because a user-initiated draft owes a message and a Retry, not a silent shrug. The draft lands
 in the shared `SkillForm` for review; nothing persists until Save. Both forms are
-`deferWhileBusy`. The dialog takes the conversation id as a prop from the sidepanel App so
-skills/ui never imports conversation/ui back.
+`deferWhileBusy`. Dialog singletons follow the help-sheet open-flag pattern from the sidepanel
+App so skills/ui never imports conversation/ui back.
 
 **Import is the product's one non-provider fetch, and the preview is the consent gate.**
 `resolveSkillSource` (pure) accepts a raw https URL, a GitHub blob/tree URL (rewritten to
 raw.githubusercontent.com), or `owner/repo[/path]` shorthand; the fetch runs in the options
 page context (the `/usage` precedent — never the worker), https-only, 10s timeout, 256KB cap.
-The parsed result is shown _in full, editable_, before anything is stored — an imported body is
-untrusted prose that will ride the system prompt on matching runs, and a skill instructing
-badly is user-approved content by construction. Nothing in a body is ever executed or fetched.
-Export is copy-as-markdown, which round-trips through the same parser.
+A repo-shaped input (`owner/repo[/dir]`, tree URLs — never `.md` paths or blob URLs, which stay
+single-file) first tries repo discovery: the GitHub trees API scans for SKILL.md files, capped
+at 25 with truncation reported, failures typed so anything under two survivors degrades to the
+single-file fetch. Two-plus hits land as a checklist where each row is parsed, individually
+selected, and saved through full store validation — collisions **skip and say so** (bulk silent
+takeover is how one bad file wrecks a library; per-skill re-import stays the sanctioned path),
+the cap stops the batch. The single-file result is still shown _in full, editable_, before
+anything is stored — an imported body is untrusted prose that will ride the system prompt on
+matching runs, and a skill instructing badly is user-approved content by construction. Nothing
+in a body is ever executed or fetched.
+
+**Skills can carry MCP servers, suggested — never imposed.** An optional `mcp_servers:` block
+(flat rows: name, url, repeated `header: KEY=value` split on the first =) parses into
+`Skill.mcpServers`; malformed rows and cap overflow (three per skill) land in the preview
+warning like dropped sites. Installing happens at import as a separate opt-in: checkboxes
+default OFF, header names shown but values masked (they're credentials), and
+`installSkillServers` makes a one-way copy into the MCP registry that skips case-insensitive
+name collisions — a skill import can never re-point a server already running. Disabling or
+deleting the skill touches nothing installed; provenance lives in Settings → MCP from then on.
+Bulk import stores the refs without offering installs there (credential consent inside a
+25-row checklist is noise; ponytail-marked upgrade path).
+
+**The built-in skill ships with the binary.** `builtin.ts` bundles one SKILL.md
+(`tabrunner-help` — troubleshooting, command reference, where every knob lives), seeded on
+install and refreshed on every update via `runtime.onInstalled` → `upsertBuiltinSkill`, the one
+sanctioned bypass of saveSkill's gates. Presence drives the whole contract: install inserts,
+update refreshes words while preserving the user's toggle and creation time, deletion sticks —
+no tombstone state. It's an ordinary unsited catalog entry, no base-prompt changes.
 
 ### `walkthrough/` — walkthroughs
 
