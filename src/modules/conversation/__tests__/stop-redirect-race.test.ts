@@ -122,6 +122,18 @@ describe("stop-redirect survives the board refetch race", () => {
     // The redirect parks at tabs.query — `sending` is true, status idle.
     port.fireMessage({ type: "done" });
 
+    // Index-watch half of the fix: mid-handoff (idle but owning — `sending`),
+    // an index write must not even START a refetch. The board claim above
+    // satisfies this watch's own "the run lives here" check, so ownership is
+    // the only guard left between the stale index and the live view. Under the
+    // fixed code no fetch begins; without the fire-guard term one would queue
+    // here and wipe the redirected message the moment it resolves late.
+    fireStorageWatch("conversations", [
+      { id: conversationId, title: "original task", createdAt: Date.now(), updatedAt: Date.now() },
+    ]);
+    await Promise.resolve();
+    expect(pending.length).toBe(0);
+
     // The slot releases: the board watch refetches and reads the stale rows.
     fireStorageWatch("run-board", { queue: [] });
     await vi.waitFor(() => expect(pending.length).toBe(1));

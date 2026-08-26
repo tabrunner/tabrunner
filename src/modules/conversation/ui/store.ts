@@ -246,7 +246,14 @@ let unwatchActive: (() => void) | null = null;
 /** A send between "the user pressed Enter" and "the message is stored". The
  *  follow stands aside for it: the send resolves the thread it lands in from
  *  what this panel shows, and another window moving that out from under it
- *  would file the message under the thread the user just left. */
+ *  would file the message under the thread the user just left.
+ *
+ *  Also half of the one reader rule in this file — ownsLiveView(), below —
+ *  which is the canonical description of it: any storage-backed repaint of
+ *  `messages` defers while this panel holds the live view. It matters because
+ *  the stop-redirect handoff lives entirely inside a `sending` flight: settled
+ *  to idle, slot releasing, the redirected message painted but not yet
+ *  stored — the exact rows a racing refetch would wipe. */
 let sending = false;
 /** Did this run stream any prose? Governs done-summary dedup, never its display. */
 let sawAssistantText = false;
@@ -503,12 +510,15 @@ export const useConversationStore = create<ConversationState>((set, get) => {
   /**
    * Fire the parked command once this conversation is quiet. "Quiet" is stricter
    * than "the run ended": a stop redirect and a queued run are both a next run
-   * already committed, and a /compact landing between them would summarize a
-   * story about to continue. The card just stays up until they clear.
+   * already committed — and `pendingSend` alone misses the moment that redirect
+   * commits, since the done handler clears it before sendTask starts; while
+   * `sending` holds, the next run is mid-commit and the slot's release may be
+   * firing this very drain. A /compact landing there would summarize a story
+   * about to continue. The card just stays up until they clear.
    */
   const drainDeferred = () => {
     const s = get();
-    if (!s.deferred || runsHere(s) || s.pendingSend !== null || s.queuedRun) return;
+    if (!s.deferred || runsHere(s) || s.pendingSend !== null || s.queuedRun || sending) return;
     const { run } = s.deferred;
     set({ deferred: null });
     run();
@@ -570,6 +580,15 @@ export const useConversationStore = create<ConversationState>((set, get) => {
   };
 
   /**
+   * Does THIS panel own the live view right now: a run streams here (status),
+   * or one of its own sends is mid-flight (`sending` — see the flag). The one
+   * gate every storage-based repaint of `messages` consults; painting storage
+   * over an owned view would erase rows the panel holds that storage has
+   * never heard of.
+   */
+  const ownsLiveView = (): boolean => get().status === "running" || sending;
+
+  /**
    * Send a task. It is stamped with the panel's active tab — the tab the run
    * adopts, watched or not. Guarded against the stop redirect: while
    * pendingSend is set, a user's Enter must not start a third run mid-handoff —
@@ -612,14 +631,19 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     } catch {
       // No stamp — the run still gets its tab from the background.
     }
-    // Stored BEFORE the run starts: the worker builds this run's history by
-    // reading the transcript, so a fire-and-forget write would race it and
-    // cost the model the exchange it is being asked to continue.
-    const conversationId = await pushMsg(
-      makeMsg("user", task, { ...(images?.length ? { images } : {}), ...(tab ? { tab } : {}) }),
-    );
-    sending = false;
-    startRun(p, conversationId, task, images);
+    try {
+      // Stored BEFORE the run starts: the worker builds this run's history by
+      // reading the transcript, so a fire-and-forget write would race it and
+      // cost the model the exchange it is being asked to continue.
+      const conversationId = await pushMsg(
+        makeMsg("user", task, { ...(images?.length ? { images } : {}), ...(tab ? { tab } : {}) }),
+      );
+      startRun(p, conversationId, task, images);
+    } finally {
+      // Every caller is fire-and-forget, so a rejected store would otherwise
+      // leave the latch stuck and ownLiveView() would defer refetches forever.
+      sending = false;
+    }
     // The panel stays up through the plan: a background run's FIRST act is to
     // read the page and ask you to approve what it intends to do, and closing
     // before that turns the approval into an OS notification you have to click
@@ -875,7 +899,11 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         const conversationId = get().activeId;
         if (conversationId) {
           void getMessages(conversationId).then((messages) => {
-            if (get().activeId === conversationId) set({ messages: capMessages(messages) });
+            // Same owner rule as the watches — a fold landing mid-stream (the
+            // busy check at receipt cannot cover the fold's own await window)
+            // would erase live rows storage has never heard of.
+            if (get().activeId === conversationId && !ownsLiveView())
+              set({ messages: capMessages(messages) });
             // The context-error CTA armed this: compact, then carry on. Fires
             // only when the failed task is still the newest thing said and
             // nothing has started since — otherwise the user moved on while
@@ -1278,16 +1306,12 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // no live rows, and adopting it would wipe the one in flight.
         const s = get();
         const id = s.activeId;
-        // A send of this panel's own is in flight — a stop redirect parks in
-        // sendTask between settle (status idle) and startRun (status running),
-        // and a refetch resolving in that window reads storage past the
-        // message sendTask already painted. `sending` is the same "we own the
-        // stream" signal as status running, just earlier.
-        if (id === null || s.status === "running" || sending) return;
+        // Never over an owned view — see ownsLiveView.
+        if (id === null || ownsLiveView()) return;
         if (s.board.running?.conversationId !== id) return;
         void getMessages(id).then((messages) => {
           const now = get();
-          if (now.activeId === id && now.status !== "running" && !sending) {
+          if (now.activeId === id && !ownsLiveView()) {
             set({ messages: capMessages(messages) });
           }
         });
@@ -1343,19 +1367,13 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // ends here, not on a `done` event — this is that run's settle point.
         drainDeferred();
         void getMessages(activeId).then((messages) => {
-          // Never over the stream we own — the same rule the index watch above
-          // keeps. Storage holds no live rows, so a mid-run board write (a tab
-          // switch, the plan gate parking, the recorder arming) would replace
-          // the tool row still spinning with a transcript that has never heard
-          // of it. Safe at the end: `done` settles this panel to idle before
-          // start-run's finally releases the slot and writes the board, so the
-          // settle refetch this watch exists for still lands. A stop redirect
-          // is the one gap: the panel is idle and the slot is releasing while
-          // sendTask is still writing the redirected message — a refetch
-          // resolving in that window paints storage over the live message, so
-          // `sending` holds the refetch like status running does.
-          if (get().activeId === activeId && get().status !== "running" && !sending)
-            set({ messages });
+          // Never over an owned view — see ownsLiveView. Storage holds no live
+          // rows, so a mid-run board write (a tab switch, the plan gate
+          // parking, the recorder arming) would replace the tool row still
+          // spinning. Safe at the end: `done` settles this panel to idle
+          // before start-run's finally releases the slot and writes the board,
+          // so the settle refetch this watch exists for still lands.
+          if (get().activeId === activeId && !ownsLiveView()) set({ messages });
         });
       });
       void getActiveId().then(async (activeId) => {
