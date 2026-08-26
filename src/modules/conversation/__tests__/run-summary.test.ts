@@ -24,8 +24,9 @@ const lastRunOf = async (id: string) => (await rowOf(id))?.lastRun;
 describe("last-run summary", () => {
   it("stamps the conversation with the run's span and tokens when it ends", async () => {
     await replay("run-sum", [
-      // Running totals, as start-run emits them — the second turn's own input
-      // was 5, which is what `contextTokens` carries.
+      // Running totals, as start-run emits them — `contextTokens` is the
+      // conversation-wide figure start-run composes, so the later event's
+      // value is the one that has settled.
       { type: "usage", input: 10, output: 4, contextTokens: 10 },
       { type: "usage", input: 15, output: 6, contextTokens: 5 },
       { type: "done", summary: "All set." },
@@ -35,10 +36,10 @@ describe("last-run summary", () => {
     if (!lastRun) throw new Error("summary not recorded");
     expect(lastRun).toMatchObject({ input: 15, output: 6 });
     expect(lastRun.endedAt).toBeGreaterThanOrEqual(lastRun.startedAt);
-    // The LAST turn's input, not the sum — it is the one that says how full the
-    // context actually was, and the gauge shows it after a panel reopen. It
-    // rides the CONVERSATION, not the summary: the next user message retires
-    // the summary, and the context it describes is still there.
+    // The last event's value, not the sum — the worker composes the
+    // conversation-wide figure and every consumer just sets. It rides the
+    // CONVERSATION, not the summary: the next user message retires the
+    // summary, and the usage it describes is still there.
     expect((await rowOf("run-sum"))?.contextTokens).toBe(5);
   });
 

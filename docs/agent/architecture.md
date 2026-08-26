@@ -655,20 +655,20 @@ undefined instead of guessing, and is what anything the USER reads must call —
 gauge draws a bar and a "24.3k / 200k" ratio only when the window was measured or published,
 and otherwise shows the token count alone. A percentage computed against a guessed
 denominator is a statistic nobody verified, and the user would act on it. The count itself is
-the last turn's real input — cumulative `input` sums every turn and cannot say how full the
-context is. Both ride the same `usage` event, which carries the run's **running totals**
+the conversation's **full usage** — everything the thread's runs have spent, less what folds
+freed — never smaller than any single run's own total (a run stacks its spend on top of
+everything the thread had spent before it, so the gauge can never read smaller than the run
+band beside it). Both ride the same `usage` event, which carries the run's **running totals**
 rather than a per-turn delta: `input`/`output` are what the run has spent, `contextTokens` is
-that last turn's input, and a consumer sets rather than accumulates. Absolute because a panel
-that opened mid-run has seen none of the deltas — `query_run` answers with the totals and that
-is enough — and `contextTokens` is spelled out rather than inferred, because inferring it from
-a cumulative `input` reports a short thread as several windows full and turns the gauge red on
-nothing.
+the conversation-wide figure composed by start-run (`contextBase` + the run's totals), and a
+consumer sets rather than accumulates. Absolute because a panel that opened mid-run has seen
+none of the deltas — `query_run` answers with the totals and that is enough.
 
 Between runs the reading comes from **`ConversationMeta.contextTokens`**, stamped by the
 writer when the run ends. It sits on the conversation rather than inside `RunSummary`, where
 it started, because it is not a fact about a run: a run's duration and cost are over when it
-ends, the context it left behind is not. `lastRun` is retired by the next user message (the
-band above the composer speaks for the run that just finished); the occupancy is not, or the
+ends, the usage it added is not. `lastRun` is retired by the next user message (the
+band above the composer speaks for the run that just finished); the usage total is not, or the
 gauge would blank the instant you press send and come back a minute later with the number it
 already had — in exactly the panels with no live figure of their own, which is every reopened
 one and every other window. A fold moves it too (`noteContextFreed`), so the receipt's

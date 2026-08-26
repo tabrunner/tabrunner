@@ -713,8 +713,8 @@
   "context": {
     "used": "{{used}} context",
     "usedOf": "{{used}} / {{window}}",
-    "tooltip": "Context: the last turn sent {{used}} of the model's {{window}} window — /compact summarizes the chat to free some up",
-    "tooltipUnknown": "Context: the last turn sent {{used}}. This model's window size isn't known, so there's no percentage to show — /compact summarizes the chat to free some up"
+    "tooltip": "Context: the conversation has spent {{used}} tokens; the model's window is {{window}} — /compact summarizes the chat to free some up",
+    "tooltipUnknown": "Context: the conversation has spent {{used}} tokens. This model's window size isn't known, so there's no percentage to show — /compact summarizes the chat to free some up"
   },
   "indicator": {
     "driving": "TabRunner is controlling this tab",

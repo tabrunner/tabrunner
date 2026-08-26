@@ -194,6 +194,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       getConversationMeta(conversationId),
       getMessages(conversationId),
     ]);
+    // What the thread had already spent before this run — the seed the gauge's
+    // full-usage number grows from (see onUsage below).
+    const contextBase = meta?.contextTokens ?? 0;
     const providerConfig = await getProviderFor(meta?.engine);
     if (!providerConfig) {
       emit({ type: "error", message: i18n.t("errors.noActiveProvider") });
@@ -506,7 +509,12 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             // arrived late. The panel and the transcript writer both just set.
             run.usage.input += tick.input;
             run.usage.output += tick.output;
-            if (tick.input > 0) run.usage.contextTokens = tick.input;
+            // The conversation's FULL usage — everything the thread spent
+            // before this run, plus this run's own total — so it can never
+            // read smaller than the run band's number beside it. A fold
+            // subtracts what it freed, bringing the number down with the
+            // thread (noteContextFreed).
+            run.usage.contextTokens = contextBase + run.usage.input + run.usage.output;
             // A gateway that priced the call wins over the table's estimate;
             // an unknown model prices nothing and the run stays costless.
             const spent = tick.cost ?? tokenCost(resolvedProvider.model, tick);

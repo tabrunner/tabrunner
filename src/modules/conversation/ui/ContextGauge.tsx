@@ -10,8 +10,8 @@ import { useStoredItem } from "@/components/useStoredItem";
 import { formatTokens } from "@/lib/format";
 
 /**
- * How full the model's context is — the number you read before deciding whether
- * to compact.
+ * What the conversation has spent — its full token usage across every run, the
+ * number you read before deciding whether to compact.
  *
  * **It shows a token count, not a percentage.** A percentage needs a
  * denominator, and for most providers nobody can tell us one: the extension is
@@ -48,8 +48,8 @@ import { formatTokens } from "@/lib/format";
 export function ContextGauge() {
   const { t } = useTranslation();
   const live = useConversationStore((s) => s.contextTokens);
-  // The last turn measured on this thread — including one from a run that
-  // ended while the panel was closed, or one a schedule ran overnight.
+  // The full usage recorded for this thread — including runs that ended while
+  // the panel was closed, or one a schedule ran overnight.
   const stored = useConversationStore(
     (s) => s.conversations.find((c) => c.id === s.activeId)?.contextTokens ?? 0,
   );

@@ -69,11 +69,12 @@ export class TranscriptWriter {
   /** Cumulative tokens, from the run's usage events. `cost` rides along as a
    *  running total once a call prices — absent forever when none does. */
   private usage: { input: number; output: number; cost?: number } = { input: 0, output: 0 };
-  /** The newest turn's input alone — the context's real size, which the
-   *  cumulative total cannot express. Drops when the loop folds its own turns.
-   *  Stamped on the CONVERSATION, not on the run summary: the run is over, the
-   *  context it left is not (see ConversationMeta.contextTokens). */
-  private lastInput = 0;
+  /** The conversation's full usage, as this run's events report it: everything
+   *  the thread had spent before the run, plus the run's own total. Stamped on
+   *  the CONVERSATION, not on the run summary — the run is over, the usage it
+   *  added is not (see ConversationMeta.contextTokens). A fold subtracts what
+   *  it freed, so the number comes back down with the thread. */
+  private contextTokens = 0;
   /** done after an error is the same end unwinding — stamp the summary once. */
   private summaryRecorded = false;
   /** The receipt rides the same rule: an error's unwind lands here as a done. */
@@ -117,7 +118,7 @@ export class TranscriptWriter {
         ok,
         ...(stopped ? { stopped } : {}),
       },
-      this.lastInput,
+      this.contextTokens,
     ).catch((e) => {
       log.debug("run summary write failed:", e instanceof Error ? e.message : String(e));
     });
@@ -283,18 +284,17 @@ export class TranscriptWriter {
 
       case "usage":
         // Running totals, not a delta — the event carries the run's whole
-        // spend, so this sets rather than adds. `contextTokens` is the last
-        // turn's input, which is the occupancy the conversation records;
-        // cumulative input would report a short thread as several windows full
-        // and turn the gauge red on nothing. `cost` is the same kind of
-        // absolute — and absent stays absent, so an unpriced run never reads
-        // as a free one.
+        // spend, so this sets rather than adds. `contextTokens` is the wider
+        // number riding along: the conversation's full usage, never smaller
+        // than this run's own total. `cost` is the same kind of absolute —
+        // and absent stays absent, so an unpriced run never reads as a free
+        // one.
         this.usage = {
           input: event.input,
           output: event.output,
           ...(event.cost !== undefined ? { cost: event.cost } : {}),
         };
-        if (event.contextTokens > 0) this.lastInput = event.contextTokens;
+        if (event.contextTokens > 0) this.contextTokens = event.contextTokens;
         break;
 
       case "driving":

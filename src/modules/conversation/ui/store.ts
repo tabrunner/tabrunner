@@ -120,9 +120,10 @@ export interface ConversationState {
    * to pin to yet — it waits here and is written the moment the thread is born.
    */
   draftEngine: ConversationEngine | null;
-  /** Input tokens the last turn actually sent — the real context size, straight
-   *  from the provider's own usage. Cumulative `usage.input` is the sum of every
-   *  turn and says nothing about how full the window is. */
+  /** The conversation's full token usage — everything its runs have spent,
+   *  less what folds freed — straight from the worker's usage events. Always at
+   *  least the run band's own total: the thread's number can never read
+   *  smaller than one run's. */
   contextTokens: number;
 
   connect: () => void;
@@ -849,9 +850,10 @@ export const useConversationStore = create<ConversationState>((set, get) => {
             ...(event.cost !== undefined ? { cost: event.cost } : {}),
           },
           usageFromLiveRun: true,
-          // A different measurement, not a slice of the one above: the last
-          // turn's input IS how full the window is right now, and it drops back
-          // down when the run folds its own history.
+          // The wider number, not a slice of the one above: the conversation's
+          // full usage — this run's spend stacked on everything the thread had
+          // spent before it — and a fold moves it back down as the thread
+          // shrinks.
           ...(event.contextTokens > 0 ? { contextTokens: event.contextTokens } : {}),
         });
         break;
