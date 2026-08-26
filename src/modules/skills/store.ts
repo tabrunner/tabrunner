@@ -1,8 +1,9 @@
 import { createWriteQueue, defineItem } from "@/lib/storage";
 import { i18n } from "@/i18n";
 import { hostMatches, normalizeHostList, scopeHostOf } from "@/lib/host";
+import { validOutboundUrl } from "@/lib/url";
 import { SLASH_COMMAND_NAMES } from "@/modules/conversation/command-names";
-import type { Skill } from "./types";
+import { MAX_MCP_PER_SKILL, type Skill } from "./types";
 import { isValidSkillName, MAX_BODY_CHARS, MAX_DESCRIPTION_CHARS, MAX_SKILLS } from "./types";
 
 /** One flat array, read-modify-written whole — see the ponytail note in types.ts. */
@@ -65,12 +66,18 @@ export function saveSkill(input: SkillInput): Promise<SaveSkillResult> {
       return { ok: false, error: i18n.t("skills.errors.tooMany", { max: MAX_SKILLS }) };
     }
     // Sites are stored normalized or not at all — hostMatches assumes it, and
-    // callers that want to report unusable entries check before saving.
-    const { sites: rawSites, ...rest } = input;
+    // callers that want to report unusable entries check before saving. MCP
+    // refs validate like sites: garbage rows drop quietly here because the
+    // INSTALL consent dialog is where a bad row gets its reckoning.
+    const { sites: rawSites, mcpServers: rawMcp, ...rest } = input;
     const sites = normalizeHostList(rawSites ?? []).hosts;
+    const mcpServers = (rawMcp ?? [])
+      .filter((s) => s.name.trim() !== "" && validOutboundUrl(s.url))
+      .slice(0, MAX_MCP_PER_SKILL);
     const skill: Skill = {
       ...rest,
       ...(sites.length > 0 ? { sites } : {}),
+      ...(mcpServers.length > 0 ? { mcpServers } : {}),
       createdAt: current?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
     };

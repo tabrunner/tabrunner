@@ -81,4 +81,72 @@ describe("serializeSkillMd", () => {
     expect(text).not.toContain("sites:");
     expect(text).toContain("description: line one line two");
   });
+
+  it("round-trips servers the skill suggests installing", () => {
+    const withMcp = {
+      ...skill,
+      mcpServers: [
+        {
+          name: "acme",
+          url: "https://mcp.acme.com/mcp",
+          headers: { Authorization: "Bearer xyz", "X-API-Key": "secret" },
+        },
+      ],
+    };
+    const text = serializeSkillMd(withMcp);
+    expect(text).toContain("mcp_servers:");
+    const parsed = parseSkillMd(text);
+    expect(parsed.mcpServers).toEqual(withMcp.mcpServers);
+    expect(parsed.droppedMcpServers).toEqual([]);
+    expect(parsed.ignoredKeys).toEqual([]);
+  });
+});
+
+describe("parseSkillMd — mcp_servers block", () => {
+  it("reads name/url and repeated header rows, splitting each on the first =", () => {
+    const parsed = parseSkillMd(`---
+name: billing-run
+description: Monthly billing
+mcp_servers:
+  - name: acme
+    url: https://mcp.acme.com/mcp
+    header: Authorization=Bearer xyz
+    header: X-API-Key=k1
+---
+body`);
+    expect(parsed.mcpServers).toEqual([
+      {
+        name: "acme",
+        url: "https://mcp.acme.com/mcp",
+        headers: { Authorization: "Bearer xyz", "X-API-Key": "k1" },
+      },
+    ]);
+    expect(parsed.ignoredKeys).toEqual([]);
+  });
+
+  it("drops broken rows into the preview warning, without killing the file", () => {
+    const parsed = parseSkillMd(`---
+name: billing-run
+description: d
+mcp_servers:
+  - name: no-url
+    header: Authorization=x
+  - url: https://ok.example.com/mcp
+    header: =novalue
+  - name: two-more
+    url: https://a.example.com
+  - name: three
+    url: https://b.example.com
+---
+body`);
+    // Malformed rows drop into the warning; the rest parse.
+    expect(parsed.mcpServers.map((s) => s.name)).toEqual(["two-more", "three"]);
+    expect(parsed.droppedMcpServers.sort()).toEqual(["no-url", "unnamed server"]);
+    expect(parsed.body).toBe("body");
+  });
+
+  it("leaves a flat scalar list under mcp_servers out of the refs entirely", () => {
+    const parsed = parseSkillMd(`---\nname: x\ndescription: d\nmcp_servers:\n  - not-a-map\n---\nb`);
+    expect(parsed.mcpServers).toEqual([]);
+  });
 });

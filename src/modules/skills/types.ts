@@ -5,6 +5,18 @@
  * is this structured record; the markdown is only the interchange form
  * (`skill-md.ts`), the same split the schedule module uses for cron-like text.
  */
+/**
+ * An MCP server a skill carries in its interchange form (`mcp_servers:` in
+ * SKILL.md). Reference only — ids, enabled flags and timestamps are minted at
+ * INSTALL time in the MCP registry, so disabling or deleting the skill never
+ * touches an installed server.
+ */
+export interface SkillMcpRef {
+  name: string;
+  url: string;
+  headers?: Record<string, string>;
+}
+
 export interface Skill {
   /** Stable identity for store ops and React keys — `name` is the model-facing one. */
   id: string;
@@ -20,6 +32,8 @@ export interface Skill {
   enabled: boolean;
   /** Where an imported skill came from — provenance shown in the editor. */
   source?: { url: string };
+  /** Servers this skill SUGGESTS installing at import time — consent is per import. */
+  mcpServers?: SkillMcpRef[];
   createdAt: number;
   updatedAt: number;
 }
@@ -33,6 +47,10 @@ export interface Skill {
 export const MAX_SKILLS = 50;
 export const MAX_BODY_CHARS = 20_000;
 export const MAX_DESCRIPTION_CHARS = 500;
+
+/** ponytail: one skill suggesting more than three servers is a bundle, not a
+ *  recipe — the upgrade path is importing real bundles as a unit. */
+export const MAX_MCP_PER_SKILL = 3;
 
 /**
  * What a description is once it reaches the run: a single catalog line. The

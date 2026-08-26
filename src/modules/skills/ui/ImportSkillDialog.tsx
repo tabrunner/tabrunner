@@ -14,12 +14,19 @@ import {
 } from "../import-url";
 import { MAX_SKILLS, normalizeSkillName } from "../types";
 import { listSkills, saveSkill } from "../store";
+import { installSkillServers, type InstallOutcome } from "../install-mcp";
 import { seedFromParsed, SkillForm } from "./SkillForm";
 
 type Stage =
   | { kind: "input" }
   | { kind: "fetching" }
   | { kind: "review"; parsed: ParsedSkillMd; sourceUrl?: string }
+  | {
+      /** Skill already saved; this reports the consented server installs. */
+      kind: "mcp-installed";
+      names: string[];
+      outcomes: InstallOutcome[];
+    }
   | {
       kind: "review-multi";
       candidates: { path: string; url: string; parsed: ParsedSkillMd }[];
@@ -48,6 +55,8 @@ function ImportBody({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [outcomes, setOutcomes] = useState<(RowOutcome | null)[] | null>(null);
+  /** Which suggested MCP servers the user opted into — defaults OFF, always. */
+  const [mcpChoice, setMcpChoice] = useState<Set<number>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -94,12 +103,14 @@ function ImportBody({ onDone }: { onDone: () => void }) {
           // Exactly one survivor — review it directly, no re-fetch needed.
           const only = candidates[0];
           if (only) {
+            setMcpChoice(new Set());
             setStage({ kind: "review", parsed: only.parsed, sourceUrl: only.url });
             return;
           }
         }
       }
       const text = await fetchSkillMarkdown(source.url, controller.signal);
+      setMcpChoice(new Set());
       setStage({ kind: "review", parsed: parseSkillMd(text), sourceUrl: source.url });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -113,6 +124,7 @@ function ImportBody({ onDone }: { onDone: () => void }) {
       setError(t("skills.import.errorNothingPasted"));
       return;
     }
+    setMcpChoice(new Set());
     setStage({ kind: "review", parsed: parseSkillMd(pasted) });
   };
 
@@ -147,6 +159,10 @@ function ImportBody({ onDone }: { onDone: () => void }) {
           name,
           description: c.parsed.description ?? "",
           sites: c.parsed.sites.length > 0 ? c.parsed.sites : undefined,
+          // Stored but not offered here: credential consent inside a 25-row
+          // checklist is noise. ponytail: the upgrade path is an editor-side
+          // "install suggested servers" action on saved skills.
+          ...(c.parsed.mcpServers.length > 0 ? { mcpServers: c.parsed.mcpServers } : {}),
           body: c.parsed.body,
           enabled: true,
           source: { url: c.url },
@@ -266,6 +282,66 @@ function ImportBody({ onDone }: { onDone: () => void }) {
     );
   }
 
+  /**
+   * SkillForm owns the skill's save; this wraps its success path so the
+   * consented servers install right after, and the dialog reports them
+   * instead of just vanishing.
+   */
+  const afterSkillSaved = () => {
+    const nextStage = stage;
+    if (nextStage.kind !== "review") return;
+    const refs = nextStage.parsed.mcpServers.filter((_, i) => mcpChoice.has(i));
+    if (refs.length === 0) {
+      onDone();
+      return;
+    }
+    void installSkillServers(refs).then((outcomes) =>
+      setStage({
+        kind: "mcp-installed",
+        names: refs.map((r) => r.name),
+        outcomes,
+      }),
+    );
+  };
+
+  if (stage.kind === "mcp-installed") {
+    return (
+      <div className="flex flex-col gap-3">
+        {stage.names.map((name, i) => {
+          const outcome = stage.outcomes[i];
+          return (
+            <p key={name} className="flex items-center justify-between gap-2 text-xs">
+              <span className="min-w-0 truncate font-semibold text-neutral-900 dark:text-neutral-100">
+                {name}
+              </span>
+              <span
+                className={
+                  outcome === "installed"
+                    ? "shrink-0 text-brand-600 dark:text-brand-400"
+                    : "shrink-0 text-neutral-500 dark:text-neutral-400"
+                }
+              >
+                {t(
+                  outcome === "installed"
+                    ? "skills.import.mcpRowInstalled"
+                    : outcome === "duplicate"
+                      ? "skills.import.mcpRowDuplicate"
+                      : "skills.import.mcpRowFailed",
+                )}
+              </span>
+            </p>
+          );
+        })}
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          {t("skills.import.mcpDoneHint")}
+        </p>
+        <div className="flex justify-end">
+          <Button onClick={onDone}>{t("common.close")}</Button>
+        </div>
+      </div>
+    );
+  }
+
   if (stage.kind === "review") {
     return (
       <div className="flex flex-col gap-3">
@@ -282,10 +358,51 @@ function ImportBody({ onDone }: { onDone: () => void }) {
             {t("skills.import.droppedSites", { list: stage.parsed.droppedSites.join(", ") })}
           </p>
         )}
+        {stage.parsed.mcpServers.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+            <p className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
+              {t("skills.import.mcpTitle")}
+            </p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              {t("skills.import.mcpConsent")}
+            </p>
+            {stage.parsed.mcpServers.map((server, i) => (
+              <div key={`${server.name}-${i}`} className="flex items-start gap-2">
+                <Switch
+                  checked={mcpChoice.has(i)}
+                  onChange={(v) =>
+                    setMcpChoice((prev) => {
+                      const next = new Set(prev);
+                      if (v) next.add(i);
+                      else next.delete(i);
+                      return next;
+                    })
+                  }
+                  ariaLabel={server.name}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold text-neutral-900 dark:text-neutral-100">
+                    {server.name}
+                  </p>
+                  <p className="truncate text-[11px] text-neutral-500 dark:text-neutral-400">
+                    {server.url}
+                    {server.headers &&
+                      ` · ${Object.keys(server.headers)
+                        .map((h) => t("skills.import.mcpHeaderMasked", { name: h }))
+                        .join(", ")}`}
+                  </p>
+                </div>
+              </div>
+            ))}
+            <p className="attention rounded-lg px-2 py-1.5 text-[11px] text-neutral-700 dark:text-neutral-300">
+              {t("skills.import.mcpCredentialWarning")}
+            </p>
+          </div>
+        )}
         <SkillForm
           seed={seedFromParsed(stage.parsed, stage.sourceUrl)}
           replaceOnCollision
-          onSaved={onDone}
+          onSaved={afterSkillSaved}
           onCancel={() => setStage({ kind: "input" })}
         />
       </div>

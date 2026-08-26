@@ -48,6 +48,21 @@ describe("saveSkill", () => {
     expect((await saveSkill(input("usage-report"))).ok).toBe(true);
   });
 
+  it("stores suggested MCP refs only for well-formed rows", async () => {
+    const result = await saveSkill(
+      input("mcp-skill", {
+        mcpServers: [
+          { name: "good", url: "https://mcp.example.com" },
+          { name: "bad-url", url: "ftp://nope" },
+          { name: "  ", url: "https://also-bad.example.com" },
+        ],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    const stored = (await listSkills()).find((s) => s.name === "mcp-skill");
+    expect(stored?.mcpServers?.map((s) => s.name)).toEqual(["good"]);
+  });
+
   it("normalizes sites itself — hostMatches assumes stored hosts", async () => {
     const saved = await saveSkill(
       input("normed", { sites: [" WWW.Acme.com ", "acme.com", "not a host"] }),

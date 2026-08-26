@@ -167,7 +167,15 @@
       "rowSkippedExists": "Already saved with this name — untouched. Re-import one-by-one to replace it.",
       "rowSkippedCap": "Skipped — the 50-skill cap is full.",
       "rowFailed": "{{error}}",
-      "discovering": "Scanning the repo…"
+      "discovering": "Scanning the repo…",
+      "mcpTitle": "This skill suggests MCP servers",
+      "mcpConsent": "Check any you want installed — they land enabled under Settings → MCP.",
+      "mcpHeaderMasked": "{{name}}: ••••",
+      "mcpCredentialWarning": "Headers pasted into skill files are credentials. Install only servers you trust.",
+      "mcpRowInstalled": "Installed ✓",
+      "mcpRowDuplicate": "Already configured — left as is.",
+      "mcpRowFailed": "Couldn't add — add it by hand in Settings → MCP.",
+      "mcpDoneHint": "Servers live in Settings → MCP either way — edit or remove them there."
     },
     "draft": {
       "title": "New skill from this chat",

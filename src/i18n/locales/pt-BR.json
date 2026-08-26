@@ -167,7 +167,15 @@
       "rowSkippedExists": "Já existe uma com esse nome — ficou intocada. Importe uma a uma para substituir.",
       "rowSkippedCap": "Ignorada — o limite de 50 habilidades está cheio.",
       "rowFailed": "{{error}}",
-      "discovering": "Varrendo o repositório…"
+      "discovering": "Varrendo o repositório…",
+      "mcpTitle": "Esta habilidade sugere servidores MCP",
+      "mcpConsent": "Marque os que quiser instalar — eles entram ativados em Configurações → MCP.",
+      "mcpHeaderMasked": "{{name}}: ••••",
+      "mcpCredentialWarning": "Cabeçalhos colados em arquivos de habilidade são credenciais. Instale apenas servidores de confiança.",
+      "mcpRowInstalled": "Instalado ✓",
+      "mcpRowDuplicate": "Já configurado — ficou como está.",
+      "mcpRowFailed": "Não foi possível adicionar — adicione à mão em Configurações → MCP.",
+      "mcpDoneHint": "De todo jeito, os servidores ficam em Configurações → MCP — edite ou remova por lá."
     },
     "draft": {
       "title": "Nova habilidade desta conversa",

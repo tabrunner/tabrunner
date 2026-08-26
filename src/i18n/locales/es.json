@@ -167,7 +167,15 @@
       "rowSkippedExists": "Ya hay una con ese nombre — quedó intacta. Importa una a una para reemplazarla.",
       "rowSkippedCap": "Omitida — el límite de 50 habilidades está lleno.",
       "rowFailed": "{{error}}",
-      "discovering": "Explorando el repositorio…"
+      "discovering": "Explorando el repositorio…",
+      "mcpTitle": "Esta habilidad sugiere servidores MCP",
+      "mcpConsent": "Marca los que quieras instalar: quedan activados en Ajustes → MCP.",
+      "mcpHeaderMasked": "{{name}}: ••••",
+      "mcpCredentialWarning": "Las cabeceras pegadas en archivos de habilidades son credenciales. Instala solo servidores de confianza.",
+      "mcpRowInstalled": "Instalado ✓",
+      "mcpRowDuplicate": "Ya estaba configurado — se dejó como está.",
+      "mcpRowFailed": "No se pudo añadir — agrégalo a mano en Ajustes → MCP.",
+      "mcpDoneHint": "En cualquier caso, los servidores viven en Ajustes → MCP: edítalos o bórralos allí."
     },
     "draft": {
       "title": "Nueva habilidad desde este chat",
