@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { isKeyRejected, listModels, pickLatestModel, resolveProviderModel } from "../models";
+import { PRESETS } from "../presets";
 import { ProviderError } from "../types";
 import type { ProviderConfig } from "../types";
 
@@ -149,6 +150,34 @@ describe("pickLatestModel", () => {
     // The first is the auto convention everywhere (preset fallback, resolved
     // model, the picker's auto row) — last-wins named the oldest as "auto".
     expect(pickLatestModel([{ id: "a" }, { id: "b" }])?.id).toBe("a");
+  });
+
+  it("keeps the first entry on equal timestamps too", () => {
+    expect(
+      pickLatestModel([
+        { id: "a", created: 1000 },
+        { id: "b", created: 1000 },
+      ])?.id,
+    ).toBe("a");
+  });
+
+  it("treats a missing timestamp as older than any real one, either order", () => {
+    expect(pickLatestModel([{ id: "no-ts" }, { id: "ts", created: 1 }])?.id).toBe("ts");
+    expect(pickLatestModel([{ id: "ts", created: 1 }, { id: "no-ts" }])?.id).toBe("ts");
+  });
+});
+
+describe("auto naming agrees with the run's fallback", () => {
+  // The run resolves auto to `preset.models[0]` when nothing is stored or
+  // listed; the picker names auto via pickLatestModel over that same list.
+  // A tie-break flip here makes the chip say one model while the run uses
+  // another — pinning the convention holds both surfaces in step.
+  it("every preset's newest-by-tie-break is its first entry", () => {
+    for (const preset of PRESETS) {
+      if (preset.models.length === 0) continue;
+      const latest = pickLatestModel(preset.models.map((id) => ({ id })));
+      expect(latest?.id).toBe(preset.models[0]);
+    }
   });
 });
 
