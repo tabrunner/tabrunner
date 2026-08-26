@@ -753,9 +753,6 @@ function hasPendingQuestion(transcript: Message[]): boolean {
   return false;
 }
 
-interface RunTab {
-  tab: chrome.tabs.Tab;
-  /** The thread's live strip, resolved at run start — the seed the run's own
 /**
  * Whether this submission wants the conversation's own tab back (see
  * resolveRunTab): a panel run always — a human just pressed Enter, and their
@@ -766,6 +763,9 @@ export function continuesThreadTab(owner: RunOwner, pendingQuestion: boolean): b
   return owner === "panel" || pendingQuestion;
 }
 
+interface RunTab {
+  tab: chrome.tabs.Tab;
+  /** The thread's live strip, resolved at run start — the seed the run's own
    *  labeling joins. Never the run's group: the run has none until its first action. */
   threadGroupId?: number;
   /** The run continues the conversation's own tab — it joins its strip without
@@ -775,12 +775,12 @@ export function continuesThreadTab(owner: RunOwner, pendingQuestion: boolean): b
   opened?: boolean;
   /** This run took over the user's current tab — drive it, never close it. */
   adopted?: boolean;
-}
-
-/** Last-resort start page when neither the task nor the preference names one. */
   /** Where the user was sitting when they sent this, when the run did not
    *  start there — data for the model's drift-or-pivot read, not a target. */
   submitPage?: SubmitPage;
+}
+
+/** Last-resort start page when neither the task nor the preference names one. */
 const FALLBACK_START_URL = "https://www.google.com";
 
 /**
@@ -809,9 +809,6 @@ function isBlankPage(url: string | undefined): boolean {
  * action — a message sent in passing must not file the tab the user happens to
  * be on.
  *
- * Only when there is no page to adopt — a blank/new-tab page, a page Chrome
- * forbids, an MCP client (nowhere near a browser, unless it asked for the
- * foreground), or an explicit target URL — does the run open a tab of its own,
  * Continuity outranks adoption once the thread has a tab (`continuesThreadTab`):
  * a follow-up typed elsewhere is usually steering from wherever the user happens
  * to be reading — the side panel stays open across tab switches — not a move
@@ -825,6 +822,9 @@ function isBlankPage(url: string | undefined): boolean {
  * or worse. Adoption remains the answer whenever nothing stands to continue:
  * the thread's first message, a lock whose tab died, a restricted page.
  *
+ * Only when there is no page to adopt — a blank/new-tab page, a page Chrome
+ * forbids, an MCP client (nowhere near a browser, unless it asked for the
+ * foreground), or an explicit target URL — does the run open a tab of its own,
  * on the start-page preference. It opens inactive and is never brought forward.
  *
  * No run moves the user's screen at send time: a continuation reuses its tab in
@@ -962,10 +962,10 @@ async function submitTabPage(
   ) {
     return undefined;
   }
+  return { title: tabLabel(tab), url: tab.url };
 }
 
 /** The page a run's own tab opens on, and the page Chrome kept it from opening. */
-  return { title: tabLabel(tab), url: tab.url };
 async function resolveStartUrl(
   opts: StartRunOptions,
   continuationUrl: string | undefined,
