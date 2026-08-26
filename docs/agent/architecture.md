@@ -196,10 +196,13 @@ The first `plan` call of a run parks the loop on `onPlanApproval`; the panel ren
 parked proposal as an approve/adjust/reject card (`plan_approval` event + command in
 `shared/protocol.ts`, resolver parked on the `ActiveRun` slot), and a stop answers "no"
 via the abort listener so the loop never hangs. The parked steps are kept on the slot
-beside the resolver: the card lives only in panel memory, so a panel that closed and came
-back (exactly what clicking the away notification does) re-arms it from the worker's
-`query_run` answer — otherwise the notification led to a question with no way to say yes.
-The card is up in **every** panel showing the thread, and any of them can answer it. The
+beside the resolver, and the ask itself rides the run board (`running.approval`): the
+broadcast arms the panels that hear it, and the board arms every other one — a panel that
+opened, switched threads, or lost the port after the park reconciles its card from storage
+(the same board the band's "waiting for your approval" already comes from), so the
+notification's question can never render without a way to say yes. Answering takes the
+ask back off the board, which settles the card in panels the `plan_answered` broadcast
+never reached. The card is up in **every** panel showing the thread, and any of them can answer it. The
 answer therefore has to travel the same way: `plan_answered` (broadcast from the worker's
 command handler) is what drops the card and settles the walk-away in the windows that did
 not click, which otherwise sat on a settled question for the rest of the run. The panel

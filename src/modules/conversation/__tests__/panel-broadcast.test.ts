@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Command, PanelMessage } from "@/shared/protocol";
 import { PORT_NAME } from "@/shared/protocol";
+import { runBoardItem } from "@/modules/agent/run-queue";
+import { setActiveConversation } from "../conversations";
 import { useConversationStore } from "../ui/store";
 
 /**
@@ -275,5 +277,61 @@ describe("adopting a run this panel did not dispatch", () => {
     });
 
     expect(useConversationStore.getState().status).toBe("idle");
+  });
+});
+
+/**
+ * The parked gate's ask rides the run board, so the card no longer depends on
+ * the plan_approval broadcast landing in every panel. The board is the channel
+ * that already tells every surface "Aguardando sua aprovação" — arming the card
+ * from it closes the gap where one window showed the question and another
+ * showed the waiting band with no way to answer it.
+ */
+describe("the parked gate's card, mirrored off the board", () => {
+  const ask = { steps: ["Open the console", "Copy the key"], current: 0, reapproval: false };
+  const parkedBoard = {
+    running: {
+      conversationId: "c1",
+      task: "Get those keys",
+      owner: "panel" as const,
+      startedAt: 1000,
+      awaiting: true,
+      approval: ask,
+    },
+    queue: [],
+  };
+
+  it("arms the card from the board alone — no plan_approval event required", async () => {
+    useConversationStore.getState().disconnect();
+    await setActiveConversation("c1");
+    await runBoardItem.set(parkedBoard);
+    useConversationStore.getState().connect();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const s = useConversationStore.getState();
+    expect(s.planApproval).toEqual(ask);
+    expect(s.planApproved).toBe(false);
+  });
+
+  it("comes back clean on connect when the board no longer holds the ask", async () => {
+    // A card this panel kept because the plan_answered broadcast never arrived.
+    useConversationStore.setState({ planApproval: { ...ask } });
+    useConversationStore.getState().disconnect();
+    await setActiveConversation("c1");
+    await runBoardItem.set({ queue: [] });
+    useConversationStore.getState().connect();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(useConversationStore.getState().planApproval).toBeNull();
+  });
+
+  it("arms it again on switching back to the parked thread", async () => {
+    useConversationStore.setState({ board: parkedBoard, planApproval: null });
+
+    useConversationStore.getState().followActive("c2");
+    expect(useConversationStore.getState().planApproval).toBeNull();
+
+    useConversationStore.getState().followActive("c1");
+    expect(useConversationStore.getState().planApproval).toEqual(ask);
   });
 });

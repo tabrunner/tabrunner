@@ -1089,6 +1089,29 @@ export const useConversationStore = create<ConversationState>((set, get) => {
   };
 
   /**
+   * The parked gate's card, mirrored off the board. The plan_approval broadcast
+   * arms the panels that hear it; this arms — and settles — the rest from
+   * storage: a panel that opened, switched threads, or lost the port after the
+   * park reads the same board the band's "Aguardando" already comes from, so
+   * "waiting for your approval" can never render without the card that answers
+   * it. Runs on every board change, on connect's first read, and on a
+   * conversation switch (the watch only fires on writes).
+   */
+  const reconcilePlanGate = (board: RunBoard) => {
+    const s = get();
+    const running =
+      s.activeId !== null && board.running?.conversationId === s.activeId
+        ? board.running
+        : undefined;
+    const ask = running?.owner === "panel" ? (running.approval ?? null) : null;
+    if (ask && s.planApproval === null) {
+      set({ planApproval: ask, planApproved: false, replanning: false });
+    } else if (!ask && s.planApproval !== null) {
+      set({ planApproval: null });
+    }
+  };
+
+  /**
    * Point the panel at a thread. Three callers reach this — the user opening
    * one, the user starting a fresh one, and another window doing either — and
    * they must land identically, or two panels on the same conversation would
@@ -1111,12 +1134,13 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     // the `setActiveConversation(null)` behind this has not necessarily cleared
     // yet — so the answer could arm a plan card for the thread just left.
     if (id === null) return;
-    // Named, not left to the slot: a parked plan gate and the driven-tab chip
-    // re-arm only on a fresh query, so without this, switching back to a parked
-    // conversation shows "waiting for your approval" with the card gone — and
-    // typed text would queue behind a run that cannot move. The id rides along
-    // because with a panel open in every window, the slot can be pointed
-    // somewhere else between the write behind this and the worker reading it.
+    // Named, not left to the slot: the driven-tab chip re-arms only on a fresh
+    // query (the plan card comes off the board above), so without this,
+    // switching back to a run in flight shows no tab chip — and typed text
+    // would queue behind a run that cannot move. The id rides along because
+    // with a panel open in every window, the slot can be pointed somewhere
+    // else between the write behind this and the worker reading it.
+    reconcilePlanGate(get().board);
     post({ type: "query_run", conversationId: id });
     void getMessages(id).then((messages) => {
       // A switch that raced this read wins — never paint a stale transcript.
@@ -1193,6 +1217,10 @@ export const useConversationStore = create<ConversationState>((set, get) => {
             ? board.running
             : undefined;
         if (running) set({ runStartedAt: running.startedAt });
+        // A panel opened onto a parked gate arms its card here — the ask is on
+        // the board, no port event required. activeId may still be resolving;
+        // its own load below reconciles again, so either order lands.
+        reconcilePlanGate(board);
       });
       // Chrome draws one panel per window and they share the open-conversation
       // slot, so a thread opened anywhere is the thread every window is on.
@@ -1200,6 +1228,10 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       unwatchBoard ??= runBoardItem.watch((board) => {
         const prev = get().board;
         set({ board });
+        // The gate's card follows the board: parked with the ask, settled when
+        // the ask comes down — including for a panel the plan_answered
+        // broadcast never reached.
+        reconcilePlanGate(board);
         // A worker restart resets the board to empty — drop the queued chip
         // the dead queue can never fulfill.
         if (!board.running && board.queue.length === 0 && get().queuedRun) {
@@ -1239,6 +1271,10 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       });
       void getActiveId().then(async (activeId) => {
         set({ activeId, messages: activeId ? await getMessages(activeId) : [] });
+        // The board read may have landed before the open conversation was known
+        // — reconcile again now that both halves of "is the gate parked HERE"
+        // are on hand. Whichever load resolves second arms the card.
+        reconcilePlanGate(get().board);
       });
       attach();
     },

@@ -307,7 +307,10 @@ export default defineBackground(() => {
           const answering = getActiveRun();
           if (!answering || answering.owner !== "panel") break;
           answerElicitation(msg.requestId, msg.action, msg.value);
-          broadcast(answering.conversationId, { type: "elicitation_done", requestId: msg.requestId });
+          broadcast(answering.conversationId, {
+            type: "elicitation_done",
+            requestId: msg.requestId,
+          });
           break;
         }
 
@@ -337,10 +340,12 @@ export default defineBackground(() => {
           // page. Re-send it from the board: the band is then whole either way,
           // which is what lets the run strip stop repeating it.
           await sendDrivingTo(port, msg.conversationId);
-          // Re-arm a plan the panel was closed on. The approval card lives only
-          // in panel memory, so a run parked while the panel was away — which
-          // is every run whose notification the user just clicked — would come
-          // back unanswerable: a question on screen with no way to say yes.
+          // Re-arm what only the worker knows. The parked plan's card no longer
+          // needs this — it rides the run board, so a panel that was closed or
+          // deaf at the park reads it off storage like every other surface —
+          // but the spend and the steer queue live on the run slot, and a panel
+          // that opened mid-run (the pill's click, the notification's) has seen
+          // none of either.
           const parked = getActiveRun();
           // The asking panel names its own thread when it knows it — on a
           // conversation switch, the one ask whose answer must be about where
@@ -353,12 +358,9 @@ export default defineBackground(() => {
             // this its gauge falls back to the number the LAST run stamped on
             // the conversation and reports a fresh run as nearly full.
             send(port, { type: "usage", ...parked.usage });
-            if (parked.planApproval) {
-              send(port, { type: "plan_approval", ...parked.planApproval.ask });
-            }
-            // Same reason as the plan card above: the queue is the worker's,
-            // its cards are the panel's. Without this the steers still land
-            // while the composer shows nothing to cancel.
+            // Same reason: the queue is the worker's, its cards are the
+            // panel's. Without this the steers still land while the composer
+            // shows nothing to cancel.
             if (parked.injectedQueue.length > 0) {
               send(port, { type: "queued_steers", items: [...parked.injectedQueue] });
             }

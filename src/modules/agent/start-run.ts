@@ -104,7 +104,15 @@ export type StartRunResult = { ok: true } | { ok: false; active: ActiveRun };
  * each caller can word it for its own audience.
  */
 export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResult> {
-  const { conversationId, owner, task, images, emit: baseEmit, onAskUser, onPlanApprovalRequest } = opts;
+  const {
+    conversationId,
+    owner,
+    task,
+    images,
+    emit: baseEmit,
+    onAskUser,
+    onPlanApprovalRequest,
+  } = opts;
   const claim = acquireRun(conversationId, owner);
   if (!claim.ok) return { ok: false, active: claim.active };
   const { run } = claim;
@@ -456,19 +464,24 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             onPlanApprovalRequest?.(ask);
             // Parked means blocked-on-you, not working: the driven tab settles
             // into the same still "?" an ask_user wait shows, and the board's
-            // pulse stops. An approve re-raises both; a reject (or stop) ends
-            // the run, whose unwind clears them.
-            markRunningAwaiting(conversationId, true);
+            // pulse stops. The ask rides the board, so a panel that missed the
+            // broadcast still gets the card. An approve re-raises the working
+            // marks; a reject (or stop) ends the run, whose unwind clears them.
+            markRunningAwaiting(conversationId, true, ask);
             void waitAgentIndicator(drivenTabId);
             return new Promise<PlanApprovalOutcome>((resolve) => {
               run.planApproval = {
                 ask,
                 resolve: (approved, feedback) => {
                   const revision = approved ? undefined : feedback?.trim() || undefined;
-                  // Approve or revise: the run works again, so the working marks
-                  // return. A plain reject ends it — its unwind clears them.
+                  // The gate is answered the moment it resolves — approve,
+                  // revise, or reject. The board's ask comes down with it, so
+                  // every panel sees the gate close from storage alone, even
+                  // one the plan_answered broadcast never reached. Approve or
+                  // revise: the run works again, so the working marks return;
+                  // a plain reject ends it — its unwind clears the rest.
+                  markRunningAwaiting(conversationId, false);
                   if (approved || revision) {
-                    markRunningAwaiting(conversationId, false);
                     void showAgentIndicator(drivenTabId);
                   } else {
                     planRejected = true;

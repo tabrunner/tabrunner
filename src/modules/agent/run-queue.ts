@@ -1,5 +1,6 @@
 import { defineItem } from "@/lib/storage";
 import { createLogger, truncate } from "@/lib/logger";
+import type { PlanApprovalPayload } from "@/shared/protocol";
 import { getActiveRun, onRunReleased } from "./active-runs";
 import type { RunOwner } from "./active-runs";
 
@@ -44,6 +45,15 @@ export interface RunBoard {
     tabId?: number;
     /** Parked on the user's answer (plan approval) — alive, but not working. */
     awaiting?: boolean;
+    /**
+     * The parked ask itself — the approval card, storage-backed. The port
+     * broadcast arms the panels that heard it; this arms every other one: a
+     * panel that was opened, switched, or left deaf after the park reads the
+     * same board every surface reads, so the question is on screen with a way
+     * to say yes even when no plan_approval event ever reached it. Cleared the
+     * moment the gate is answered, approve or reject.
+     */
+    approval?: PlanApprovalPayload;
     /** The run is documenting itself: screens of the driven tab are being kept.
      *  Ambient, because the surfaces that must say so (toolbar title, driven-tab
      *  badge) outlive the panel that would otherwise be the only witness. */
@@ -142,12 +152,19 @@ export function markRunningTab(conversationId: string, tabId: number): void {
 
 /**
  * The running entry parked on the user's answer (plan approval) or got it.
- * Same stale-guard as markRunningTab — a run that already ended must not
- * move the board.
+ * Same stale-guard as markRunningTab — a run that already ended must not move
+ * the board. Parking carries the ask, so the card is answerable from the board
+ * alone; answering takes it back down, whichever way the gate went.
  */
-export function markRunningAwaiting(conversationId: string, awaiting: boolean): void {
+export function markRunningAwaiting(
+  conversationId: string,
+  awaiting: boolean,
+  approval?: PlanApprovalPayload,
+): void {
   if (!running || running.conversationId !== conversationId) return;
-  running = { ...running, awaiting };
+  running = awaiting
+    ? { ...running, awaiting, ...(approval ? { approval } : {}) }
+    : { ...running, awaiting, approval: undefined };
   void writeBoard();
 }
 

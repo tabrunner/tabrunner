@@ -182,6 +182,23 @@ describe("markRunningAwaiting", () => {
     releaseRun(claim("a"));
   });
 
+  it("parks the ask onto the board and takes it down with the answer", async () => {
+    submit("a", "panel");
+    const ask = { steps: ["Open the console", "Copy the key"], current: 0, reapproval: false };
+    markRunningAwaiting("c-a", true, ask);
+    await flush();
+    // The card is answerable from the board alone — a panel that missed the
+    // plan_approval broadcast still gets the question.
+    expect((await runBoardItem.get()).running?.approval).toEqual(ask);
+
+    markRunningAwaiting("c-a", false);
+    await flush();
+    const settled = (await runBoardItem.get()).running;
+    expect(settled?.awaiting).toBe(false);
+    expect(settled?.approval).toBeUndefined();
+    releaseRun(claim("a"));
+  });
+
   it("ignores a run that is no longer the board's running entry", () => {
     submit("a", "panel");
     markRunningAwaiting("c-someone-else", true);
