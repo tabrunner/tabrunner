@@ -53,6 +53,10 @@ export interface WidgetState {
   mode: "driven" | "ambient";
   /** The headline: a state sentence (driven) or the task excerpt (ambient). */
   task: string;
+  /** The steering message, when the headline is the conversation's title
+   *  instead — the tooltip's identity. Absent when the headline already is
+   *  the excerpt. */
+  taskTip?: string;
   /** "+N queued" chip text — empty when nothing waits. */
   queuedText: string;
   /** Parked on the user's answer — the pulse becomes a still "?". */
@@ -230,7 +234,7 @@ export function paintWidget(hostId: string, state: WidgetState): void {
   // Parked: the state leads ("Waiting for your approval"), the task excerpt
   // keeps the tooltip. Settled: the receipt. Working: the excerpt, as always.
   text.textContent = state.awaitingText || (state.settle ? state.settle.text : state.task);
-  if (state.mode === "ambient" && !state.settle) text.title = state.task;
+  if (state.mode === "ambient" && !state.settle) text.title = state.taskTip ?? state.task;
   open.append(makeStatus());
   if (state.mode === "ambient") {
     const brand = document.createElement("span");

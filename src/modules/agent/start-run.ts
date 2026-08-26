@@ -292,7 +292,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       emit({ type: "error", message: i18n.t("errors.noActiveTab") });
       return { ok: true };
     }
-    markRunningTab(conversationId, tab.id);
+    markRunningTab(conversationId, tab.id, tab.windowId);
 
     // The conversation may have worked on other pages than this run's start
     // (one run per message, and users move between messages). Name those tabs
@@ -338,7 +338,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         void hideAgentIndicator(drivenTabId);
         drivenTabId = info.id;
         drivenTitle = info.title;
-        markRunningTab(conversationId, info.id);
+        markRunningTab(conversationId, info.id, info.windowId);
         emit({
           type: "driving",
           tabId: info.id,

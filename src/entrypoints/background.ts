@@ -19,7 +19,11 @@ import {
 } from "@/modules/agent/run-queue";
 import type { RunBoard } from "@/modules/agent/run-queue";
 import { appendMessageTo, getActiveId, getConversationMeta } from "@/modules/conversation";
-import { setActiveConversation } from "@/modules/conversation/conversations";
+import {
+  listConversations,
+  setActiveConversation,
+  watchConversations,
+} from "@/modules/conversation/conversations";
 import { panelPorts } from "@/modules/conversation/panel-ports";
 import { TranscriptWriter } from "@/modules/conversation/transcript";
 import {
@@ -77,6 +81,11 @@ const compactions = new Map<string, AbortController>();
 let unseenFailure = false;
 /** The widget's current content — repaints after navigation read it. */
 let widgetState: WidgetState | null = null;
+/** Conversation id → title, kept fresh by the index watch — the ambient pill
+ *  names the JOB (the conversation), not the latest message that steered it,
+ *  which on a long thread reads as a random thing to have in the corner of
+ *  every page. A cold map falls back to the task excerpt until a read lands. */
+const conversationTitles = new Map<string, string>();
 
 export default defineBackground(() => {
   void initI18n();
@@ -149,17 +158,21 @@ export default defineBackground(() => {
 
   onBoardChanged((board) => {
     paintActionBadge(board);
-    widgetState = boardToWidget(board);
-    const exclude = board.running?.tabId;
-    void widgetHidden
-      .get()
-      .then((hidden) => syncStatusWidget(hidden ? null : widgetState, exclude));
+    repaintWidget(board);
     if (board.running || board.queue.length > 0) {
       void chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 0.5 });
     } else {
       void chrome.alarms.clear(KEEPALIVE_ALARM);
     }
   });
+  // The title cache primes at boot and follows the index; a rename repaints
+  // the pill through the same paint a board change uses.
+  const learnTitles = (list: { id: string; title: string }[]) => {
+    for (const c of list) conversationTitles.set(c.id, c.title);
+    repaintWidget(currentBoard());
+  };
+  void listConversations().then(learnTitles);
+  watchConversations(learnTitles);
   widgetHidden.watch((hidden) => {
     void syncStatusWidget(hidden ? null : widgetState, currentBoard().running?.tabId);
   });
@@ -505,24 +518,24 @@ export default defineBackground(() => {
       board.queue[0]?.conversationId;
     if (target) void setActiveConversation(target);
     void (async () => {
-      // Both halves of "back to the run": the page being worked pulled to the
-      // front (its window first), and the panel open beside it — in THAT
-      // window, so a pill clicked from another window lands page and panel
-      // together instead of leaving an orphan panel behind. Only the tab
-      // lookup is awaited ahead of sidePanel.open, keeping the click's gesture
-      // alive for it.
+      // Both halves of "back to the run": the panel open beside the work, and
+      // the page being worked pulled to the front — in THAT window, so a pill
+      // clicked from another window lands page and panel together instead of
+      // leaving an orphan panel behind. The panel opens FIRST, on a window the
+      // board already names (windowId rides beside tabId; a run that has not
+      // resolved its tab yet falls back to the window the pill was clicked
+      // in): zero awaits ahead of it, so the click's gesture can never expire
+      // on the way — an open() that lost the gesture was a pill that changed
+      // the tab and opened nothing. The page pull follows; focusing a tab
+      // needs no gesture.
       const runTab = board.running?.tabId;
-      let windowId = sender.tab?.windowId;
-      if (runTab !== undefined) {
-        try {
-          const tab = await chrome.tabs.get(runTab);
-          windowId = tab.windowId;
-          void focusTab(runTab, tab.windowId);
-        } catch {
-          // The tab died mid-click — the run is unwinding; panel only.
-        }
+      const windowId = board.running?.windowId ?? sender.tab?.windowId;
+      try {
+        if (windowId !== undefined) await chrome.sidePanel.open({ windowId });
+      } catch (e) {
+        log.debug("panel open skipped:", e instanceof Error ? e.message : String(e));
       }
-      if (windowId !== undefined) await chrome.sidePanel.open({ windowId });
+      if (runTab !== undefined) void focusTab(runTab, board.running?.windowId);
     })();
   });
 
@@ -628,6 +641,14 @@ async function sendDrivingTo(port: chrome.runtime.Port, showing?: string): Promi
   }
 }
 
+/** Repaint the pill from a board — shared by board changes and title changes
+ *  (a rename reaches the pill through the same paint, not a special case). */
+function repaintWidget(board: RunBoard): void {
+  widgetState = boardToWidget(board);
+  const exclude = board.running?.tabId;
+  void widgetHidden.get().then((hidden) => syncStatusWidget(hidden ? null : widgetState, exclude));
+}
+
 /** The widget's content for a board — null when there is nothing to report.
  *  With only a queue (e.g. waiting behind a direct session) the first waiter
  *  leads the pill. An unanswered question outlives its run: the slot is free,
@@ -653,13 +674,20 @@ function boardToWidget(board: RunBoard): WidgetState | null {
   }
   const extra = board.running ? board.queue.length : board.queue.length - 1;
   const parked = board.running?.awaiting === true;
+  // The headline is the conversation — the job's name — with the steering
+  // message kept for the tooltip; when no title is known yet, the excerpt
+  // leads as it always did.
+  const excerpt = truncate(lead.task, 120);
+  const title = conversationTitles.get(lead.conversationId);
+  const headline = title ?? excerpt;
   return {
     mode: "ambient",
-    task: truncate(lead.task, 120),
+    task: headline,
+    ...(title !== undefined && title !== excerpt ? { taskTip: excerpt } : {}),
     queuedText: extra > 0 ? i18n.t("widget.queued", { count: extra }) : "",
     awaiting: parked,
-    // A parked run's task excerpt can't say the run is blocked on you — swap
-    // the text for the state (the excerpt stays on the tooltip).
+    // A parked run's headline can't say the run is blocked on you — swap the
+    // text for the state (the tooltip keeps the identity).
     awaitingText: parked ? i18n.t("run.awaitingApproval") : "",
     hideLabel: i18n.t("widget.hide"),
     openHint: i18n.t("widget.openHint"),

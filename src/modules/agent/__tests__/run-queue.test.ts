@@ -261,6 +261,27 @@ describe("markRunningElicitation", () => {
   });
 });
 
+describe("board writes", () => {
+  it("land in marker order — the last transition is what storage holds", async () => {
+    submit("a", "panel");
+    // Five transitions in one tick. The write chain guarantees the last
+    // marker's state wins even when the storage layer lands sets out of
+    // order — an older write capturing the board before an answer must never
+    // resurrect the answered ask on the board every panel reconciles from.
+    markRunningAwaiting("c-a", true, { steps: ["s"], current: 0, reapproval: false });
+    markRunningTab("c-a", 7, 3);
+    markRunningElicitation("c-a", { requestId: "r1", message: "q", serverName: "acme" });
+    markRunningAwaiting("c-a", false);
+    markRunningTab("c-a", 9, 3);
+    await flush();
+    const settled = (await runBoardItem.get()).running;
+    expect(settled).toMatchObject({ tabId: 9, windowId: 3, awaiting: false });
+    expect(settled?.approval).toBeUndefined();
+    expect(settled?.elicitation).toBeUndefined();
+    releaseRun(claim("a"));
+  });
+});
+
 describe("pendingQuestion", () => {
   it("outlives the run that asked it — the board keeps the answer owed", async () => {
     submit("a", "panel");

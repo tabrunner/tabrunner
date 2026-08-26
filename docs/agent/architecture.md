@@ -301,7 +301,9 @@ seam, and ONE on-page mark (`status-widget.ts`'s pill, top-right of every page i
 paint): in its **driven** voice (lifecycle in `indicator.ts`, on the tab being worked) it
 reads "TabRunner is controlling this tab" — the mark that keeps a self-typing tab from
 looking possessed; in its **ambient** voice (this module's lifecycle, on every window's
-active tab but the driven one) it reads "TabRunner ·" + task + queue count. A run blocked
+active tab but the driven one) it reads "TabRunner ·" + the conversation's title + queue
+count — the job's name, not the latest message that steered it (that stays on the
+tooltip; a cold title cache falls back to the excerpt). A run blocked
 on the user (ask_user, plan approval) settles the pill into a still "?" in either voice —
 waiting-on-you, not working (`waitAgentIndicator`). When a run finishes or fails, the pill
 settles into a receipt instead of vanishing — ✓ "Task finished" / ✗ "Task failed", the same
@@ -316,9 +318,12 @@ TabRunner was on it. Both voices share one host id, one paint function, one Hide
 (collapse in-page to a small blinking dot; a click on it brings the pill back) — the
 ambient half never paints over or strips a driven badge (`drivenTabs` guards eligibility),
 which is what makes the switch_tab handover safe. Every mark is
-click-to-open (one `tabrunner-mark` message to the worker; it pulls the driven tab forward —
-window included — and opens the panel beside it in that window, so a pill clicked from some
-other window lands you next to the work), which is why every coordinate
+click-to-open (one `tabrunner-mark` message to the worker; it opens the panel beside the
+work in that window and pulls the driven tab forward — window included — so a pill clicked
+from some other window lands you next to the work. The panel opens FIRST, on a window the
+board already names (`running.windowId` rides beside `tabId`): zero awaits ahead of
+`sidePanel.open`, because an open() that lost the click's gesture behind a tab lookup was a
+pill that changed the tab and opened nothing), which is why every coordinate
 click runs inside `withMarksClickThrough` — the agent clicks by viewport point, and a
 badge that swallowed one would both lose the step and open a panel nobody asked for. Also
 `restricted-url.ts` (`isRestrictedUrl`, the proactive form of the injection rejection);

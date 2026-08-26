@@ -43,6 +43,10 @@ export interface RunBoard {
      *  elapsed clock from here, its own run-state having died with the close. */
     startedAt: number;
     tabId?: number;
+    /** The tab's window, filled beside `tabId` — the on-page pill's click opens
+     *  the panel on the right window with zero awaits ahead of it, so the
+     *  click's user gesture can never expire on the way. */
+    windowId?: number;
     /** Parked on the user's answer (plan approval) — alive, but not working. */
     awaiting?: boolean;
     /**
@@ -149,12 +153,14 @@ export function currentBoard(): RunBoard {
 
 /**
  * The running entry's tab — filled in once the run has resolved its target,
- * and again whenever switch_tab re-targets it. No-op for a run that is no
- * longer the board's running entry (a stale unwind must not move the board).
+ * and again whenever switch_tab re-targets it. The window rides along so the
+ * pill's click never needs a tab lookup before opening the panel. No-op for a
+ * run that is no longer the board's running entry (a stale unwind must not
+ * move the board).
  */
-export function markRunningTab(conversationId: string, tabId: number): void {
+export function markRunningTab(conversationId: string, tabId: number, windowId?: number): void {
   if (!running || running.conversationId !== conversationId) return;
-  running = { ...running, tabId };
+  running = { ...running, tabId, windowId };
   void writeBoard();
 }
 
@@ -245,10 +251,26 @@ export function onBoardChanged(cb: (board: RunBoard) => void): () => void {
 
 const boardListeners = new Set<(board: RunBoard) => void>();
 
-async function writeBoard(): Promise<void> {
-  const board = currentBoard();
-  for (const cb of boardListeners) cb(board);
-  await runBoardItem.set(board);
+/**
+ * Board writes serialize on one chain — the transcript writer's own convention.
+ * Every write reads `currentBoard()` at its turn in the chain, so the last
+ * marker's state is what storage ends up with. Unserialized, two `set()` calls
+ * can land out of order and a write that captured the board before an answer
+ * would resurrect the answered ask in storage — re-arming the card in every
+ * panel that reconciles from it, until the next write happened to clear it.
+ * A failed write logs and lets the chain live.
+ */
+let boardWrites: Promise<void> = Promise.resolve();
+function writeBoard(): Promise<void> {
+  const once = async () => {
+    const board = currentBoard();
+    for (const cb of boardListeners) cb(board);
+    await runBoardItem.set(board);
+  };
+  boardWrites = boardWrites
+    .then(once)
+    .catch((e) => log.warn("board write failed:", e instanceof Error ? e.message : String(e)));
+  return boardWrites;
 }
 
 // A freed slot starts the next waiter — every end path (done, error, stop,
