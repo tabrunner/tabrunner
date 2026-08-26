@@ -19,7 +19,9 @@ import type { McpRunSnapshot } from "@/modules/mcp";
 import { MCP_TOOL_PREFIX } from "@/modules/mcp";
 import type { RunRecorder } from "@/modules/walkthrough/recorder";
 import type { ToolDef } from "@/modules/providers/types";
-import { executeTool, formatDetail, formatSuccessSummary } from "./tools";
+import { newlyApplicableSkills } from "@/modules/skills";
+import { truncateTo } from "@/lib/format";
+import { executeTool, formatDetail, formatSuccessSummary, landedHost } from "./tools";
 import type { RunGroup } from "./tools";
 import type { RunOwner } from "./active-runs";
 import { buildSystemPrompt, buildTaskMessage, buildToolDefs } from "./prompt";
@@ -469,6 +471,11 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
     recorder !== undefined,
     opts.mcp?.tools ?? [],
   );
+  // Skills named in the start catalog are already known to the model — mid-run
+  // activation announces only skills whose host the run lands on LATER, each
+  // exactly once. Dedupe is per skill name: site lists overlap (google.com on
+  // two records), so counting hosts would re-announce or suppress wrongly.
+  const announcedSkills = new Set(runSkills.applicable.map((s) => s.name));
 
   // Auto-snapshot merged into the task message — Anthropic rejects consecutive user messages
   const messages: ChatMessage[] = [
@@ -926,6 +933,29 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         callbacks.onDone?.();
         cancelled = CANCELLED_RUN_PAUSED;
       } else {
+        // Mid-run skill activation rides the SAME tool result that landed its
+        // host — a separate message would butt against the tool_results one,
+        // and nothing here rebuilds the frozen per-run tool array. Empty list:
+        // no host landed on, or every match was already announced.
+        const landed = landedHost(call, result);
+        const fresh =
+          landed === null ? [] : newlyApplicableSkills(runSkills.all, landed, announcedSkills);
+        for (const s of fresh) announcedSkills.add(s.name);
+        let payload: Record<string, unknown> | undefined;
+        if (!result.ok) {
+          payload = undefined;
+        } else if (revision) {
+          payload = { revision, note: i18n.t("plan.revisionNote") };
+        } else if (note) {
+          payload = { ...(result.data as PlanPayload), note };
+        } else if (result.data !== undefined && result.data !== null) {
+          payload = result.data as Record<string, unknown>;
+        } else {
+          payload = { ok: true };
+        }
+        const announcement = `${i18n.t("run.newSkills")} ${fresh
+          .map((s) => `${s.name}: ${truncateTo(s.description.replace(/\s+/g, " "), 120)}`)
+          .join("; ")}`;
         results.push({
           id: call.id,
           // JSON.stringify(undefined) is undefined, and a tool message whose
@@ -933,13 +963,11 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
           // (DeepSeek: "missing field content"). No-data tools (type, keys,
           // scroll) still report success as {ok:true}.
           content: JSON.stringify(
-            !result.ok
-              ? { error: result.error }
-              : revision
-                ? { revision, note: i18n.t("plan.revisionNote") }
-                : note
-                  ? { ...(result.data as PlanPayload), note }
-                  : (result.data ?? { ok: true }),
+            payload
+              ? fresh.length > 0
+                ? { ...payload, new_skills: announcement }
+                : payload
+              : { error: result.error },
           ),
           // The screenshot tool is withheld from text-only models, so images can't
           // normally get here — the guard keeps any future image tool off the wire.

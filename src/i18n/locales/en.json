@@ -737,6 +737,7 @@
     "reject": "Reject"
   },
   "run": {
+    "newSkills": "Newly available skills on this site — before acting on anything here, load any that matches the task with the skill tool:",
     "tool": {
       "navigate": "Navigating",
       "read_page_text": "Reading the page text",

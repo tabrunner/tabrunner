@@ -737,6 +737,7 @@
     "reject": "Rechazar"
   },
   "run": {
+    "newSkills": "Nuevas habilidades disponibles en este sitio — antes de actuar aquí, carga con la herramienta skill la que encaje con la tarea:",
     "tool": {
       "navigate": "Navegando",
       "read_page_text": "Leyendo el texto de la página",

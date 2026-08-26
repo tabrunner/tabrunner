@@ -8,6 +8,7 @@ import type { McpHandle } from "@/modules/mcp";
 import { remember } from "@/modules/memory";
 import { cancelSchedule, scheduleTask } from "@/modules/schedule/agent-tools";
 import { i18n } from "@/i18n";
+import { scopeHostOf } from "@/lib/host";
 import { truncate } from "@/lib/logger";
 import { readStepLog } from "./read-history";
 import type { RunOwner } from "./active-runs";
@@ -293,6 +294,23 @@ export async function executeTool(
     const message = e instanceof Error ? e.message : String(e);
     return { ok: false, error: message };
   }
+}
+
+/**
+ * The host a page-moving tool landed on, read out of its own result data.
+ * navigate reports the requested URL, open_tab and switch_tab return tab info
+ * carrying the real one — the three movers mid-run skill activation follows.
+ * ponytail: go_back carries no URL, evaluate-driven navigation reports
+ * nothing — neither triggers discovery; the upgrade path is a post-action
+ * tab probe here.
+ */
+export function landedHost(call: ToolCall, result: ToolResult): string | null {
+  if (!result.ok) return null;
+  if (call.name !== "navigate" && call.name !== "open_tab" && call.name !== "switch_tab") {
+    return null;
+  }
+  const url = (result.data as { url?: string } | undefined)?.url;
+  return scopeHostOf(url);
 }
 
 /** Result payload for the panel's expandable row — bounded, never a whole page. */

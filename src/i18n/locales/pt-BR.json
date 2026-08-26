@@ -737,6 +737,7 @@
     "reject": "Rejeitar"
   },
   "run": {
+    "newSkills": "Novas habilidades disponíveis neste site — antes de agir aqui, carregue pela ferramenta skill qualquer uma que combine com a tarefa:",
     "tool": {
       "navigate": "Navegando",
       "read_page_text": "Lendo o texto da página",
