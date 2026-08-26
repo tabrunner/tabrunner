@@ -170,6 +170,7 @@
       "noBody": "Instructions are required — an empty skill teaches nothing.",
       "descriptionTooLong": "Description is over {{max}} characters — tighten it; it's a catalog line, not the instructions.",
       "bodyTooLong": "Instructions are over {{max}} characters — trim the steps or split into two skills.",
+      "reservedName": "That name is taken by a built-in slash command — pick another.",
       "nameTaken": "A skill named \"{{name}}\" already exists — pick another name or edit that one.",
       "tooMany": "You have {{max}} skills — the cap. Delete one you no longer use before adding another."
     }

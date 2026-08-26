@@ -8,6 +8,8 @@ import type { ConversationEngine } from "@/modules/providers/types";
 import { fetchProviderUsage, supportsUsage } from "@/modules/providers/usage";
 import type { UsageWindow } from "@/modules/providers/usage";
 import { useProvidersStore } from "@/modules/providers/ui";
+import type { Skill } from "@/modules/skills";
+import { SLASH_COMMAND_NAMES } from "@/modules/conversation/command-names";
 import { loadedSkills, openSkillDraft } from "@/modules/skills/ui";
 import { truncateTo } from "@/lib/format";
 import { openHelp } from "./help-open";
@@ -70,7 +72,11 @@ type CommandDescriptionKey =
 
 export interface SlashCommand {
   name: string;
-  descriptionKey: CommandDescriptionKey;
+  /** Built-ins describe themselves through i18n — a closed union, so a missing
+   *  key is a compile error. Skill-derived commands carry the user's own
+   *  description instead (user content is never translated). */
+  descriptionKey?: CommandDescriptionKey;
+  description?: string;
   /** Takes an optional argument — running it bare reports the current value. */
   takesArg?: boolean;
   /** A closed arg set (effort levels, configured providers) — powers the picker menu. */
@@ -515,17 +521,10 @@ export const COMMANDS: readonly SlashCommand[] = [
         note(i18n.t("commands.skill.disabled", { name: pick.name }));
         return;
       }
-      // Localized on purpose: the model mirrors the message's language, and an
-      // English template would flip a pt-BR user's whole run into English. The
-      // model loads the body through the skill tool — one loading path, and the
-      // transcript stays an honest record of what was sent.
-      useConversationStore
-        .getState()
-        .sendTask(
-          rest
-            ? i18n.t("commands.skill.taskWithArgs", { name: pick.name, args: rest })
-            : i18n.t("commands.skill.task", { name: pick.name }),
-        );
+      // Localized on purpose (see runSkillTask): the model mirrors the message's
+      // language, and an English template would flip a pt-BR user's whole run
+      // into English. One sender for /skill and every per-skill command.
+      runSkillTask(pick.name, rest || undefined);
     },
   },
   {
@@ -558,13 +557,57 @@ export const COMMANDS: readonly SlashCommand[] = [
   },
 ];
 
+/**
+ * Every enabled skill is its own command — typing "/pay-rent invoicing" is
+ * sugar for "/skill pay-rent invoicing", resolved to the same localized
+ * citation task through this one sender. `thisChatOnly` has no meaning here:
+ * a citation task is inherently this conversation's.
+ */
+function runSkillTask(name: string, rest?: string): void {
+  useConversationStore.getState().sendTask(
+    rest
+      ? i18n.t("commands.skill.taskWithArgs", { name, args: rest })
+      : i18n.t("commands.skill.task", { name }),
+  );
+}
+
+function skillCommand(s: Skill): SlashCommand {
+  return {
+    name: s.name,
+    description: s.description,
+    takesArg: true,
+    deferWhileBusy: true,
+    run: (arg) => runSkillTask(s.name, arg),
+  };
+}
+
+/** Built-ins first, then one derived command per enabled skill that does not
+ *  collide with a built-in's name (saveSkill rejects those going forward;
+ *  pre-existing records keep working via /skill and lose only their menu slot). */
+function allCommands(): readonly SlashCommand[] {
+  const derived = loadedSkills()
+    .filter((s) => s.enabled && !SLASH_COMMAND_NAMES.includes(s.name))
+    .map(skillCommand);
+  return [...COMMANDS, ...derived];
+}
+
+export function findCommand(name: string): SlashCommand | undefined {
+  return allCommands().find((c) => c.name === name.toLowerCase());
+}
+
+/** The description text for any command — built-in (i18n'd) or skill-derived
+ *  (the user's own words). One resolver so the menu and the help sheet agree. */
+export function commandDescription(c: SlashCommand): string {
+  return c.description ?? (c.descriptionKey ? i18n.t(c.descriptionKey) : "");
+}
+
 export function parseSlash(text: string): ParsedSlash | null {
   if (!text.startsWith("/") || text.includes("\n")) return null;
   const body = text.slice(1);
   if (/^\s/.test(body)) return null;
   const space = body.search(/\s/);
   const fragment = (space === -1 ? body : body.slice(0, space)).toLowerCase();
-  const command = COMMANDS.find((c) => c.name === fragment);
+  const command = findCommand(fragment);
   return {
     fragment,
     ...(command ? { command } : {}),
@@ -599,11 +642,13 @@ export function slashItems(text: string): SlashMenuState | null {
   }
   return {
     kind: "commands",
-    items: COMMANDS.filter((c) => c.name.startsWith(parsed.fragment)).map((c) => ({
-      key: c.name,
-      primary: `/${c.name}`,
-      secondary: i18n.t(c.descriptionKey),
-    })),
+    items: allCommands()
+      .filter((c) => c.name.startsWith(parsed.fragment))
+      .map((c) => ({
+        key: c.name,
+        primary: `/${c.name}`,
+        secondary: commandDescription(c),
+      })),
   };
 }
 
@@ -672,7 +717,12 @@ export function executeSlash(text: string, thisChatOnly = false): SlashOutcome {
     return "executed";
   }
   if (!parsed.fragment) return "executed"; // a bare "/" — the menu already said everything
-  const matches = COMMANDS.filter((c) => c.name.startsWith(parsed.fragment));
+  // Completion prefers built-ins: "/re" completing to /rename predates skill
+  // commands, and a skill named resume-* must not turn that into "ambiguous".
+  // Skills join only when no built-in carries the fragment.
+  const builtins = COMMANDS.filter((c) => c.name.startsWith(parsed.fragment));
+  const matches =
+    builtins.length > 0 ? builtins : allCommands().filter((c) => c.name.startsWith(parsed.fragment));
   if (matches.length === 1 && matches[0]) {
     const command = matches[0];
     if (command.takesArg) return { complete: `/${command.name} ` };

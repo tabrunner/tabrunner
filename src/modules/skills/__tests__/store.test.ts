@@ -42,6 +42,12 @@ describe("saveSkill", () => {
     expect((await saveSkill(input("a", { body: "" }))).ok).toBe(false);
   });
 
+  it("rejects a name claimed by a built-in slash command — the menu must show the real one", async () => {
+    expect((await saveSkill(input("usage"))).ok).toBe(false);
+    // A near-miss stays legal.
+    expect((await saveSkill(input("usage-report"))).ok).toBe(true);
+  });
+
   it("normalizes sites itself — hostMatches assumes stored hosts", async () => {
     const saved = await saveSkill(
       input("normed", { sites: [" WWW.Acme.com ", "acme.com", "not a host"] }),

@@ -170,6 +170,7 @@
       "noBody": "As instruções são obrigatórias — uma habilidade vazia não ensina nada.",
       "descriptionTooLong": "A descrição passa de {{max}} caracteres — enxugue; é uma linha de catálogo, não as instruções.",
       "bodyTooLong": "As instruções passam de {{max}} caracteres — encurte os passos ou divida em duas habilidades.",
+      "reservedName": "Esse nome já é usado por um comando embutido da barra — escolha outro.",
       "nameTaken": "Já existe uma habilidade chamada \"{{name}}\" — escolha outro nome ou edite aquela.",
       "tooMany": "Você tem {{max}} habilidades — o limite. Exclua uma que não usa mais antes de adicionar outra."
     }

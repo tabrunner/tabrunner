@@ -6,7 +6,7 @@ import { LINKS } from "@/lib/links";
 import { newIssueUrl } from "@/lib/report";
 import { activeProviderOf, useProvidersStore } from "@/modules/providers/ui";
 import { setHelpOpen, useHelpOpen } from "./help-open";
-import { COMMANDS } from "./slash-commands";
+import { COMMANDS, commandDescription } from "./slash-commands";
 
 /**
  * The reference sheet behind /help, the composer's "?" gesture, and the
@@ -75,7 +75,7 @@ export function HelpDialog() {
                   /{c.name}
                 </span>
                 <span className="min-w-0 flex-1 text-xs text-neutral-600 dark:text-neutral-400">
-                  {t(c.descriptionKey)}
+                  {commandDescription(c)}
                 </span>
               </div>
             ))}

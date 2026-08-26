@@ -362,6 +362,66 @@ describe("/skill", () => {
   });
 });
 
+describe("per-skill commands", () => {
+  const skill = (name: string, enabled = true) => ({
+    id: name,
+    name,
+    description: `does ${name}`,
+    body: "steps",
+    enabled,
+    createdAt: 0,
+    updatedAt: 0,
+  });
+  let sent: string[];
+
+  beforeEach(() => {
+    skillsUi.skills.length = 0;
+    sent = [];
+    useConversationStore.setState({
+      sendTask: (task: string) => {
+        sent.push(task);
+      },
+    });
+  });
+
+  it("shows each enabled skill as its own menu entry and runs the citation task", () => {
+    skillsUi.skills.push(skill("pay-rent"), skill("paused", false));
+    expect(slashItems("/pay")?.items.map((i) => i.key)).toEqual(["pay-rent"]);
+    expect(executeSlash("/pay-rent for August")).toBe("executed");
+    expect(sent).toEqual(['Use the "pay-rent" skill for this task: for August']);
+  });
+
+  it("an exact fragment with args passes through to the same task template", () => {
+    skillsUi.skills.push(skill("pay-rent"));
+    expect(parseSlash("/pay-rent what I owe")?.command?.description).toBe("does pay-rent");
+    executeSlash("/pay-rent what I owe");
+    expect(sent[sent.length - 1]).toBe('Use the "pay-rent" skill for this task: what I owe');
+  });
+
+  it("a disabled skill gets neither a menu slot nor a run — /skill answers instead", () => {
+    skillsUi.skills.push(skill("paused", false));
+    expect(executeSlash("/paused soon")).toBe("executed");
+    expect(lastNote()).toContain("paused");
+    expect(sent).toEqual([]);
+  });
+
+  it("a built-in wins its name: no duplicate menu row, no derived dispatch", () => {
+    skillsUi.skills.push(skill("model"));
+    const keys = slashItems("/")?.items.map((i) => i.key) ?? [];
+    expect(keys.filter((k) => k === "model")).toHaveLength(1);
+    expect(parseSlash("/model")?.command?.descriptionKey).toBeDefined(); // the built-in's
+    executeSlash("/model claude-x");
+    // Engine changed, not a citation task — the built-in handled it.
+    expect(sent).toEqual([]);
+    expect(useConversationStore.getState().draftEngine?.model).toBe("claude-x");
+  });
+
+  it("fragment completion still prefers built-ins over a same-prefix skill", () => {
+    skillsUi.skills.push(skill("resume-invoice"));
+    expect(executeSlash("/re")).toEqual({ complete: "/rename " });
+  });
+});
+
 /**
  * Scope: a pick lands on the open conversation, and — unless ⌥ says otherwise —
  * also becomes the stored default that the next new conversation starts on.

@@ -11,7 +11,7 @@ import { expandText, insertToken, linesOf, nextToken, shouldCollapse } from "./p
 import { RunModeToggle } from "./RunModeToggle";
 import { SlashMenu } from "./SlashMenu";
 import { openHelp } from "./help-open";
-import { COMMANDS, executeSlash, runSlash, slashItems } from "./slash-commands";
+import { executeSlash, findCommand, runSlash, slashItems } from "./slash-commands";
 import type { SlashItem } from "./slash-commands";
 import { TipLine } from "@/modules/tips/ui";
 import { EnginePicker } from "@/modules/providers/ui";
@@ -307,7 +307,7 @@ export function ChatInput() {
       resetComposer();
       return;
     }
-    const command = COMMANDS.find((c) => c.name === item.key);
+    const command = findCommand(item.key);
     if (!command) return;
     if (command.takesArg) {
       setText(`/${command.name} `);
@@ -376,7 +376,7 @@ export function ChatInput() {
         if (slash.kind === "candidates") {
           setText(`/${slash.command.name} ${slashActive.key}`);
         } else {
-          const command = COMMANDS.find((c) => c.name === slashActive.key);
+          const command = findCommand(slashActive.key);
           if (command) setText(`/${command.name}${command.takesArg ? " " : ""}`);
         }
         return;

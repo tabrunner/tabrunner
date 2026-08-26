@@ -1,6 +1,7 @@
 import { createWriteQueue, defineItem } from "@/lib/storage";
 import { i18n } from "@/i18n";
 import { hostMatches, normalizeHostList, scopeHostOf } from "@/lib/host";
+import { SLASH_COMMAND_NAMES } from "@/modules/conversation/command-names";
 import type { Skill } from "./types";
 import { isValidSkillName, MAX_BODY_CHARS, MAX_DESCRIPTION_CHARS, MAX_SKILLS } from "./types";
 
@@ -33,6 +34,11 @@ export function saveSkill(input: SkillInput): Promise<SaveSkillResult> {
   return serialized(async () => {
     if (!isValidSkillName(input.name)) {
       return { ok: false, error: i18n.t("skills.errors.badName") };
+    }
+    // Built-in slash commands keep their names — an enabled skill named like
+    // one would never surface in the menu.
+    if (SLASH_COMMAND_NAMES.includes(input.name)) {
+      return { ok: false, error: i18n.t("skills.errors.reservedName") };
     }
     if (!input.description.trim()) {
       return { ok: false, error: i18n.t("skills.errors.noDescription") };
