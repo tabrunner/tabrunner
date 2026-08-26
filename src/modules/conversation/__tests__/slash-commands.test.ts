@@ -260,11 +260,12 @@ const skillsUi = vi.hoisted(() => {
     createdAt: number;
     updatedAt: number;
   }[] = [];
-  return { skills, openSkillDraft: vi.fn() };
+  return { skills, openSkillDraft: vi.fn(), openSkillsManage: vi.fn() };
 });
 vi.mock("@/modules/skills/ui", () => ({
   loadedSkills: () => skillsUi.skills,
   openSkillDraft: skillsUi.openSkillDraft,
+  openSkillsManage: skillsUi.openSkillsManage,
 }));
 
 describe("/document", () => {
@@ -419,6 +420,16 @@ describe("per-skill commands", () => {
   it("fragment completion still prefers built-ins over a same-prefix skill", () => {
     skillsUi.skills.push(skill("resume-invoice"));
     expect(executeSlash("/re")).toEqual({ complete: "/rename " });
+  });
+});
+
+describe("/skills", () => {
+  it("opens the management modal straight away — even mid-run, panel-local like /help", () => {
+    skillsUi.openSkillsManage.mockClear();
+    useConversationStore.setState({ status: "running" });
+    expect(executeSlash("/skills")).toBe("executed");
+    expect(skillsUi.openSkillsManage).toHaveBeenCalledTimes(1);
+    useConversationStore.setState({ status: "idle" });
   });
 });
 

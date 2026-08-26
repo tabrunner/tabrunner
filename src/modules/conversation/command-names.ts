@@ -17,5 +17,6 @@ export const SLASH_COMMAND_NAMES: readonly string[] = [
   "skill",
   "compact",
   "new",
+  "skills",
   "help",
 ];

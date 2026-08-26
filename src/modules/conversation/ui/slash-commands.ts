@@ -10,7 +10,7 @@ import type { UsageWindow } from "@/modules/providers/usage";
 import { useProvidersStore } from "@/modules/providers/ui";
 import type { Skill } from "@/modules/skills";
 import { SLASH_COMMAND_NAMES } from "@/modules/conversation/command-names";
-import { loadedSkills, openSkillDraft } from "@/modules/skills/ui";
+import { loadedSkills, openSkillDraft, openSkillsManage } from "@/modules/skills/ui";
 import { truncateTo } from "@/lib/format";
 import { openHelp } from "./help-open";
 import { runsHere, useConversationStore } from "./store";
@@ -68,6 +68,7 @@ type CommandDescriptionKey =
   | "commands.skill.description"
   | "commands.compact.description"
   | "commands.new.description"
+  | "commands.skills.description"
   | "commands.help.description";
 
 export interface SlashCommand {
@@ -544,6 +545,16 @@ export const COMMANDS: readonly SlashCommand[] = [
     run: () => {
       // No note — the fresh chat's empty state is the acknowledgment.
       useConversationStore.getState().newConversation();
+    },
+  },
+  {
+    name: "skills",
+    descriptionKey: "commands.skills.description",
+    // The sheet rule (see /help): managing the library is browsing, not a
+    // transcript line. Panel-local, so it fires even mid-run — flipping a
+    // skill off while watching one is exactly when you reach for it.
+    run: () => {
+      openSkillsManage();
     },
   },
   {

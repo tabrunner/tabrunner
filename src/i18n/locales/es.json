@@ -173,7 +173,9 @@
       "reservedName": "Ese nombre ya lo usa un comando integrado de la barra — elige otro.",
       "nameTaken": "Ya existe una habilidad llamada \"{{name}}\" — elige otro nombre o edita esa.",
       "tooMany": "Tienes {{max}} habilidades — el tope. Elimina una que ya no uses antes de añadir otra."
-    }
+    },
+    "manageTitle": "Tus habilidades",
+    "manageHelp": "Todas las recetas guardadas — activa, edita, importa. Cada una también es su propio comando."
   },
   "mcpOut": {
     "errors": {
@@ -648,6 +650,9 @@
     "new": {
       "description": "Empieza un chat nuevo"
     },
+    "skills": {
+      "description": "Gestiona las habilidades guardadas — listar, activar, importar, editar"
+    },
     "usage": {
       "description": "Muestra las ventanas de uso de la suscripción activa",
       "unsupported": "{{provider}} usa una clave de API — las ventanas de uso solo existen en los proveedores por suscripción (Claude, ChatGPT, Kimi)."
@@ -669,7 +674,7 @@
       "none": "Aún no hay habilidades — /skill new convierte este chat en una, o importa una en Configuración → Habilidades.",
       "list": "Habilidades: {{list}}. \"/skill <nombre>\" ejecuta una.",
       "unknown": "No hay ninguna habilidad llamada \"{{name}}\". Tienes: {{list}}",
-      "disabled": "\"{{name}}\" está desactivada — actívala en Configuración → Habilidades.",
+      "disabled": "\"{{name}}\" está desactivada — actívala con /skills.",
       "emptyConversation": "Aquí no hay nada que convertir en habilidad todavía — ejecuta una tarea primero.",
       "task": "Usa la habilidad \"{{name}}\".",
       "taskWithArgs": "Usa la habilidad \"{{name}}\" para esta tarea: {{args}}"
@@ -877,7 +882,8 @@
     "help": "Pulsa ? con el campo vacío para ver atajos y comandos — /help también sirve.",
     "walkthrough": "Pide “y documéntalo” y el agente escribe el proceso como una guía para compartir.",
     "mcpOut": "Escribe /mcp para ver qué servidores remotos respondieron — añade más en Ajustes → MCP.",
-    "webhooks": "Los eventos de ejecución pueden llegar por POST a tu propia URL — configura los webhooks en Ajustes → Comportamiento."
+    "webhooks": "Los eventos de ejecución pueden llegar por POST a tu propia URL — configura los webhooks en Ajustes → Comportamiento.",
+    "skillsManage": "Escribe /skills para gestionar tus habilidades — cada una también funciona como su propio comando."
   },
   "notify": {
     "doneFallback": "Tarea terminada — abre TabRunner para ver cómo fue."

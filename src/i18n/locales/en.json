@@ -173,7 +173,9 @@
       "reservedName": "That name is taken by a built-in slash command — pick another.",
       "nameTaken": "A skill named \"{{name}}\" already exists — pick another name or edit that one.",
       "tooMany": "You have {{max}} skills — the cap. Delete one you no longer use before adding another."
-    }
+    },
+    "manageTitle": "Your skills",
+    "manageHelp": "Every saved recipe — toggle, edit, import. Each also runs as its own slash command."
   },
   "mcpOut": {
     "errors": {
@@ -648,6 +650,9 @@
     "new": {
       "description": "Start a new chat"
     },
+    "skills": {
+      "description": "Manage saved skills — list, toggle, import, edit"
+    },
     "usage": {
       "description": "Show the active subscription's usage windows",
       "unsupported": "{{provider}} runs on an API key — usage windows only exist for subscription sign-ins (Claude, ChatGPT, Kimi)."
@@ -669,7 +674,7 @@
       "none": "No skills yet — /skill new turns this chat into one, or import one in Settings → Skills.",
       "list": "Skills: {{list}}. \"/skill <name>\" runs one.",
       "unknown": "No skill named \"{{name}}\". You have: {{list}}",
-      "disabled": "\"{{name}}\" is disabled — enable it in Settings → Skills.",
+      "disabled": "\"{{name}}\" is disabled — enable it with /skills.",
       "emptyConversation": "Nothing here to turn into a skill yet — run a task first.",
       "task": "Use the \"{{name}}\" skill.",
       "taskWithArgs": "Use the \"{{name}}\" skill for this task: {{args}}"
@@ -877,7 +882,8 @@
     "help": "Press ? on an empty composer for every shortcut and command — /help works too.",
     "walkthrough": "Ask “and document it” and the agent writes the process up as a shareable guide.",
     "mcpOut": "Type /mcp to see which remote servers answered — add more under Settings → MCP.",
-    "webhooks": "Run events can POST to your own URL — wire webhooks up under Settings → Behavior."
+    "webhooks": "Run events can POST to your own URL — wire webhooks up under Settings → Behavior.",
+    "skillsManage": "Type /skills to manage your skills — every one also runs as its own command."
   },
   "notify": {
     "doneFallback": "Task finished — open TabRunner to see how it went."

@@ -25,10 +25,11 @@ function CopyIcon() {
 /**
  * Settings → Skills: the saved recipes, each a row with its scope and switch;
  * creating, editing, importing and exporting all happen here. The chat-side
- * doors (`/skill`, `/skill new`) are the fast path — this page is the place
- * the whole library is reviewed, like Knowledge is for memory.
+ * doors (`/skills`, `/skill new`) are the fast path — this page is the place
+ * the whole library is reviewed, like Knowledge is for memory. Also mounted,
+ * heading-less, inside the /skills modal (`showHeading={false}`).
  */
-export function SkillsSection() {
+export function SkillsSection({ showHeading = true }: { showHeading?: boolean }) {
   const { t } = useTranslation();
   const skills = useStoredItem(skillsItem);
   const [editor, setEditor] = useState<{ open: boolean; skill?: Skill }>({ open: false });
@@ -45,14 +46,18 @@ export function SkillsSection() {
   };
 
   return (
-    <section className="mt-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-            {t("skills.title")}
-          </h2>
-          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t("skills.help")}</p>
-        </div>
+    <section className={showHeading ? "mt-8" : undefined}>
+      <div className={`flex items-start gap-4 ${showHeading ? "justify-between" : "justify-end"}`}>
+        {showHeading && (
+          <div>
+            <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+              {t("skills.title")}
+            </h2>
+            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+              {t("skills.help")}
+            </p>
+          </div>
+        )}
         <div className="flex shrink-0 gap-2">
           <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
             {t("skills.importButton")}

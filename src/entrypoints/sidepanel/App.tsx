@@ -14,7 +14,7 @@ import {
   boardRunHere,
 } from "@/modules/conversation/ui";
 import { Onboarding, useProvidersStore } from "@/modules/providers/ui";
-import { initSkillsCatalog, SkillDraftDialog } from "@/modules/skills/ui";
+import { initSkillsCatalog, SkillDraftDialog, SkillsManageDialog } from "@/modules/skills/ui";
 import { SettingsMenu } from "./SettingsMenu";
 import { notePanelOpen, refreshTip } from "@/modules/tips/ui";
 import { Button } from "@/components/Button";
@@ -218,6 +218,8 @@ export default function App() {
       {/* /skill new's one dialog — the id rides a prop so skills/ui never
           imports conversation/ui back (slash-commands already points the other way). */}
       <SkillDraftDialog conversationId={activeId} />
+      {/* /skills's one dialog — same singleton pattern, the Settings section in a modal. */}
+      <SkillsManageDialog />
     </div>
   );
 }
