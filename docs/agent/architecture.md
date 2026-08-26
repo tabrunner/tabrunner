@@ -215,6 +215,8 @@ opened, switched threads, or lost the port after the park reconciles its card fr
 notification's question can never render without a way to say yes. Answering takes the
 ask back off the board, which settles the card in panels the `plan_answered` broadcast
 never reached. The card is up in **every** panel showing the thread, and any of them can answer it. The
+elicitation twin works the same way — `running.elicitation` parks a server's question on the
+board, and the loop waits on one thing at a time, so parking either ask takes the other down. The
 answer therefore has to travel the same way: `plan_answered` (broadcast from the worker's
 command handler) is what drops the card and settles the walk-away in the windows that did
 not click, which otherwise sat on a settled question for the rest of the run. The panel

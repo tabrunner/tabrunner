@@ -236,6 +236,29 @@ describe("markRunningElicitation", () => {
     expect(currentBoard().running?.elicitation).toBeUndefined();
     releaseRun(claim("a"));
   });
+
+  it("one park at a time — parking either ask takes the twin down", async () => {
+    submit("a", "panel");
+    const gate = { steps: ["Open the console"], current: 0, reapproval: false };
+    const server = { requestId: "r1", message: "Allow access?", serverName: "acme" };
+
+    // The gate parked first, the server's question lands anyway — only one
+    // card may ride the board, and it is the newer park.
+    markRunningAwaiting("c-a", true, gate);
+    markRunningElicitation("c-a", server);
+    await flush();
+    let parked = (await runBoardItem.get()).running;
+    expect(parked?.elicitation).toEqual(server);
+    expect(parked?.approval).toBeUndefined();
+
+    // And the reverse: the gate re-parking clears the server's question.
+    markRunningAwaiting("c-a", true, gate);
+    await flush();
+    parked = (await runBoardItem.get()).running;
+    expect(parked?.approval).toEqual(gate);
+    expect(parked?.elicitation).toBeUndefined();
+    releaseRun(claim("a"));
+  });
 });
 
 describe("pendingQuestion", () => {

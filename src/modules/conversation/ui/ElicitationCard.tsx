@@ -9,7 +9,10 @@ import type { ElicitationAsk } from "@/shared/protocol";
  * The plan-approval card's twin for remote servers: an MCP elicitation parked
  * mid-tool-call. Fields render from the server's JSON Schema — primitives only;
  * a field the form cannot honestly render just doesn't appear, and accepting
- * sends only what it showed. What the user sees is exactly what the server gets.
+ * sends only what it showed. What the user sees is exactly what the server
+ * gets — and what it marked required is marked here, with Send held until
+ * those fields are filled (a required field the form cannot render never
+ * blocks: it isn't on the card, so it isn't the user's to fill).
  */
 
 interface RenderableField {
@@ -43,6 +46,14 @@ function fieldsFrom(schema: Record<string, unknown> | undefined): RenderableFiel
   return out;
 }
 
+/** The schema's `required` names, when it names any. */
+function requiredNames(schema: Record<string, unknown> | undefined): Set<string> {
+  const names = schema?.required;
+  return new Set(
+    Array.isArray(names) ? names.filter((n): n is string => typeof n === "string") : [],
+  );
+}
+
 export function ElicitationCard({
   ask,
   onAnswer,
@@ -52,7 +63,19 @@ export function ElicitationCard({
 }) {
   const { t } = useTranslation();
   const fields = fieldsFrom(ask.requestedSchema);
+  const required = requiredNames(ask.requestedSchema);
   const [values, setValues] = useState<Record<string, string | boolean>>({});
+
+  /** A touched toggle counts even when toggled back off — the answer was deliberate. */
+  const filled = (f: RenderableField): boolean => {
+    const v = values[f.name];
+    if (f.kind === "boolean") return v !== undefined;
+    if (v === undefined || v === "") return false;
+    return f.kind !== "number" || Number.isFinite(Number(v));
+  };
+  const readyToSend = fields
+    .filter((f) => required.has(f.name))
+    .every((f) => filled(f));
 
   const collect = (): Record<string, unknown> => {
     const value: Record<string, unknown> = {};
@@ -91,8 +114,21 @@ export function ElicitationCard({
           const options = f.values;
           return (
             <label key={f.name} className="flex items-center gap-2 text-xs">
-              <span className="w-28 shrink-0 truncate font-mono text-neutral-500 dark:text-neutral-400">
-                {f.name}
+              {/* Wide enough for an ordinary schema key ("include_attachments"
+                  fits) — the marker sits outside the truncating name so it can
+                  never be the part that gets cut. */}
+              <span className="flex w-36 shrink-0 items-center gap-1">
+                <span className="min-w-0 truncate font-mono text-neutral-500 dark:text-neutral-400">
+                  {f.name}
+                </span>
+                {required.has(f.name) && (
+                  <span
+                    className="shrink-0 text-neutral-400 dark:text-neutral-500"
+                    title={t("mcpOut.elicitRequired")}
+                  >
+                    *
+                  </span>
+                )}
               </span>
               {f.kind === "boolean" ? (
                 <Switch
@@ -126,12 +162,20 @@ export function ElicitationCard({
         })}
       </div>
 
-      <div className="mt-0.5 flex items-center justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={() => onAnswer("decline")}>
-          {t("mcpOut.elicitDecline")}
-        </Button>
-        <Button size="sm" onClick={() => onAnswer("accept", collect())}>
+      {/* Same footer as the plan card it twins — primary then ghost, on the
+          left where the eye entered the card — so both gates answer with the
+          same motor pattern. */}
+      <div className="mt-0.5 flex gap-2">
+        <Button
+          size="sm"
+          onClick={() => onAnswer("accept", collect())}
+          disabled={!readyToSend}
+          title={readyToSend ? undefined : t("mcpOut.elicitRequired")}
+        >
           {t("mcpOut.elicitAccept")}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => onAnswer("decline")}>
+          {t("mcpOut.elicitDecline")}
         </Button>
       </div>
     </div>

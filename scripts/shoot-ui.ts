@@ -253,6 +253,63 @@ async function seedLongThread() {
   await page.close();
 }
 
+/**
+ * The two decision cards, armed the way any window but the dispatching one
+ * actually receives them — parked on the run board, no port event involved.
+ * Opening the panel onto this board exercises the storage-arming path
+ * (reconcileParkedAsks) end to end: card plus its amber waiting band.
+ */
+async function seedParkedGate(kind: "plan" | "elicit") {
+  const page = await browser.newPage();
+  await page.goto(`chrome-extension://${extId}/sidepanel.html`);
+  await page.evaluate((kind) => {
+    const id = "shots-demo";
+    return chrome.storage.local.set({
+      "tabrunner:active-conversation": id,
+      "tabrunner:run-board": {
+        running: {
+          conversationId: id,
+          task: "Pull the latest invoice from my inbox into the expense report",
+          owner: "panel",
+          startedAt: Date.now() - 42_000,
+          awaiting: true,
+          ...(kind === "plan"
+            ? {
+                approval: {
+                  steps: [
+                    "Open the inbox",
+                    "Find the latest invoice",
+                    "Open the expense report",
+                    "Attach it and fill the fields",
+                  ],
+                  current: 0,
+                  reapproval: false,
+                },
+              }
+            : {
+                elicitation: {
+                  requestId: "shots-r1",
+                  serverName: "acme-reports",
+                  message: "Pick the workspace the invoice should be filed into.",
+                  requestedSchema: {
+                    type: "object",
+                    properties: {
+                      workspace: { type: "string", enum: ["Finance", "Ops", "Archive"] },
+                      include_attachments: { type: "boolean" },
+                      memo: { type: "string" },
+                    },
+                    required: ["workspace"],
+                  },
+                },
+              }),
+        },
+        queue: [],
+      },
+    });
+  }, kind);
+  await page.close();
+}
+
 for (const dark of [false, true]) {
   const mode = dark ? "dark" : "light";
   await shoot("options.html", `ext-options-${mode}`, dark);
@@ -279,5 +336,15 @@ for (const dark of [false, true]) {
     // language the shooting browser is set to.
     prepare: (page) => page.click("button[aria-pressed]"),
   });
+}
+await seedParkedGate("plan");
+for (const dark of [false, true]) {
+  const mode = dark ? "dark" : "light";
+  await shoot("sidepanel.html", `ext-gate-plan-${mode}`, dark, { width: SIDEPANEL_WIDTH });
+}
+await seedParkedGate("elicit");
+for (const dark of [false, true]) {
+  const mode = dark ? "dark" : "light";
+  await shoot("sidepanel.html", `ext-gate-elicit-${mode}`, dark, { width: SIDEPANEL_WIDTH });
 }
 await browser.close();

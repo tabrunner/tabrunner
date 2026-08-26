@@ -216,6 +216,7 @@
     "empty": "Nothing here yet — this is where TabRunner reaches out, rather than being driven. Add a remote MCP server and its tools join every run's toolkit, each one behind plan approval so nothing fires before you've seen the plan.",
     "statusNever": "never checked",
     "elicitTitle": "{{server}} asks for input",
+    "elicitRequired": "Required",
     "elicitAccept": "Send",
     "elicitDecline": "Decline"
   },

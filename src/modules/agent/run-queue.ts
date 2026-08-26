@@ -162,7 +162,9 @@ export function markRunningTab(conversationId: string, tabId: number): void {
  * The running entry parked on the user's answer (plan approval) or got it.
  * Same stale-guard as markRunningTab — a run that already ended must not move
  * the board. Parking carries the ask, so the card is answerable from the board
- * alone; answering takes it back down, whichever way the gate went.
+ * alone; answering takes it back down, whichever way the gate went. Parking
+ * one ask takes the twin down with it — the loop waits on one thing at a time,
+ * so the board never carries both cards at once.
  */
 export function markRunningAwaiting(
   conversationId: string,
@@ -171,21 +173,21 @@ export function markRunningAwaiting(
 ): void {
   if (!running || running.conversationId !== conversationId) return;
   running = awaiting
-    ? { ...running, awaiting, ...(approval ? { approval } : {}) }
-    : { ...running, awaiting, approval: undefined };
+    ? { ...running, awaiting, ...(approval ? { approval } : {}), elicitation: undefined }
+    : { ...running, awaiting, approval: undefined, elicitation: undefined };
   void writeBoard();
 }
 
 /**
  * A parked elicitation — a remote MCP server's question — or its answer. The
  * ask rides the board like the plan gate's, so a panel that missed the
- * elicitation broadcast still gets the question; the flag drops with it, since
- * the loop can be parked on only one thing at a time. Same stale-guard as its
- * siblings.
+ * elicitation broadcast still gets the question; the flag drops with it, and
+ * the plan gate's ask comes down with it for the same one-park-at-a-time rule
+ * its own marker enforces. Same stale-guard as its siblings.
  */
 export function markRunningElicitation(conversationId: string, ask?: ElicitationAsk): void {
   if (!running || running.conversationId !== conversationId) return;
-  running = { ...running, awaiting: ask !== undefined, elicitation: ask };
+  running = { ...running, awaiting: ask !== undefined, elicitation: ask, approval: undefined };
   void writeBoard();
 }
 

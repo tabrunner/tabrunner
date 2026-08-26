@@ -216,6 +216,7 @@
     "empty": "Nada aqui ainda — é daqui que o TabRunner sai para conectar, em vez de ser controlado. Adicione um servidor MCP remoto e as ferramentas dele entram no kit de cada execução, sempre atrás da aprovação do plano.",
     "statusNever": "nunca verificado",
     "elicitTitle": "{{server}} pede informações",
+    "elicitRequired": "Obrigatório",
     "elicitAccept": "Enviar",
     "elicitDecline": "Recusar"
   },
