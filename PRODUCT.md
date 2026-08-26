@@ -63,6 +63,10 @@ button "Submit"`); `sanitize.ts` caps tool output and keeps passwords, one-time 
 - Memory: the user's `AGENTS.md` and the agent's `MEMORY.md` load into every run — a `## site:`
   section only when the run starts on that site; the `remember` tool and post-run distillation
   maintain them; one toggle stops both halves.
+- Remote MCP + webhooks: TabRunner dials out to remote MCP servers (https; static auth headers)
+  whose tools join every run behind the plan gate — `/mcp` in the panel reports what's connected,
+  and a server that elicits reaches the user as a panel card (declined on unattended runs).
+  Run events (started/finished/error/ask) POST to user-configured webhooks, fire-and-forget.
 - Scheduled tasks: one-shot, daily, or every-N-minutes (with an optional weekday filter and
   active-hours window), fired by `chrome.alarms` into the same run queue. Created by asking in the
   panel — the plan gate is the consent — and reviewed in Settings → Schedules. The agent holds

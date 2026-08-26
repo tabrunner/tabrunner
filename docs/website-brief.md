@@ -77,7 +77,8 @@ Caveats the site must state plainly where they apply:
 
 - Product copy and permission justifications: `docs/store-listing.md` (written for a CWS reviewer;
   adapt tone for a landing page).
-- What it is / how the MCP bridge works: `README.md`, `docs/mcp.md`.
+- What it is / how MCP works in both directions — the bridge clients dial in through, and the
+  remote servers TabRunner connects out to — plus lifecycle webhooks: `README.md`, `docs/mcp.md`.
 - Screenshots: `docs/screenshots/`.
 - Social image: `docs/og.png`.
 - Brand mark is generated from `src/shared/logo.ts` (`bun run icons`) — never hand-edit the PNGs.

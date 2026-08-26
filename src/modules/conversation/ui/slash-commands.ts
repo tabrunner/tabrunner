@@ -1,4 +1,5 @@
 import { i18n } from "@/i18n";
+import { listMcpServers, mcpStatusItem } from "@/modules/mcp/store";
 import { knownModels, pickLatestModel } from "@/modules/providers/models";
 import { providerDisplayName } from "@/modules/providers/presets";
 import { formatResetRelative } from "@/modules/providers/rate-limit";
@@ -60,6 +61,7 @@ type CommandDescriptionKey =
   | "commands.provider.description"
   | "commands.rename.description"
   | "commands.usage.description"
+  | "commands.mcp.description"
   | "commands.document.description"
   | "commands.skill.description"
   | "commands.compact.description"
@@ -397,6 +399,33 @@ export const COMMANDS: readonly SlashCommand[] = [
         // arrive worded as the sign-in fix.
         (e: unknown) => note(e instanceof Error ? e.message : String(e)),
       );
+    },
+  },
+  {
+    name: "mcp",
+    descriptionKey: "commands.mcp.description",
+    // The /usage shape for the other kind of helper: a read-only roll call of
+    // the remote servers whose tools join this run's toolkit. The natural
+    // first question when a task comes back "tool not found" — is the server
+    // down, disabled, or never configured?
+    run: () => {
+      void (async () => {
+        const servers = await listMcpServers();
+        if (servers.length === 0) {
+          note(i18n.t("commands.mcp.none"));
+          return;
+        }
+        const statuses = await mcpStatusItem.get();
+        const lines = servers.map((s) => {
+          // Same dot language as the Settings rows: ✓ answered, ✗ failed,
+          // · never checked. Detail is i18n'd at write time by whoever probed.
+          const status = statuses[s.id];
+          const mark = !status ? "·" : status.ok ? "✓" : "✗";
+          const detail = status?.detail ?? i18n.t("mcpOut.statusNever");
+          return `${mark} ${s.name} — ${detail}${s.enabled ? "" : ` ${i18n.t("commands.mcp.off")}`}`;
+        });
+        note([...lines, i18n.t("commands.mcp.manage")].join("\n"));
+      })();
     },
   },
   {

@@ -650,6 +650,12 @@
       "description": "Mostra as janelas de uso da assinatura ativa",
       "unsupported": "{{provider}} usa uma chave de API — janelas de uso só existem nos provedores por assinatura (Claude, ChatGPT, Kimi)."
     },
+    "mcp": {
+      "description": "Servidores MCP remotos: o que está conectado",
+      "none": "Nenhum servidor MCP remoto ainda. Adicione um em Configurações → MCP e as ferramentas dele entram em toda execução.",
+      "off": "(desligado)",
+      "manage": "Gerencie os servidores em Configurações → MCP."
+    },
     "document": {
       "description": "Executa uma tarefa e gera um passo a passo compartilhável",
       "task": "{{task}}\n\nDocumente este processo como um passo a passo que eu possa compartilhar.",
@@ -866,7 +872,9 @@
     "enginePicker": "O chip ao lado de enviar define provedor, modelo e esforço desta conversa — /model também.",
     "engineScope": "Cada conversa guarda seu modelo e esforço — novas partem da sua última escolha.",
     "help": "Pressione ? com o campo vazio para ver atalhos e comandos — /help também funciona.",
-    "walkthrough": "Peça “e documente isso” e o agente escreve o processo como um guia compartilhável."
+    "walkthrough": "Peça “e documente isso” e o agente escreve o processo como um guia compartilhável.",
+    "mcpOut": "Digite /mcp para ver quais servidores remotos responderam — adicione mais em Configurações → MCP.",
+    "webhooks": "Eventos de execução podem ir por POST para uma URL sua — configure webhooks em Configurações → Comportamento."
   },
   "notify": {
     "doneFallback": "Tarefa concluída — abra o TabRunner para ver como foi."

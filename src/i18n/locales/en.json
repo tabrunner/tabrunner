@@ -650,6 +650,12 @@
       "description": "Show the active subscription's usage windows",
       "unsupported": "{{provider}} runs on an API key — usage windows only exist for subscription sign-ins (Claude, ChatGPT, Kimi)."
     },
+    "mcp": {
+      "description": "Remote MCP servers: what's connected",
+      "none": "No remote MCP servers yet. Add one under Settings → MCP and its tools join every run.",
+      "off": "(off)",
+      "manage": "Manage servers in Settings → MCP."
+    },
     "document": {
       "description": "Run a task and get a shareable step-by-step walkthrough",
       "task": "{{task}}\n\nDocument this process as a step-by-step walkthrough I can share.",
@@ -866,7 +872,9 @@
     "enginePicker": "The chip by Send sets provider, model, and effort for this chat — /model works too.",
     "engineScope": "Each chat keeps its own model and effort — new chats start from your last pick.",
     "help": "Press ? on an empty composer for every shortcut and command — /help works too.",
-    "walkthrough": "Ask “and document it” and the agent writes the process up as a shareable guide."
+    "walkthrough": "Ask “and document it” and the agent writes the process up as a shareable guide.",
+    "mcpOut": "Type /mcp to see which remote servers answered — add more under Settings → MCP.",
+    "webhooks": "Run events can POST to your own URL — wire webhooks up under Settings → Behavior."
   },
   "notify": {
     "doneFallback": "Task finished — open TabRunner to see how it went."

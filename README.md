@@ -55,11 +55,13 @@ vendor lock-in, no relay, no account with us. Your API key — or the subscripti
   Ask for it in the panel and approving the plan is the consent; the run fires later in a tab of
   its own and notifies you when it lands. The agent can pace itself the same way — schedule a
   follow-up, keep checking, cancel when the goal is met. Review and cancel them in Settings.
-- **Drivable over MCP** — Claude Code, Claude Desktop, or any Model Context Protocol client can
-  hand TabRunner a task and follow it to the answer, using the same browser and the same logins.
-  The client says what it wants done and TabRunner's own model does it — or, when the job is small
-  and exact, the client takes the wheel and clicks through the page itself. Either way it lands in
-  your history, labelled with which client did it. See [docs/mcp.md](docs/mcp.md).
+- **Two-way MCP** — Claude Code, Claude Desktop, or any Model Context Protocol client can hand
+  TabRunner a task and follow it to the answer, using the same browser and the same logins,
+  labelled in your history with which client did it. The client says what it wants done and
+  TabRunner's model does the driving — or takes the wheel itself when the job is small and exact.
+  TabRunner dials out too: connect remote MCP servers and their tools join every run behind the
+  plan gate (`/mcp` reports what's connected), and run events can POST to your own webhook. See
+  [docs/mcp.md](docs/mcp.md).
 - **Speaks your language, matches your theme** — English, Português (Brasil), and Español; light,
   dark, or follow the OS.
 - **Your data stays local** — provider configs and history live in `chrome.storage`. There is no

@@ -650,6 +650,12 @@
       "description": "Muestra las ventanas de uso de la suscripción activa",
       "unsupported": "{{provider}} usa una clave de API — las ventanas de uso solo existen en los proveedores por suscripción (Claude, ChatGPT, Kimi)."
     },
+    "mcp": {
+      "description": "Servidores MCP remotos: qué hay conectado",
+      "none": "Aún no hay servidores MCP remotos. Añade uno en Ajustes → MCP y sus herramientas entran en cada ejecución.",
+      "off": "(apagado)",
+      "manage": "Gestiona los servidores en Ajustes → MCP."
+    },
     "document": {
       "description": "Ejecuta una tarea y genera una guía paso a paso para compartir",
       "task": "{{task}}\n\nDocumenta este proceso como una guía paso a paso que pueda compartir.",
@@ -866,7 +872,9 @@
     "enginePicker": "El chip junto a Enviar define proveedor, modelo y esfuerzo de este chat — /model también.",
     "engineScope": "Cada chat guarda su modelo y esfuerzo — los nuevos parten de tu última elección.",
     "help": "Pulsa ? con el campo vacío para ver atajos y comandos — /help también sirve.",
-    "walkthrough": "Pide “y documéntalo” y el agente escribe el proceso como una guía para compartir."
+    "walkthrough": "Pide “y documéntalo” y el agente escribe el proceso como una guía para compartir.",
+    "mcpOut": "Escribe /mcp para ver qué servidores remotos respondieron — añade más en Ajustes → MCP.",
+    "webhooks": "Los eventos de ejecución pueden llegar por POST a tu propia URL — configura los webhooks en Ajustes → Comportamiento."
   },
   "notify": {
     "doneFallback": "Tarea terminada — abre TabRunner para ver cómo fue."
