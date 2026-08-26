@@ -26,6 +26,10 @@ the matching block here first.
 >   walkthroughs (a516dfa, in v0.5.2) and never got a §4 block, so the dashboard has been a
 >   permission short since that upload. Its justification is below — paste it. The package
 >   already requests it, so this is a listing edit, not a new package.
+> - **2026-08-25 — two-way MCP and webhooks landed after approval.** §2 (all three locales)
+>   gains the two-way-MCP paragraph, and §4's host-permissions justification now covers requests
+>   to the remote servers and webhook URLs the user configures. Listing edit only: no package,
+>   no review.
 
 ---
 
@@ -126,6 +130,12 @@ computer and never enter the chat sent to the model, so a recording cannot reach
 provider. If one comes out incomplete, the guide says so in its own introduction. On by
 default; switch it off in Settings.
 
+Two-way MCP — TabRunner speaks MCP in both directions. An AI client on your machine can hand it
+tasks through the local bridge, and TabRunner connects out to remote MCP servers you add: their
+tools join every task behind plan approval, and when a server needs your input it asks right in
+the panel. Run events — started, finished, errors, questions — can also POST to your own webhook
+URL, so tasks plug into your automations.
+
 HOW IT WORKS
 
 1. Describe a task in the side panel — e.g. "pull the invoice from my inbox into the expense
@@ -209,6 +219,13 @@ Guias passo a passo — peça "e documente isso" e a tarefa terminada vira um pa
 compartilhável, com uma captura de cada passo. Essas capturas ficam neste computador e nunca
 entram na conversa enviada ao modelo, então não têm como chegar ao seu provedor. Se a gravação
 ficar incompleta, o guia diz isso na introdução. Vem ligado; desligue nas Configurações.
+
+MCP nos dois sentidos — o TabRunner fala MCP nas duas direções. Um cliente de IA na sua máquina
+pode passar tarefas pela ponte local, e o TabRunner também se conecta a servidores MCP remotos
+que você adiciona: as ferramentas deles entram em toda tarefa atrás da aprovação do plano, e
+quando um servidor precisa da sua resposta ele pergunta ali mesmo no painel. Eventos de execução
+— início, término, erros, perguntas — também podem ir por POST para uma URL de webhook sua, então
+as tarefas se encaixam nas suas automações.
 
 COMO FUNCIONA
 
@@ -296,6 +313,13 @@ compartir, con una captura de cada paso. Esas capturas se guardan en este equipo
 entran en el chat que se envía al modelo, así que una grabación no puede llegar a tu
 proveedor. Si la grabación queda incompleta, la guía lo dice en su propia introducción.
 Vienen activadas; apágalas en la Configuración.
+
+MCP en ambas direcciones — TabRunner habla MCP en los dos sentidos. Un cliente de IA en tu
+máquina le pasa tareas por el puente local, y TabRunner también se conecta a servidores MCP
+remotos que tú añades: sus herramientas entran en cada tarea tras la aprobación del plan, y
+cuando un servidor necesita tu respuesta te pregunta allí mismo en el panel. Los eventos de
+ejecución — inicio, fin, errores, preguntas — también pueden llegar por POST a una URL de
+webhook tuya, así las tareas se enchufan a tus automatizaciones.
 
 CÓMO FUNCIONA
 
@@ -499,7 +523,9 @@ The user decides which site the agent works on by typing a task in the side pane
 sites cannot be known in advance — it is whatever the user asks for, on the sites they are already
 logged in to. The extension acts on a site only while a task is running on it. Beyond that, the
 extension's own requests go to the AI provider the user configured — plus, only when the user
-imports a skill recipe, one GET of the single https URL they typed.
+imports a skill recipe, one GET of the single https URL they typed. The same holds for what the
+user configures themselves: requests go to the remote MCP servers the user added — carrying the
+auth headers the user set for each — and run events POST to the webhook URLs the user typed.
 ```
 
 ---
