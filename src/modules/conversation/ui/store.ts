@@ -1278,11 +1278,16 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // no live rows, and adopting it would wipe the one in flight.
         const s = get();
         const id = s.activeId;
-        if (s.status === "running" || id === null) return;
+        // A send of this panel's own is in flight — a stop redirect parks in
+        // sendTask between settle (status idle) and startRun (status running),
+        // and a refetch resolving in that window reads storage past the
+        // message sendTask already painted. `sending` is the same "we own the
+        // stream" signal as status running, just earlier.
+        if (id === null || s.status === "running" || sending) return;
         if (s.board.running?.conversationId !== id) return;
         void getMessages(id).then((messages) => {
           const now = get();
-          if (now.activeId === id && now.status !== "running") {
+          if (now.activeId === id && now.status !== "running" && !sending) {
             set({ messages: capMessages(messages) });
           }
         });
@@ -1344,8 +1349,13 @@ export const useConversationStore = create<ConversationState>((set, get) => {
           // the tool row still spinning with a transcript that has never heard
           // of it. Safe at the end: `done` settles this panel to idle before
           // start-run's finally releases the slot and writes the board, so the
-          // settle refetch this watch exists for still lands.
-          if (get().activeId === activeId && get().status !== "running") set({ messages });
+          // settle refetch this watch exists for still lands. A stop redirect
+          // is the one gap: the panel is idle and the slot is releasing while
+          // sendTask is still writing the redirected message — a refetch
+          // resolving in that window paints storage over the live message, so
+          // `sending` holds the refetch like status running does.
+          if (get().activeId === activeId && get().status !== "running" && !sending)
+            set({ messages });
         });
       });
       void getActiveId().then(async (activeId) => {
