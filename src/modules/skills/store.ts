@@ -98,6 +98,35 @@ export function deleteSkill(id: string): Promise<boolean> {
   });
 }
 
+/**
+ * Seed/reSeed a BUILT-IN skill — the one sanctioned bypass of `saveSkill`'s
+ * rules, because what it writes ships with the binary: fixed id, exempt from
+ * the reserved-name and MAX_SKILLS gates (the library must never crowd out its
+ * own documentation). Presence drives everything else: a fresh install
+ * inserts as passed; a reseed refreshes the shipped words while preserving
+ * the user's toggle and creation time; deleting the record just sticks.
+ */
+export async function upsertBuiltinSkill(skill: Skill): Promise<void> {
+  await serialized(async () => {
+    const list = await skillsItem.get();
+    const i = list.findIndex((s) => s.id === skill.id);
+    if (i < 0) {
+      await skillsItem.set([...list, skill]);
+      return;
+    }
+    const current = list[i];
+    if (!current) return;
+    await skillsItem.set(
+      list.with(i, {
+        ...skill,
+        enabled: current.enabled,
+        createdAt: current.createdAt,
+        updatedAt: Date.now(),
+      }),
+    );
+  });
+}
+
 export function setSkillEnabled(id: string, enabled: boolean): Promise<void> {
   return serialized(async () => {
     const list = await skillsItem.get();

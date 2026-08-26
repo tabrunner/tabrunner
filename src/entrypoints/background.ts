@@ -1,4 +1,5 @@
 import { initI18n, i18n } from "@/i18n";
+import { seedBuiltinSkills } from "@/modules/skills/builtin";
 import { startAgentRun, MEMORY_KEEPALIVE_ALARM } from "@/modules/agent/start-run";
 import { recoverInterrupted } from "@/modules/walkthrough";
 import {
@@ -89,6 +90,14 @@ const conversationTitles = new Map<string, string>();
 
 export default defineBackground(() => {
   void initI18n();
+  // The built-in skill rides the binary: seeded on first install, its words
+  // refreshed on every update. Presence in the store is the whole contract —
+  // a user who deleted it stays without it.
+  chrome.runtime.onInstalled.addListener((details) => {
+    if (details.reason === "install" || details.reason === "update") {
+      void seedBuiltinSkills(details.reason);
+    }
+  });
   // The toolbar click opens the panel from the browser process — never from a
   // listener here. An action.onClicked handler would park the click behind a
   // cold worker start (this whole bundle evaluated before the event even
