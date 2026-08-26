@@ -205,7 +205,15 @@ export interface PreviousTab {
  * question whether the user is watching or has walked away — foreground and
  * background differ in nothing the model can see.
  */
-export type RunMode = "adopted" | "own";
+export type RunMode = "adopted" | "own" | "continued";
+
+/** A page the run did not start on: where the user was sitting when they sent
+ *  the task. A hint for the model to reason over, never a target. */
+export interface SubmitPage {
+  /** Best human label for the page — its title, then hostname. */
+  title: string;
+  url: string;
+}
 
 export interface TaskContext {
   /**
@@ -214,6 +222,13 @@ export interface TaskContext {
    */
   previousTabs?: PreviousTab[];
   mode?: RunMode;
+  /**
+   * Where the user was sitting when they sent this task, set only when the run
+   * starts somewhere else (a continuation kept the conversation's own tab).
+   * Data for the model's drift-or-pivot read — often they were just typing from
+   * wherever they happened to be.
+   */
+  submitPage?: SubmitPage;
   /**
    * This run is a schedule firing, and this is which one. Without the id the
    * model can only guess at its own identity among the listed schedules by
@@ -234,7 +249,7 @@ export interface TaskContext {
  * invoice" are unanswerable without a real anchor.
  */
 export function buildTaskMessage(task: string, pageContent: string, ctx: TaskContext = {}): string {
-  const { previousTabs, mode, scheduleId } = ctx;
+  const { previousTabs, mode, scheduleId, submitPage } = ctx;
   const now = new Date();
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
     now.getDate(),
@@ -259,6 +274,19 @@ export function buildTaskMessage(task: string, pageContent: string, ctx: TaskCon
   } else if (mode === "adopted") {
     parts.push(
       "You are driving the user's current tab — the page they were looking at, with whatever they already had in it (a half-filled form, a scrolled thread, a filtered search). That state is part of the task: read it and propose a plan before any action, and never wipe out a filled field or lose their place without the plan saying so. If the task isn't about this page, ask before navigating away from it.",
+    );
+  } else if (mode === "continued") {
+    // The thread's own tab won over adoption — the model must know it is NOT
+    // necessarily sitting where the user just was.
+    parts.push(
+      "You are driving the tab this conversation has been working in — picking up where earlier runs left off, with whatever state those pages still hold (a half-filled form, a scrolled thread). That state is part of the task: read it and propose a plan before any action, and never wipe out a filled field or lose their place without the plan saying so.",
+    );
+  }
+  // A continuation kept the conversation's tab, so the page the user typed from
+  // is news worth having: their message may be about it or may ignore it.
+  if (submitPage) {
+    parts.push(
+      `The user sent this message while viewing "${submitPage.title}" (${submitPage.url}) — often just where they happened to be typing. Treat it as a hint: if the request is plainly about THAT page, switch_tab to it first (list_tabs finds the id); otherwise keep working here.`,
     );
   }
   // Naming the schedule is what makes this run able to end itself: "cancel the

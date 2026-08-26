@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { createRunGroup, labelRunTab, liveThreadGroup, settleRunTab } from "../start-run";
+import {
+  continuesThreadTab,
+  createRunGroup,
+  labelRunTab,
+  liveThreadGroup,
+  settleRunTab,
+} from "../start-run";
 import type { LastTab } from "@/modules/conversation/conversations";
 
 // One thread, one strip per window: follow-up messages file their tab under the
@@ -24,6 +30,23 @@ const ourStrip = (windowId = 1) => ({ title: "book the flight", color: "green", 
 
 /** The stored thread record: driven tabs, plus what the strip held at settle. */
 const thread = (tabs: LastTab[], stripUrls: string[] = []) => ({ tabs, stripUrls });
+
+describe("continuesThreadTab", () => {
+  // A follow-up typed elsewhere is usually steering from wherever the user
+  // happens to be reading — the side panel stays open across tab switches —
+  // not a move order. The conversation's own tab outranks the send-time one.
+  it("a panel run always wants the thread's tab back", () => {
+    expect(continuesThreadTab("panel", false)).toBe(true);
+    expect(continuesThreadTab("panel", true)).toBe(true);
+  });
+
+  it("other owners return only for a parked answer", () => {
+    expect(continuesThreadTab("schedule", false)).toBe(false);
+    expect(continuesThreadTab("bridge", false)).toBe(false);
+    expect(continuesThreadTab("schedule", true)).toBe(true);
+    expect(continuesThreadTab("bridge", true)).toBe(true);
+  });
+});
 
 describe("thread tab group", () => {
   const chromeBackup = globalThis.chrome;

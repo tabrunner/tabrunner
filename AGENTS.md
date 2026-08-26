@@ -78,9 +78,12 @@ never reach the service-worker bundle.
 
 ### Modules
 
-- `agent/` — agent loop, tools, system prompt, run slot + FIFO queue, run start. Panel runs
-  **work the user's current tab by default** — adopt it and drive it (the plan gate protects
-  a page the user didn't want touched); every tab the run acts on joins one green strip per
+- `agent/` — agent loop, tools, system prompt, run slot + FIFO queue, run start. A panel run
+  **adopts the user's current tab on the thread's first message** — drives it as-is (the plan
+  gate protects a page the user didn't want touched) — and every follow-up **continues on
+  the conversation's own tab while it lives**: a message typed elsewhere is usually steering,
+  not a move order, so the send-time page rides along as model context (`submitPage`) instead
+  of silently becoming the target. Every tab the run acts on joins one green strip per
   conversation per window (Chrome groups can't span windows), found by content — a group is
   the thread's only while it holds a url the conversation drove and still looks like ours —
   minted at the first action, never at send time; a tab already in somebody's group is never

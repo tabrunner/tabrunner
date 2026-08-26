@@ -10,11 +10,23 @@ module's internals, not on every session.
 Agent loop (stream → tool calls → results → repeat), tools, system prompt, run slot +
 serial queue, run start.
 
-A panel run **works the tab the user is looking at** (`resolveRunTab`): the state the
+A panel run **works the conversation's own tab once one exists**; before that it works the
+tab the user is looking at (`resolveRunTab`). Adoption exists because the state the first
 task is about — the half-filled form, the search results, the scrolled thread — lives in
 that tab and nowhere else, and re-visiting its url in a fresh tab would both lose it and
-open a second live session the site may read as a bot. So the run adopts the current tab
-and drives it as-is, with the plan gate carrying the "don't touch this" decision.
+open a second live session the site may read as a bot; so the run adopts and drives it
+as-is, with the plan gate carrying the "don't touch this" decision.
+
+Follow-ups keep that home: a message typed elsewhere is usually steering from wherever the
+user happens to be reading (the side panel stays open across tab switches), not a move order
+— and silently rebasing would put the run on a page nobody chose for the task. So while the
+thread's last driven tab still lives, it wins (`continuesThreadTab` + `reuseContinuationTab`,
+the path a parked answer already took), and the send-time page rides along as `submitPage`
+data: drift ("just typing from where I was") against pivot ("this IS about that page") is a
+judgment about words, so the model makes it — switching itself with the ungated `switch_tab`
+when the request really is about that page. Adoption remains the fallback whenever nothing
+stands to continue: the thread's first message, a lock whose tab died (its url seeds the
+own-tab fallback), a restricted page.
 
 **One resolution, both modes.** The composer toggle (`runModePref`: `foreground`, the
 default, or `background`) decides one thing — whether approving the plan closes the

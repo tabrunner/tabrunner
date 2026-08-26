@@ -60,6 +60,33 @@ describe("buildTaskMessage", () => {
     expect(message).toContain("propose a plan before any action");
   });
 
+  it("tells a continued run it is back on the conversation's own tab", () => {
+    const message = buildTaskMessage("cancel the hotel", '- heading "Flights"', {
+      mode: "continued",
+    });
+
+    expect(message).toContain("conversation has been working in");
+    // The same read-before-acting discipline the adopted run gets.
+    expect(message).toContain("propose a plan before any action");
+  });
+
+  it("names the page the user sent from as a hint, not an order", () => {
+    const message = buildTaskMessage("buy these", '- heading "Flights"', {
+      mode: "continued",
+      submitPage: { title: "Cart — Shop", url: "https://shop.example/cart" },
+    });
+
+    expect(message).toContain('"Cart — Shop" (https://shop.example/cart)');
+    expect(message).toContain("hint");
+    expect(message).toContain("switch_tab");
+  });
+
+  it("says nothing about the send-from page when the run started there", () => {
+    const message = buildTaskMessage("go on", '- heading "Flights"', { mode: "continued" });
+
+    expect(message).not.toContain("while viewing");
+  });
+
   it("says nothing about tabs when the run's own tab is unknown", () => {
     const message = buildTaskMessage("book the flight", '- heading "Flights"', {});
 

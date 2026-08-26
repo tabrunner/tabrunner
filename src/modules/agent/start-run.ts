@@ -55,6 +55,7 @@ import type { Event, PlanApprovalPayload } from "@/shared/protocol";
 import { acquireRun, releaseRun } from "./active-runs";
 import type { ActiveRun, RunOwner } from "./active-runs";
 import type { PlanApprovalOutcome } from "./loop";
+import type { SubmitPage } from "./prompt";
 import {
   currentBoard,
   markPendingQuestion,
@@ -268,14 +269,15 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       );
     });
 
-    // Where the run drives: the user's current tab by default (adopted or
-    // this-page), a tab of the run's own only when there's no page to work —
-    // dispatch-and-forget never hijacks what the user is reading, but it also
-    // never loses the state the task is about. An answer continues where the
-    // question arose: a transcript parked on an unanswered ask_user goes back to
-    // the very tab the conversation last drove, page state and all.
+    // Where the run drives: the conversation's own tab while it lives — a panel
+    // follow-up keeps working where earlier runs did (the page the user sent
+    // from rides along as context instead of becoming the target), other owners
+    // return for a parked answer only — else the user's current tab on adoption,
+    // else a tab of the run's own. See resolveRunTab.
     const thread = await getThreadTabsFor(conversationId);
-    const continuation = hasPendingQuestion(transcript) ? thread.tabs[0] : undefined;
+    const continuation = continuesThreadTab(owner, hasPendingQuestion(transcript))
+      ? thread.tabs[0]
+      : undefined;
     const target = await resolveRunTab(opts, continuation, thread);
 
     if ("error" in target) {
@@ -292,8 +294,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     // The conversation may have worked on other pages than this run's start
     // (one run per message, and users move between messages). Name those tabs
     // so references like "that email" or "the doc" can find their way back
-    // (rule 6 does the rest).
-    const previousTabs = thread.tabs.filter((t) => t.url !== tab.url);
+    // (rule 6 does the rest). The tab in hand is excluded twice over — by url,
+    // and by id, because the user may have navigated it since we recorded it.
+    const previousTabs = thread.tabs.filter((t) => t.url !== tab.url && t.tabId !== tab.id);
 
     log.info("run queued", {
       provider: providerConfig.name,
@@ -431,7 +434,8 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         ...(meta?.approvedPlan?.length ? { standingPlan: meta.approvedPlan } : {}),
         contextWindow,
         previousTabs: previousTabs.length > 0 ? previousTabs : undefined,
-        mode: adopted ? "adopted" : "own",
+        mode: target.resumed === true ? "continued" : adopted ? "adopted" : "own",
+        ...(target.submitPage ? { submitPage: target.submitPage } : {}),
         ...(tab.url ? { startUrl: tab.url } : {}),
         drainInjected: () => run.injectedQueue.splice(0, run.injectedQueue.length),
         signal: run.controller.signal,
@@ -741,9 +745,20 @@ function hasPendingQuestion(transcript: Message[]): boolean {
 interface RunTab {
   tab: chrome.tabs.Tab;
   /** The thread's live strip, resolved at run start — the seed the run's own
+/**
+ * Whether this submission wants the conversation's own tab back (see
+ * resolveRunTab): a panel run always — a human just pressed Enter, and their
+ * thread has a home — while a schedule fire and an MCP client's call speak
+ * for themselves and only return for a parked answer.
+ */
+export function continuesThreadTab(owner: RunOwner, pendingQuestion: boolean): boolean {
+  return owner === "panel" || pendingQuestion;
+}
+
    *  labeling joins. Never the run's group: the run has none until its first action. */
   threadGroupId?: number;
-  /** The run continues a parked question — it joins its strip without renaming it. */
+  /** The run continues the conversation's own tab — it joins its strip without
+   *  renaming it, whatever the task fragment says. */
   resumed?: boolean;
   /** This run opened the tab, so a rejected plan can take it back. */
   opened?: boolean;
@@ -752,6 +767,9 @@ interface RunTab {
 }
 
 /** Last-resort start page when neither the task nor the preference names one. */
+  /** Where the user was sitting when they sent this, when the run did not
+   *  start there — data for the model's drift-or-pivot read, not a target. */
+  submitPage?: SubmitPage;
 const FALLBACK_START_URL = "https://www.google.com";
 
 /**
@@ -783,6 +801,19 @@ function isBlankPage(url: string | undefined): boolean {
  * Only when there is no page to adopt — a blank/new-tab page, a page Chrome
  * forbids, an MCP client (nowhere near a browser, unless it asked for the
  * foreground), or an explicit target URL — does the run open a tab of its own,
+ * Continuity outranks adoption once the thread has a tab (`continuesThreadTab`):
+ * a follow-up typed elsewhere is usually steering from wherever the user happens
+ * to be reading — the side panel stays open across tab switches — not a move
+ * order, and silently re-anchoring would put the run on a page nobody chose for
+ * the task. So the conversation's last driven tab wins while it still lives,
+ * and the send-time page rides along as `submitPage` data instead: drift
+ * ("just typing from where I was") against pivot ("this IS about that page")
+ * is a judgment about words, so the model makes it — switching itself with the
+ * ungated switch_tab when the request really is about that page. A genuine
+ * pivot costs one hop; acting on an unchosen page costs a plan-gate round-trip
+ * or worse. Adoption remains the answer whenever nothing stands to continue:
+ * the thread's first message, a lock whose tab died, a restricted page.
+ *
  * on the start-page preference. It opens inactive and is never brought forward.
  *
  * No run moves the user's screen at send time: a continuation reuses its tab in
@@ -800,7 +831,12 @@ async function resolveRunTab(
   thread: ThreadTabs,
 ): Promise<RunTab | { error: string }> {
   const reused = await reuseContinuationTab(continuation, thread);
-  if (reused) return reused;
+  if (reused) {
+    // Context, not a target: where the user sat when they sent this. The run
+    // starts on the thread's tab; the model hears about theirs.
+    const submitPage = await submitTabPage(opts, reused.tab);
+    return { ...reused, ...(submitPage ? { submitPage } : {}) };
+  }
 
   // A panel run works the tab the user is looking at — the state the task is
   // about (the half-filled form, the search results, the scrolled thread) lives
@@ -861,14 +897,15 @@ async function resolveRunTab(
 }
 
 /**
- * The very tab the question was asked on, when it is still alive and still
- * there. Re-opening its url would also "continue where the question arose", but
- * a fresh load throws away the state the question was ABOUT — the half-filled
- * booking form, the search results, the scrolled thread. The parked strip is
- * resolved like any run's: the tab still sitting in it seeds the join, across a
- * restart's id churn too, while a tab the user refiled while the question
- * waited fails the ownership check — theirs, and the continuation neither
- * renames it nor rips the tab out.
+ * The conversation's own tab, while it is still alive: a parked answer returns
+ * to the very page the question was asked on, and any panel follow-up keeps
+ * working where earlier runs did. Re-opening the url would be a cold copy —
+ * a fresh load throws away the state the work was ABOUT (the half-filled
+ * booking form, the search results, the scrolled thread). The thread's strip
+ * is resolved like any run's: the tab still sitting in it seeds the join,
+ * across a restart's id churn too, while a tab the user refiled since fails
+ * the ownership check — theirs, and the continuation neither renames it nor
+ * rips the tab out.
  */
 async function reuseContinuationTab(
   last: LastTab | undefined,
@@ -888,12 +925,36 @@ async function reuseContinuationTab(
       ...(threadGroupId !== undefined ? { threadGroupId } : {}),
     };
   } catch {
-    // The tab died while the question waited — open a fresh one on its url.
+    // The tab died since the last run — nothing to continue on.
+    return undefined;
+  }
+}
+
+/**
+ * The page the user was reading when they sent this task, when this run did
+ * not start there. Panel-only: a schedule fire and an MCP client have no
+ * "where the user was". Blank and restricted pages carry no signal either —
+ * there is no page to reason about.
+ */
+async function submitTabPage(
+  opts: StartRunOptions,
+  driven: chrome.tabs.Tab,
+): Promise<SubmitPage | undefined> {
+  if (opts.owner !== "panel") return undefined;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (
+    !tab?.id ||
+    tab.id === driven.id ||
+    !tab.url ||
+    isBlankPage(tab.url) ||
+    isRestrictedUrl(tab.url)
+  ) {
     return undefined;
   }
 }
 
 /** The page a run's own tab opens on, and the page Chrome kept it from opening. */
+  return { title: tabLabel(tab), url: tab.url };
 async function resolveStartUrl(
   opts: StartRunOptions,
   continuationUrl: string | undefined,

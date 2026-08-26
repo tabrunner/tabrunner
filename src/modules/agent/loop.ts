@@ -23,7 +23,7 @@ import { executeTool, formatDetail, formatSuccessSummary } from "./tools";
 import type { RunGroup } from "./tools";
 import type { RunOwner } from "./active-runs";
 import { buildSystemPrompt, buildTaskMessage, buildToolDefs } from "./prompt";
-import type { PreviousTab, RunMode } from "./prompt";
+import type { PreviousTab, RunMode, SubmitPage } from "./prompt";
 import { compactRunMessages } from "./compact";
 import { DEFAULT_CONTEXT_WINDOW, needsCompaction } from "@/modules/providers/context-window";
 
@@ -286,6 +286,12 @@ export interface LoopOptions {
   /** Where this run works and what it was kept from — see RunMode. */
   mode?: RunMode;
   /**
+   * Where the user was sitting when they sent this task, when the run starts
+   * somewhere else (a continuation kept the conversation's own tab) — see
+   * SubmitPage. Rides into the task message as a hint, never an order.
+   */
+  submitPage?: SubmitPage;
+  /**
    * URL of the tab the run starts on — scopes AGENTS.md/MEMORY.md to its site's
    * `## site:` sections. Absent (tests, unknown tab) = global content only.
    */
@@ -420,6 +426,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
     supportsImages: supportsImagesOpt,
     previousTabs,
     mode,
+    submitPage,
     startUrl,
     history,
     standingPlan,
@@ -481,6 +488,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
       content: buildTaskMessage(task, initial.pageContent, {
         previousTabs,
         mode,
+        ...(submitPage ? { submitPage } : {}),
         ...(scheduleId ? { scheduleId } : {}),
       }),
       // The user's own attachments are the subject of the task — unlike screenshots
