@@ -145,8 +145,10 @@ describe("pickLatestModel", () => {
     ).toBe("new");
   });
 
-  it("falls back to list order when timestamps are missing", () => {
-    expect(pickLatestModel([{ id: "a" }, { id: "b" }])?.id).toBe("b");
+  it("keeps the first entry when timestamps are missing", () => {
+    // The first is the auto convention everywhere (preset fallback, resolved
+    // model, the picker's auto row) — last-wins named the oldest as "auto".
+    expect(pickLatestModel([{ id: "a" }, { id: "b" }])?.id).toBe("a");
   });
 });
 

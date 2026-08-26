@@ -103,11 +103,17 @@ export async function isKeyRejected(
   }
 }
 
-/** Newest model wins; ties or missing timestamps fall back to list order. */
+/**
+ * Newest model wins; ties or missing timestamps keep the first entry. The
+ * first is the codebase's auto convention everywhere else (the run's
+ * `preset.models[0]` fallback, `resolvedModel`, the picker's auto row), and
+ * presets and live listings both lead with the newest — so a last-wins tie
+ * named the oldest model as "auto" while the run used the newest.
+ */
 export function pickLatestModel(models: ModelInfo[]): ModelInfo | undefined {
   let best: ModelInfo | undefined;
   for (const m of models) {
-    if (!best || (m.created ?? -Infinity) >= (best.created ?? -Infinity)) best = m;
+    if (!best || (m.created ?? -Infinity) > (best.created ?? -Infinity)) best = m;
   }
   return best;
 }
