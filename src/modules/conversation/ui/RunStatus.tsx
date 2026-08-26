@@ -30,6 +30,7 @@ export function RunStatus() {
   // the user; an ask_user ends it with the question still open. Both speak
   // "waiting", never the working shimmer/pulse.
   const awaitingApproval = useConversationStore((s) => s.planApproval !== null);
+  const elicitation = useConversationStore((s) => s.elicitation);
   const awaitingAnswer = useConversationStore(
     (s) =>
       pendingAskId(s.messages, runsHere(s)) !== undefined ||
@@ -236,9 +237,12 @@ export function RunStatus() {
       // generic verb would read as "it ignored your note" — name the gap.
       t("run.revisingPlan")
     : parked
-      ? awaitingApproval || boardRun?.awaiting === true
-        ? t("run.awaitingApproval")
-        : t("run.awaitingAnswer")
+      ? // The board's awaiting mark covers both parks; the card on screen says
+        // which. A server's question is not an approval — "your answer" is the
+        // honest word for it.
+        elicitation !== null || awaitingAnswer
+        ? t("run.awaitingAnswer")
+        : t("run.awaitingApproval")
       : `${verb}…`;
 
   /**

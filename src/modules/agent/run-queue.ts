@@ -1,6 +1,6 @@
 import { defineItem } from "@/lib/storage";
 import { createLogger, truncate } from "@/lib/logger";
-import type { PlanApprovalPayload } from "@/shared/protocol";
+import type { ElicitationAsk, PlanApprovalPayload } from "@/shared/protocol";
 import { getActiveRun, onRunReleased } from "./active-runs";
 import type { RunOwner } from "./active-runs";
 
@@ -54,6 +54,14 @@ export interface RunBoard {
      * moment the gate is answered, approve or reject.
      */
     approval?: PlanApprovalPayload;
+    /**
+     * The plan gate's twin: a remote MCP server's question, parked mid-tool-call.
+     * Same storage-backed delivery, same answer-takes-it-down lifecycle — and it
+     * needed it more, since the elicitation broadcast never had any reconnect
+     * path at all. The loop parks on one thing at a time, so at most one of
+     * `approval` / `elicitation` is set.
+     */
+    elicitation?: ElicitationAsk;
     /** The run is documenting itself: screens of the driven tab are being kept.
      *  Ambient, because the surfaces that must say so (toolbar title, driven-tab
      *  badge) outlive the panel that would otherwise be the only witness. */
@@ -165,6 +173,19 @@ export function markRunningAwaiting(
   running = awaiting
     ? { ...running, awaiting, ...(approval ? { approval } : {}) }
     : { ...running, awaiting, approval: undefined };
+  void writeBoard();
+}
+
+/**
+ * A parked elicitation — a remote MCP server's question — or its answer. The
+ * ask rides the board like the plan gate's, so a panel that missed the
+ * elicitation broadcast still gets the question; the flag drops with it, since
+ * the loop can be parked on only one thing at a time. Same stale-guard as its
+ * siblings.
+ */
+export function markRunningElicitation(conversationId: string, ask?: ElicitationAsk): void {
+  if (!running || running.conversationId !== conversationId) return;
+  running = { ...running, awaiting: ask !== undefined, elicitation: ask };
   void writeBoard();
 }
 

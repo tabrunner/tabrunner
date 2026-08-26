@@ -17,6 +17,7 @@ import {
   recordDrivenTabFor,
   recordEngine,
   renameConversation,
+  replaceMessageTo,
   retitleIfDerived,
   setActiveConversation,
 } from "../conversations";
@@ -309,6 +310,44 @@ describe("conversations", () => {
     expect(tabs).toHaveLength(5);
     expect(tabs[0]?.url).toBe("https://site7.com/"); // newest work first
     expect(tabs.map((t) => t.url)).not.toContain("https://site2.com/"); // oldest evicted
+  });
+});
+
+/**
+ * The plan card is state, not append-only history: revisions rewrite it in
+ * place. When the card it would rewrite has fallen out of the transcript cap
+ * (a very long run), the revision appends instead of vanishing.
+ */
+describe("replaceMessageTo", () => {
+  it("rewrites the card in place", async () => {
+    const id = await appendMessageFresh(msg("user", "add the ingress rule"));
+    const card = msg("plan", "");
+    await appendMessageTo(id, card);
+
+    await replaceMessageTo(id, { ...card, steps: ["revised"], current: 1 });
+
+    const stored = await getMessages(id);
+    expect(stored).toHaveLength(2);
+    expect(stored[1]).toMatchObject({ id: card.id, steps: ["revised"], current: 1 });
+  });
+
+  it("appends when the card it would rewrite is already gone from the cap", async () => {
+    const id = await appendMessageFresh(msg("user", "add the ingress rule"));
+    const evicted = msg("plan", "");
+    await appendMessageTo(id, evicted);
+    // Push the card out the tail of the cap: MAX_MESSAGES appends later.
+    for (let i = 0; i < 100; i++) await appendMessageTo(id, msg("step", `step ${i}`));
+    expect(await getMessages(id)).toHaveLength(100);
+    expect((await getMessages(id)).some((m) => m.id === evicted.id)).toBe(false);
+
+    const revised = { ...evicted, steps: ["revised"], current: 1 };
+    await replaceMessageTo(id, revised);
+
+    const stored = await getMessages(id);
+    // The revision landed (at the tail) instead of being dropped, and the cap
+    // held: the oldest message made room for it.
+    expect(stored.some((m) => m.id === revised.id && m.steps?.length === 1)).toBe(true);
+    expect(stored).toHaveLength(100);
   });
 });
 

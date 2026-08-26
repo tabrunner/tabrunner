@@ -51,7 +51,7 @@ import {
 import type { Message } from "@/modules/conversation/types";
 import { defaultStartUrl, walkthroughsEnabled } from "@/lib/prefs";
 import { createLogger, truncate } from "@/lib/logger";
-import type { Event, PlanApprovalPayload } from "@/shared/protocol";
+import type { ElicitationAsk, Event, PlanApprovalPayload } from "@/shared/protocol";
 import { acquireRun, releaseRun } from "./active-runs";
 import type { ActiveRun, RunOwner } from "./active-runs";
 import type { PlanApprovalOutcome } from "./loop";
@@ -61,6 +61,7 @@ import {
   markPendingQuestion,
   clearPendingQuestion,
   markRunningAwaiting,
+  markRunningElicitation,
   markRunningRecording,
   markRunningTab,
 } from "./run-queue";
@@ -246,20 +247,22 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             typeof params?.requestedSchema === "object" && params.requestedSchema !== null
               ? (params.requestedSchema as Record<string, unknown>)
               : undefined;
-          emit({
-            type: "elicitation",
+          const ask: ElicitationAsk = {
             requestId,
             message,
             serverName,
             ...(requestedSchema ? { requestedSchema } : {}),
-          });
-          markRunningAwaiting(conversationId, true);
+          };
+          emit({ type: "elicitation", ...ask });
+          // The ask rides the board like the plan gate's, so a panel that
+          // missed the broadcast still gets the question.
+          markRunningElicitation(conversationId, ask);
           void waitAgentIndicator(drivenTabId);
           run.elicitation = {
             requestId,
             resolve: (result) => {
               // Answered: the run works again, so the working marks return.
-              markRunningAwaiting(conversationId, false);
+              markRunningElicitation(conversationId, undefined);
               void showAgentIndicator(drivenTabId);
               resolve(result);
             },

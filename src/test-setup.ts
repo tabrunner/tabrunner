@@ -1,5 +1,8 @@
 /**
- * Shared test bootstrap, installed via vitest `setupFiles` — do not import it.
+ * Shared test bootstrap, installed via vitest `setupFiles`. Everything here is
+ * set up for you except `fireStorageWatch`, which tests import to simulate a
+ * storage write's watch notification (the in-memory store below has no real
+ * change notifications).
  *
  * - Minimal chrome surface: modules like cdp-driver register event listeners
  *   at import time — real in the extension, absent under vitest. Individual
@@ -33,6 +36,7 @@ if (typeof globalThis.chrome === "undefined") {
 }
 
 const values = new Map<string, unknown>();
+const watchers = new Map<string, Array<(v: unknown) => void>>();
 vi.mock("wxt/utils/storage", () => ({
   storage: {
     defineItem: <T>(key: string, opts: { fallback: T }) => ({
@@ -45,10 +49,30 @@ vi.mock("wxt/utils/storage", () => ({
         values.delete(key);
         return Promise.resolve();
       },
-      watch: () => () => {},
+      watch: (cb: (v: T) => void) => {
+        const list = watchers.get(key) ?? [];
+        list.push(cb as (v: unknown) => void);
+        watchers.set(key, list);
+        return () => {
+          watchers.set(
+            key,
+            list.filter((f) => f !== cb),
+          );
+        };
+      },
     }),
   },
 }));
+
+/**
+ * Simulate a storage write's watch notification for `key` (the bare defineItem
+ * key — the `local:tabrunner:` prefix is added here). Writes the value first,
+ * so a callback that reads gets what a real write left behind.
+ */
+export function fireStorageWatch(key: string, value: unknown): void {
+  values.set(`local:tabrunner:${key}`, value);
+  for (const cb of watchers.get(`local:tabrunner:${key}`) ?? []) cb(value);
+}
 
 beforeAll(async () => {
   await i18n.init({
@@ -59,4 +83,7 @@ beforeAll(async () => {
   });
 });
 
-beforeEach(() => values.clear());
+beforeEach(() => {
+  values.clear();
+  watchers.clear();
+});

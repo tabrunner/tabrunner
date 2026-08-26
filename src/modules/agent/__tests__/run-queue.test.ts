@@ -8,6 +8,7 @@ import {
   listQueue,
   markPendingQuestion,
   markRunningAwaiting,
+  markRunningElicitation,
   markRunningTab,
   restorePendingQuestion,
   runBoardItem,
@@ -203,6 +204,36 @@ describe("markRunningAwaiting", () => {
     submit("a", "panel");
     markRunningAwaiting("c-someone-else", true);
     expect(currentBoard().running?.awaiting).toBeUndefined();
+    releaseRun(claim("a"));
+  });
+});
+
+describe("markRunningElicitation", () => {
+  it("parks a server's question on the board and takes it down with the answer", async () => {
+    submit("a", "panel");
+    const ask = { requestId: "r1", message: "Allow access?", serverName: "acme" };
+    markRunningElicitation("c-a", ask);
+    await flush();
+    const parked = (await runBoardItem.get()).running;
+    expect(parked?.awaiting).toBe(true);
+    expect(parked?.elicitation).toEqual(ask);
+
+    markRunningElicitation("c-a", undefined);
+    await flush();
+    const settled = (await runBoardItem.get()).running;
+    expect(settled?.awaiting).toBe(false);
+    expect(settled?.elicitation).toBeUndefined();
+    releaseRun(claim("a"));
+  });
+
+  it("ignores a run that is no longer the board's running entry", () => {
+    submit("a", "panel");
+    markRunningElicitation("c-someone-else", {
+      requestId: "r1",
+      message: "Allow access?",
+      serverName: "acme",
+    });
+    expect(currentBoard().running?.elicitation).toBeUndefined();
     releaseRun(claim("a"));
   });
 });

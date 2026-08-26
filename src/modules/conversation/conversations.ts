@@ -238,10 +238,7 @@ async function patchConversation(
 export function recordDrivenTabFor(id: string, tab: LastTab, stripUrls?: string[]): Promise<void> {
   return patchConversation(id, (c) => ({
     ...c,
-    tabs: [tab, ...(c.tabs ?? []).filter((t) => t.url !== tab.url)].slice(
-      0,
-      MAX_CONVERSATION_TABS,
-    ),
+    tabs: [tab, ...(c.tabs ?? []).filter((t) => t.url !== tab.url)].slice(0, MAX_CONVERSATION_TABS),
     ...(stripUrls ? { stripUrls: stripUrls.slice(0, MAX_STRIP_URLS) } : {}),
   }));
 }
@@ -528,7 +525,14 @@ export function replaceMessageTo(id: string, msg: Message): Promise<void> {
 async function replaceTo(id: string, msg: Message): Promise<void> {
   const item = messagesItem(id);
   const messages = await item.get();
-  if (!messages.some((m) => m.id === msg.id)) return;
+  if (!messages.some((m) => m.id === msg.id)) {
+    // The card it would rewrite fell out of the transcript cap (a very long
+    // run) — append the current one rather than silently dropping every plan
+    // revision from here on. Appends are the one path allowed to (re)create a
+    // conversation's record, so a thread deleted mid-run behaves as always.
+    await appendTo(id, msg);
+    return;
+  }
   await item.set(messages.map((m) => (m.id === msg.id ? stripTransientImages(msg) : m)));
 }
 

@@ -284,8 +284,11 @@ export default defineBackground(() => {
           // own notification, so release the one-buzz-per-park hold.
           notifiedPlanFor = null;
           const answering = getActiveRun();
-          if (answering?.owner === "panel") {
-            answerPlanApproval(msg.approved, msg.feedback);
+          // Broadcast only when the answer actually landed: a doubled click (or
+          // a second window a beat late) resolves nothing, and echoing a
+          // settled question would re-draw the answer in panels that already
+          // settled it.
+          if (answering?.owner === "panel" && answerPlanApproval(msg.approved, msg.feedback)) {
             // Every panel showing the thread has the card up, so every one of
             // them has to learn it was answered — the panel that clicked
             // disarms its own, the rest would sit on a settled question.
@@ -302,15 +305,16 @@ export default defineBackground(() => {
           // The user's answer to a parked elicitation — same owner-scoping as
           // plan_approval: bridge and schedule runs never park, so nothing here
           // can be theirs. A stale requestId (answered from another window
-          // first) finds no slot; the done event carries the id, so panels
-          // clear only the card that was actually settled.
+          // first) resolves nothing and is not echoed: the done event carries
+          // the id, so panels clear only the card that was actually settled.
           const answering = getActiveRun();
           if (!answering || answering.owner !== "panel") break;
-          answerElicitation(msg.requestId, msg.action, msg.value);
-          broadcast(answering.conversationId, {
-            type: "elicitation_done",
-            requestId: msg.requestId,
-          });
+          if (answerElicitation(msg.requestId, msg.action, msg.value)) {
+            broadcast(answering.conversationId, {
+              type: "elicitation_done",
+              requestId: msg.requestId,
+            });
+          }
           break;
         }
 

@@ -62,6 +62,7 @@ beforeEach(async () => {
     streamingText: "",
     reasoningText: "",
     usage: { input: 0, output: 0 },
+    usageFromLiveRun: false,
     contextTokens: 0,
     runStartedAt: null,
     runEndedAt: null,
@@ -225,6 +226,23 @@ describe("adopting a run this panel did not dispatch", () => {
     expect(s.contextTokens).toBe(8_100);
   });
 
+  it("keeps the totals query_run delivered when the stream is then adopted", () => {
+    // query_run's reply lands before the panel knows a run is live (it is
+    // unstamped, so it never triggers the adoption itself) — the first stamped
+    // event adopts, and the reset that protects against the LAST run's numbers
+    // must not throw the JUST-delivered ones away.
+    useConversationStore.setState({ board: boardRun("c1") });
+    port.fireMessage({ type: "usage", input: 300_000, output: 4_000, contextTokens: 120_000 });
+    expect(useConversationStore.getState().usage).toEqual({ input: 300_000, output: 4_000 });
+
+    port.fireMessage({ type: "step_start", tool: "navigate", conversationId: "c1" });
+
+    const s = useConversationStore.getState();
+    expect(s.status).toBe("running");
+    expect(s.usage).toEqual({ input: 300_000, output: 4_000 });
+    expect(s.contextTokens).toBe(120_000);
+  });
+
   it("drops the gate's card when another window answers it", () => {
     useConversationStore.setState({
       board: boardRun("c1"),
@@ -333,5 +351,60 @@ describe("the parked gate's card, mirrored off the board", () => {
 
     useConversationStore.getState().followActive("c1");
     expect(useConversationStore.getState().planApproval).toEqual(ask);
+  });
+
+  it("arms a parked server question from the board alone — its twin", async () => {
+    // The elicitation broadcast never had ANY reconnect path: a panel that
+    // reopened onto a parked question showed nothing while the run hung. The
+    // board is that path now, same as the plan card.
+    const serverAsk = { requestId: "r1", message: "Allow export?", serverName: "acme" };
+    useConversationStore.getState().disconnect();
+    await setActiveConversation("c1");
+    await runBoardItem.set({
+      running: {
+        conversationId: "c1",
+        task: "Get those keys",
+        owner: "panel",
+        startedAt: 1000,
+        awaiting: true,
+        elicitation: serverAsk,
+      },
+      queue: [],
+    });
+    useConversationStore.getState().connect();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(useConversationStore.getState().elicitation).toEqual(serverAsk);
+
+    // The answer takes the ask off the board; a panel that missed the
+    // elicitation_done broadcast settles from storage alone.
+    useConversationStore.getState().disconnect();
+    await runBoardItem.set({
+      running: {
+        conversationId: "c1",
+        task: "Get those keys",
+        owner: "panel",
+        startedAt: 1000,
+        awaiting: false,
+      },
+      queue: [],
+    });
+    useConversationStore.getState().connect();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(useConversationStore.getState().elicitation).toBeNull();
+  });
+
+  it("delivers an answer posted with the port dead by reconnecting first", () => {
+    // A board-armed card in a panel whose port died used to post into the
+    // void: the card cleared locally while the run stayed parked forever.
+    useConversationStore.getState().disconnect();
+    useConversationStore.setState({ planApproval: { ...ask } });
+
+    useConversationStore.getState().approvePlan();
+
+    expect(port.fake.postMessage).toHaveBeenCalledWith({ type: "plan_approval", approved: true });
+    // The reconnect fired its own fresh query_run on the way back up.
+    expect(port.fake.postMessage).toHaveBeenCalledWith({ type: "query_run" });
   });
 });

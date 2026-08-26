@@ -95,23 +95,27 @@ export function releaseRun(run: ActiveRun): void {
   for (const cb of releaseListeners) cb();
 }
 
-/** The panel's answer to a parked plan-approval prompt. A no-op when nothing is
- *  parked — a bridge run auto-approves, and a stale answer must not leak into
- *  the next run. */
-export function answerPlanApproval(approved: boolean, feedback?: string): void {
-  if (!active?.planApproval) return;
+/** The panel's answer to a parked plan-approval prompt. Returns whether an
+ *  answer actually landed — a no-op when nothing is parked (a bridge run
+ *  auto-approves) so a stale or doubled answer neither resolves twice nor
+ *  echoes a settled question back to every panel. */
+export function answerPlanApproval(approved: boolean, feedback?: string): boolean {
+  if (!active?.planApproval) return false;
   active.planApproval.resolve(approved, feedback);
   active.planApproval = undefined;
+  return true;
 }
 
-/** The panel's answer to a parked elicitation. No-op when nothing is parked or
- *  the answer names an older request than the one now holding the slot. */
+/** The panel's answer to a parked elicitation. Returns whether it landed — a
+ *  no-op when nothing is parked or the answer names an older request than the
+ *  one now holding the slot. */
 export function answerElicitation(
   requestId: string,
   action: "accept" | "decline",
   value?: Record<string, unknown>,
-): void {
-  if (!active?.elicitation || active.elicitation.requestId !== requestId) return;
+): boolean {
+  if (!active?.elicitation || active.elicitation.requestId !== requestId) return false;
   active.elicitation.resolve({ action, ...(action === "accept" && value ? { value } : {}) });
   active.elicitation = undefined;
+  return true;
 }

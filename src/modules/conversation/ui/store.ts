@@ -54,6 +54,11 @@ export interface ConversationState {
    *  dollar estimate — absent until a call prices, absent forever when the
    *  model isn't in the pricing table (unknown is not free). */
   usage: { input: number; output: number; cost?: number };
+  /** The held `usage` belongs to the run in flight — a `usage` event set it and
+   *  no run end has cleared it. What lets adopting a stream tell "these are the
+   *  last run's numbers, drop them" from "query_run just handed me this run's
+   *  totals, keep them" — the two arrive in either order. */
+  usageFromLiveRun: boolean;
   /** Epoch ms when the current run started (drives the elapsed display) */
   runStartedAt: number | null;
   /** Epoch ms when it finished — keeps the summary line up after the run ends */
@@ -229,6 +234,9 @@ let intentionalDisconnect = false;
 /** Panel → worker heartbeat: any port traffic resets the MV3 worker's idle timer,
  *  so long tool calls and slow reasoning streams can't kill it mid-run. */
 let pingTimer: ReturnType<typeof setInterval> | null = null;
+/** The scheduled re-attach after an unintentional port drop (a worker restart).
+ *  Cleared by the attach it triggers, and by an intentional disconnect. */
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 /** Storage watch on the conversation index — background appends land here too. */
 let unwatchConversations: (() => void) | null = null;
 /** Storage watch on the run board — the widget's state, mirrored here. */
@@ -373,6 +381,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     reasoningStartedAt: null,
     status: "idle" as AgentStatus,
     usage: { input: 0, output: 0 },
+    usageFromLiveRun: false,
     runStartedAt: null,
     runEndedAt: null,
     runStopped: false,
@@ -448,6 +457,9 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       reasoningText: "",
       reasoningStartedAt: null,
       status,
+      // The run's totals die with it: whatever a later run shows starts at zero
+      // (or at what its own query_run hands over), never at this run's sum.
+      usageFromLiveRun: false,
       runEndedAt: Date.now(),
       // "Did THIS panel dispatch the run in flight?" is a question two callers
       // need now that every panel sees every run — the port-lost write and
@@ -523,6 +535,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       reasoningText: "",
       reasoningStartedAt: null,
       usage: { input: 0, output: 0 },
+      usageFromLiveRun: false,
       runStartedAt: Date.now(),
       runEndedAt: null,
       runStopped: false,
@@ -727,11 +740,22 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         flushReasoning();
         flushStreaming();
         const plan = { steps: event.steps, current: event.current };
-        const existing = get().planMsgId;
+        // An adopted panel refetched the transcript before it ever adopted, so
+        // the card is on screen while planMsgId is still null — rewrite THAT
+        // one instead of appending a twin. Scoped to this run's card via the
+        // run's start, so a new run still draws its own and never revives the
+        // last one's checklist.
+        const existing =
+          get().planMsgId ??
+          get().messages.findLast(
+            (m) =>
+              m.role === "plan" && m.timestamp >= (get().runStartedAt ?? Number.POSITIVE_INFINITY),
+          )?.id;
         if (existing) {
           // Rewritten in place, so the card stays where the agent first drew it
           // instead of a new copy sliding in on every completed step.
           set({
+            planMsgId: existing,
             messages: get().messages.map((m) => (m.id === existing ? { ...m, ...plan } : m)),
           });
         } else {
@@ -816,12 +840,15 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       case "usage":
         // Running totals, so this sets rather than adds — which is also what
         // lets one of these bring a panel that joined mid-run fully up to date.
+        // Marked live so a following adoption keeps them: these are the run in
+        // flight's numbers, not the last run's.
         set({
           usage: {
             input: event.input,
             output: event.output,
             ...(event.cost !== undefined ? { cost: event.cost } : {}),
           },
+          usageFromLiveRun: true,
           // A different measurement, not a slice of the one above: the last
           // turn's input IS how full the window is right now, and it drops back
           // down when the run folds its own history.
@@ -978,20 +1005,26 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       // coming — and a bridge run adopted as our own would hide the band naming
       // the client that actually holds it.
       //
-      // The numbers reset with it. They belong to a run, not to a panel, and
-      // this panel's are the LAST run's: left standing they put a finished
-      // run's 40k on a run six seconds old, and a gauge that could already read
-      // red — which is the whole bug this fan-out exists to fix, surviving it.
+      // The numbers reset with it — when they are the LAST run's. They belong
+      // to a run, not to a panel, and left standing they put a finished run's
+      // 40k on a run six seconds old. But query_run may have handed this panel
+      // THIS run's totals seconds before the first stamped event arrived, and
+      // an unconditional reset throws them away, leaving the band reading zero
+      // until the next usage tick. `usageFromLiveRun` tells the two apart.
       sawAssistantText = false;
       set({
         status: "running",
         runStartedAt: live.startedAt,
         runEndedAt: null,
         runStopped: false,
-        usage: { input: 0, output: 0 },
-        // Back to the stored fallback (`ConversationMeta.contextTokens`) until this run
-        // reports its own — the same thing a reopened panel shows.
-        contextTokens: 0,
+        ...(get().usageFromLiveRun
+          ? {}
+          : {
+              usage: { input: 0, output: 0 },
+              // Back to the stored fallback (`ConversationMeta.contextTokens`) until
+              // this run reports its own — the same thing a reopened panel shows.
+              contextTokens: 0,
+            }),
         // Nothing of ours is in flight: this run's rows and cards are arriving.
         pendingStepId: null,
         planMsgId: null,
@@ -1002,8 +1035,22 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     handleEvent(event);
   };
 
-  /** Send if the port lives, swallow if it died — onDisconnect does the cleanup. */
+  /**
+   * Send, and when the port is dead bring it back first. A command posted into
+   * a dead port is an answer nobody hears — a plan gate "approved" nowhere, a
+   * stop that stops nothing — and since the board now arms the card in panels
+   * that never saw the broadcast, a deaf panel holding the card is a case that
+   * actually happens. Reconnect is the same lazy attach a send uses; the
+   * query_run it fires re-syncs whatever the drop missed.
+   */
   const post = (cmd: Command) => {
+    if (!port) {
+      try {
+        attach();
+      } catch {
+        return; // Extension context invalidated — nothing delivers anymore.
+      }
+    }
     try {
       port?.postMessage(cmd);
     } catch {
@@ -1013,6 +1060,10 @@ export const useConversationStore = create<ConversationState>((set, get) => {
 
   const attach = (): chrome.runtime.Port => {
     if (port) return port;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     intentionalDisconnect = false;
     const p = chrome.runtime.connect({ name: PORT_NAME });
     port = p;
@@ -1067,6 +1118,21 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       // A stop redirect must survive a mid-handoff port drop — back to the composer.
       returnPending();
       settleRun("idle");
+      // Come back on our own. Everything this panel renders from the port — the
+      // stream, the tab chip, the steers, the usage — died with it, and the
+      // board fallback can only stand in for so much. A beat for the restart
+      // to land, then the same attach a send uses: its query_run re-arms what
+      // the drop missed, the board re-arms a parked card, and the next stamped
+      // event re-adopts a run that is somehow still going. If the context
+      // itself is gone the connect throws and this panel is dead anyway.
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        try {
+          attach();
+        } catch {
+          // Context invalidated — nothing left to reconnect to.
+        }
+      }, 2_000);
     });
     pingTimer ??= setInterval(() => post({ type: "ping" }), 25_000);
     // Ask on connect: the broadcast may have happened while the panel was
@@ -1089,25 +1155,35 @@ export const useConversationStore = create<ConversationState>((set, get) => {
   };
 
   /**
-   * The parked gate's card, mirrored off the board. The plan_approval broadcast
-   * arms the panels that hear it; this arms — and settles — the rest from
-   * storage: a panel that opened, switched threads, or lost the port after the
-   * park reads the same board the band's "Aguardando" already comes from, so
-   * "waiting for your approval" can never render without the card that answers
-   * it. Runs on every board change, on connect's first read, and on a
+   * The parked cards, mirrored off the board. The plan_approval / elicitation
+   * broadcasts arm the panels that hear them; this arms — and settles — the
+   * rest from storage: a panel that opened, switched threads, or lost the port
+   * after the park reads the same board the band's "Aguardando" already comes
+   * from, so "waiting for your approval" can never render without the card
+   * that answers it, and a server's question can never park a run with no card
+   * anywhere. Runs on every board change, on connect's first read, and on a
    * conversation switch (the watch only fires on writes).
    */
-  const reconcilePlanGate = (board: RunBoard) => {
+  const reconcileParkedAsks = (board: RunBoard) => {
     const s = get();
     const running =
       s.activeId !== null && board.running?.conversationId === s.activeId
         ? board.running
         : undefined;
-    const ask = running?.owner === "panel" ? (running.approval ?? null) : null;
+    const parked = running?.owner === "panel";
+    const ask = parked ? (running.approval ?? null) : null;
     if (ask && s.planApproval === null) {
       set({ planApproval: ask, planApproved: false, replanning: false });
     } else if (!ask && s.planApproval !== null) {
       set({ planApproval: null });
+    }
+    // The twin. The worker's slot holds at most one request; the requestId
+    // check keeps a card this panel already drew from being rebuilt mid-render.
+    const serverAsk = parked ? (running.elicitation ?? null) : null;
+    if (serverAsk && s.elicitation?.requestId !== serverAsk.requestId) {
+      set({ elicitation: serverAsk });
+    } else if (!serverAsk && s.elicitation !== null) {
+      set({ elicitation: null });
     }
   };
 
@@ -1140,7 +1216,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     // would queue behind a run that cannot move. The id rides along because
     // with a panel open in every window, the slot can be pointed somewhere
     // else between the write behind this and the worker reading it.
-    reconcilePlanGate(get().board);
+    reconcileParkedAsks(get().board);
     post({ type: "query_run", conversationId: id });
     void getMessages(id).then((messages) => {
       // A switch that raced this read wins — never paint a stale transcript.
@@ -1157,6 +1233,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     reasoningText: "",
     reasoningStartedAt: null,
     usage: { input: 0, output: 0 },
+    usageFromLiveRun: false,
     runStartedAt: null,
     runEndedAt: null,
     runStopped: false,
@@ -1220,7 +1297,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // A panel opened onto a parked gate arms its card here — the ask is on
         // the board, no port event required. activeId may still be resolving;
         // its own load below reconciles again, so either order lands.
-        reconcilePlanGate(board);
+        reconcileParkedAsks(board);
       });
       // Chrome draws one panel per window and they share the open-conversation
       // slot, so a thread opened anywhere is the thread every window is on.
@@ -1231,7 +1308,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // The gate's card follows the board: parked with the ask, settled when
         // the ask comes down — including for a panel the plan_answered
         // broadcast never reached.
-        reconcilePlanGate(board);
+        reconcileParkedAsks(board);
         // A worker restart resets the board to empty — drop the queued chip
         // the dead queue can never fulfill.
         if (!board.running && board.queue.length === 0 && get().queuedRun) {
@@ -1274,7 +1351,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // The board read may have landed before the open conversation was known
         // — reconcile again now that both halves of "is the gate parked HERE"
         // are on hand. Whichever load resolves second arms the card.
-        reconcilePlanGate(get().board);
+        reconcileParkedAsks(get().board);
       });
       attach();
     },
@@ -1286,6 +1363,10 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       unwatchBoard = null;
       unwatchActive?.();
       unwatchActive = null;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       if (!port) return;
       intentionalDisconnect = true;
       port.disconnect();
