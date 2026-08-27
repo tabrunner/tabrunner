@@ -34,15 +34,21 @@ export function SkillsSection({ showHeading = true }: { showHeading?: boolean })
   const skills = useStoredItem(skillsItem);
   const [editor, setEditor] = useState<{ open: boolean; skill?: Skill }>({ open: false });
   const [importing, setImporting] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  /** The last copy's result — reported either way; clipboard writes reject on lost focus/permission. */
+  const [copied, setCopied] = useState<{ id: string; ok: boolean } | null>(null);
   const copyTimer = useRef(0);
 
+  const flashCopy = (id: string, ok: boolean) => {
+    setCopied({ id, ok });
+    window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopied(null), 1_600);
+  };
+
   const exportSkill = (skill: Skill) => {
-    void navigator.clipboard.writeText(serializeSkillMd(skill)).then(() => {
-      setCopiedId(skill.id);
-      window.clearTimeout(copyTimer.current);
-      copyTimer.current = window.setTimeout(() => setCopiedId(null), 1_600);
-    });
+    void navigator.clipboard.writeText(serializeSkillMd(skill)).then(
+      () => flashCopy(skill.id, true),
+      () => flashCopy(skill.id, false),
+    );
   };
 
   return (
@@ -126,10 +132,20 @@ export function SkillsSection({ showHeading = true }: { showHeading?: boolean })
                   variant="ghost"
                   size="sm"
                   aria-label={t("skills.export")}
-                  title={copiedId === skill.id ? t("skills.copied") : t("skills.export")}
+                  title={
+                    copied?.id === skill.id
+                      ? copied.ok
+                        ? t("skills.copied")
+                        : t("skills.copyFailed")
+                      : t("skills.export")
+                  }
                   onClick={() => exportSkill(skill)}
                 >
-                  {copiedId === skill.id ? <CheckIcon className="arrive" /> : <CopyIcon />}
+                  {copied?.id === skill.id && copied.ok ? (
+                    <CheckIcon className="arrive" />
+                  ) : (
+                    <CopyIcon />
+                  )}
                 </Button>
                 <ConfirmDialog
                   trigger={

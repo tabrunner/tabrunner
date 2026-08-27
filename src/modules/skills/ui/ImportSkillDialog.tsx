@@ -57,64 +57,95 @@ function ImportBody({ onDone }: { onDone: () => void }) {
   const [outcomes, setOutcomes] = useState<(RowOutcome | null)[] | null>(null);
   /** Which suggested MCP servers the user opted into — defaults OFF, always. */
   const [mcpChoice, setMcpChoice] = useState<Set<number>>(new Set());
+  /** True while the GitHub tree scan runs — its honest label under Fetching…'s slot. */
+  const [scanning, setScanning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  /**
+   * State updates land next render, so `stage.kind === "input"` alone cannot
+   * stop a fast double-click/Enter — two fetches or two checklist saves could
+   * race past it. This ref is checked and set synchronously; it's the guard.
+   */
+  const busyRef = useRef(false);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const fetchIt = async () => {
-    if (stage.kind !== "input") return; // Enter while a fetch is in flight
-    setError(null);
-    const source = resolveSkillSource(input);
-    if (!source.ok) {
-      setError(
-        t(source.reason === "http" ? "skills.import.errorHttp" : "skills.import.errorUnparseable"),
-      );
-      return;
-    }
-    setStage({ kind: "fetching" });
-    const controller = new AbortController();
-    abortRef.current = controller;
+    if (busyRef.current || stage.kind !== "input") return;
+    busyRef.current = true;
     try {
-      // Repo-shaped input tries discovery first: the repo may hold many skills.
-      // Anything less than two survivors degrades to the single-file flow —
-      // one hit reviews in the editable form, a failed scan falls through so
-      // the plain fetch answers with its own (rate-limit aware) error.
-      const repo = resolveGithubRepo(input);
-      if (repo.ok) {
-        const found = await discoverRepoSkills(repo.repo, controller.signal);
-        if (found.ok && found.files.length > 1) {
-          const attempts = await Promise.all(
-            found.files.map(async (f) => {
-              try {
-                const text = await fetchSkillMarkdown(f.url, controller.signal);
-                return { path: f.path, url: f.url, parsed: parseSkillMd(text), ok: true as const };
-              } catch {
-                return { path: f.path, ok: false as const };
-              }
-            }),
-          );
-          const candidates = attempts.filter((a) => a.ok).map((a) => ({ ...a }));
-          const failedPaths = attempts.filter((a) => !a.ok).map((a) => a.path);
-          if (candidates.length > 1) {
-            setStage({ kind: "review-multi", candidates, failedPaths, truncated: found.truncated });
-            setSelected(new Set(candidates.map((_, i) => i)));
-            return;
-          }
-          // Exactly one survivor — review it directly, no re-fetch needed.
-          const only = candidates[0];
-          if (only) {
-            setMcpChoice(new Set());
-            setStage({ kind: "review", parsed: only.parsed, sourceUrl: only.url });
-            return;
+      setError(null);
+      if (!input.trim()) {
+        setError(t("skills.import.errorNoUrl"));
+        return;
+      }
+      const source = resolveSkillSource(input);
+      if (!source.ok) {
+        setError(
+          t(
+            source.reason === "http" ? "skills.import.errorHttp" : "skills.import.errorUnparseable",
+          ),
+        );
+        return;
+      }
+      setStage({ kind: "fetching" });
+      const controller = new AbortController();
+      abortRef.current = controller;
+      try {
+        // Repo-shaped input tries discovery first: the repo may hold many skills.
+        // Anything less than two survivors degrades to the single-file flow —
+        // one hit reviews in the editable form, a failed scan falls through so
+        // the plain fetch answers with its own (rate-limit aware) error.
+        const repo = resolveGithubRepo(input);
+        if (repo.ok) {
+          setScanning(true);
+          const found = await discoverRepoSkills(repo.repo, controller.signal);
+          setScanning(false);
+          if (found.ok && found.files.length > 1) {
+            const attempts = await Promise.all(
+              found.files.map(async (f) => {
+                try {
+                  const text = await fetchSkillMarkdown(f.url, controller.signal);
+                  return {
+                    path: f.path,
+                    url: f.url,
+                    parsed: parseSkillMd(text),
+                    ok: true as const,
+                  };
+                } catch {
+                  return { path: f.path, ok: false as const };
+                }
+              }),
+            );
+            const candidates = attempts.filter((a) => a.ok).map((a) => ({ ...a }));
+            const failedPaths = attempts.filter((a) => !a.ok).map((a) => a.path);
+            if (candidates.length > 1) {
+              setStage({
+                kind: "review-multi",
+                candidates,
+                failedPaths,
+                truncated: found.truncated,
+              });
+              setSelected(new Set(candidates.map((_, i) => i)));
+              return;
+            }
+            // Exactly one survivor — review it directly, no re-fetch needed.
+            const only = candidates[0];
+            if (only) {
+              setMcpChoice(new Set());
+              setStage({ kind: "review", parsed: only.parsed, sourceUrl: only.url });
+              return;
+            }
           }
         }
+        const text = await fetchSkillMarkdown(source.url, controller.signal);
+        setMcpChoice(new Set());
+        setStage({ kind: "review", parsed: parseSkillMd(text), sourceUrl: source.url });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setStage({ kind: "input" });
       }
-      const text = await fetchSkillMarkdown(source.url, controller.signal);
-      setMcpChoice(new Set());
-      setStage({ kind: "review", parsed: parseSkillMd(text), sourceUrl: source.url });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setStage({ kind: "input" });
+    } finally {
+      busyRef.current = false;
     }
   };
 
@@ -136,47 +167,52 @@ function ImportBody({ onDone }: { onDone: () => void }) {
    * The cap stops the batch rather than half-importing unasked.
    */
   const importSelected = async () => {
-    if (stage.kind !== "review-multi") return;
-    const stored = new Set((await listSkills()).map((s) => s.name));
-    let count = stored.size;
-    const results: (RowOutcome | null)[] = stage.candidates.map(() => null);
-    setOutcomes([...results]);
-    for (let i = 0; i < stage.candidates.length; i++) {
-      if (!selected.has(i)) continue;
-      const c = stage.candidates[i];
-      if (!c) continue;
-      const name = normalizeSkillName(c.parsed.name ?? "");
-      let outcome: RowOutcome;
-      if (!name) {
-        outcome = { status: "failed", error: t("skills.errors.badName") };
-      } else if (stored.has(name)) {
-        outcome = { status: "skipped-existing" };
-      } else if (count >= MAX_SKILLS) {
-        outcome = { status: "skipped-cap" };
-      } else {
-        const result = await saveSkill({
-          id: crypto.randomUUID(),
-          name,
-          description: c.parsed.description ?? "",
-          sites: c.parsed.sites.length > 0 ? c.parsed.sites : undefined,
-          // Stored but not offered here: credential consent inside a 25-row
-          // checklist is noise. ponytail: the upgrade path is an editor-side
-          // "install suggested servers" action on saved skills.
-          ...(c.parsed.mcpServers.length > 0 ? { mcpServers: c.parsed.mcpServers } : {}),
-          body: c.parsed.body,
-          enabled: true,
-          source: { url: c.url },
-        });
-        if (result.ok) {
-          stored.add(name);
-          count++;
-          outcome = { status: "saved" };
-        } else {
-          outcome = { status: "failed", error: result.error };
-        }
-      }
-      results[i] = outcome;
+    if (busyRef.current || stage.kind !== "review-multi") return;
+    busyRef.current = true;
+    try {
+      const stored = new Set((await listSkills()).map((s) => s.name));
+      let count = stored.size;
+      const results: (RowOutcome | null)[] = stage.candidates.map(() => null);
       setOutcomes([...results]);
+      for (let i = 0; i < stage.candidates.length; i++) {
+        if (!selected.has(i)) continue;
+        const c = stage.candidates[i];
+        if (!c) continue;
+        const name = normalizeSkillName(c.parsed.name ?? "");
+        let outcome: RowOutcome;
+        if (!name) {
+          outcome = { status: "failed", error: t("skills.errors.badName") };
+        } else if (stored.has(name)) {
+          outcome = { status: "skipped-existing" };
+        } else if (count >= MAX_SKILLS) {
+          outcome = { status: "skipped-cap" };
+        } else {
+          const result = await saveSkill({
+            id: crypto.randomUUID(),
+            name,
+            description: c.parsed.description ?? "",
+            sites: c.parsed.sites.length > 0 ? c.parsed.sites : undefined,
+            // Stored but not offered here: credential consent inside a 25-row
+            // checklist is noise. ponytail: the upgrade path is an editor-side
+            // "install suggested servers" action on saved skills.
+            ...(c.parsed.mcpServers.length > 0 ? { mcpServers: c.parsed.mcpServers } : {}),
+            body: c.parsed.body,
+            enabled: true,
+            source: { url: c.url },
+          });
+          if (result.ok) {
+            stored.add(name);
+            count++;
+            outcome = { status: "saved" };
+          } else {
+            outcome = { status: "failed", error: result.error };
+          }
+        }
+        results[i] = outcome;
+        setOutcomes([...results]);
+      }
+    } finally {
+      busyRef.current = false;
     }
   };
 
@@ -203,6 +239,19 @@ function ImportBody({ onDone }: { onDone: () => void }) {
           {stage.candidates.map((c, i) => {
             const outcome = outcomes?.[i];
             const label = normalizeSkillName(c.parsed.name ?? "") ?? c.path;
+            // Status line sits IN the content column, not shrink-0 beside it —
+            // "Already saved with this name — untouched…" would push wide in a
+            // 30rem dialog otherwise.
+            const outcomeText =
+              outcome?.status === "saved"
+                ? t("skills.import.rowSaved")
+                : outcome?.status === "skipped-existing"
+                  ? t("skills.import.rowSkippedExists")
+                  : outcome?.status === "skipped-cap"
+                    ? t("skills.import.rowSkippedCap")
+                    : outcome
+                      ? t("skills.import.rowFailed", { error: outcome.error ?? "" })
+                      : null;
             return (
               <li
                 key={c.path}
@@ -224,30 +273,30 @@ function ImportBody({ onDone }: { onDone: () => void }) {
                   />
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className={`text-sm font-semibold ${selected.has(i) || outcomes ? "" : "opacity-50"} text-neutral-900 dark:text-neutral-100`}>
+                  <p
+                    className={`truncate text-sm font-semibold ${selected.has(i) || outcomes ? "" : "opacity-50"} text-neutral-900 dark:text-neutral-100`}
+                    title={label}
+                  >
                     {label}
                   </p>
-                  <p className="truncate text-[11px] text-neutral-500 dark:text-neutral-400" title={c.path}>
+                  <p
+                    className="truncate text-[11px] text-neutral-500 dark:text-neutral-400"
+                    title={c.path}
+                  >
                     {c.parsed.description || c.path}
                   </p>
+                  {outcome && (
+                    <p
+                      className={`mt-0.5 break-words text-xs ${
+                        outcome.status === "saved"
+                          ? "text-brand-600 dark:text-brand-400"
+                          : "text-neutral-500 dark:text-neutral-400"
+                      }`}
+                    >
+                      {outcomeText}
+                    </p>
+                  )}
                 </div>
-                {outcome && (
-                  <span
-                    className={
-                      outcome.status === "saved"
-                        ? "shrink-0 text-xs text-brand-600 dark:text-brand-400"
-                        : "shrink-0 text-xs text-neutral-500 dark:text-neutral-400"
-                    }
-                  >
-                    {outcome.status === "saved"
-                      ? t("skills.import.rowSaved")
-                      : outcome.status === "skipped-existing"
-                        ? t("skills.import.rowSkippedExists")
-                        : outcome.status === "skipped-cap"
-                          ? t("skills.import.rowSkippedCap")
-                          : t("skills.import.rowFailed", { error: outcome.error ?? "" })}
-                  </span>
-                )}
               </li>
             );
           })}
@@ -257,7 +306,9 @@ function ImportBody({ onDone }: { onDone: () => void }) {
             type="button"
             disabled={!!outcomes}
             className="cursor-pointer text-xs text-neutral-500 underline-offset-2 hover:underline disabled:no-underline dark:text-neutral-400"
-            onClick={() => setSelected(allChecked ? new Set() : new Set(stage.candidates.map((_, i) => i)))}
+            onClick={() =>
+              setSelected(allChecked ? new Set() : new Set(stage.candidates.map((_, i) => i)))
+            }
           >
             {allChecked ? t("skills.import.selectNone") : t("skills.import.selectAll")}
           </button>
@@ -268,10 +319,7 @@ function ImportBody({ onDone }: { onDone: () => void }) {
                 : t("common.cancel")}
             </Button>
           ) : (
-            <Button
-              disabled={selected.size === 0}
-              onClick={() => void importSelected()}
-            >
+            <Button disabled={selected.size === 0} onClick={() => void importSelected()}>
               {settledCount > 0
                 ? t("skills.import.importingSelected")
                 : t("skills.import.importSelected", { count: selected.size })}
@@ -295,13 +343,23 @@ function ImportBody({ onDone }: { onDone: () => void }) {
       onDone();
       return;
     }
-    void installSkillServers(refs).then((outcomes) =>
-      setStage({
-        kind: "mcp-installed",
-        names: refs.map((r) => r.name),
-        outcomes,
-      }),
-    );
+    // A storage hiccup must not strand the dialog on the review stage with no
+    // word — an all-failed report routes through the same honest outcome rows.
+    void installSkillServers(refs)
+      .then((outcomes) =>
+        setStage({
+          kind: "mcp-installed",
+          names: refs.map((r) => r.name),
+          outcomes,
+        }),
+      )
+      .catch(() =>
+        setStage({
+          kind: "mcp-installed",
+          names: refs.map((r) => r.name),
+          outcomes: refs.map(() => "failed" as const),
+        }),
+      );
   };
 
   if (stage.kind === "mcp-installed") {
@@ -310,7 +368,7 @@ function ImportBody({ onDone }: { onDone: () => void }) {
         {stage.names.map((name, i) => {
           const outcome = stage.outcomes[i];
           return (
-            <p key={name} className="flex items-center justify-between gap-2 text-xs">
+            <p key={`${name}-${i}`} className="flex items-center justify-between gap-2 text-xs">
               <span className="min-w-0 truncate font-semibold text-neutral-900 dark:text-neutral-100">
                 {name}
               </span>
@@ -430,7 +488,12 @@ function ImportBody({ onDone }: { onDone: () => void }) {
           }}
         />
       )}
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {/* Keyed like SkillForm's error: consecutive failures must visibly re-announce. */}
+      {error && (
+        <p key={error} className="arrive text-xs text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
@@ -446,7 +509,13 @@ function ImportBody({ onDone }: { onDone: () => void }) {
           <Button onClick={previewPaste}>{t("skills.import.preview")}</Button>
         ) : (
           <Button disabled={stage.kind === "fetching"} onClick={() => void fetchIt()}>
-            {t(stage.kind === "fetching" ? "skills.import.fetching" : "skills.import.fetch")}
+            {t(
+              stage.kind === "fetching"
+                ? scanning
+                  ? "skills.import.discovering"
+                  : "skills.import.fetching"
+                : "skills.import.fetch",
+            )}
           </Button>
         )}
       </div>

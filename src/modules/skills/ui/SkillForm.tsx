@@ -64,7 +64,10 @@ export function SkillForm({
     ? skills.find((s) => s.name === liveName && s.id !== seed?.id)
     : undefined;
 
+  const [saving, setSaving] = useState(false);
+
   const save = async () => {
+    if (saving) return; // one write per press
     // liveName is derived from the same state — the save path provably agrees
     // with the collision warning.
     if (!liveName) {
@@ -82,6 +85,7 @@ export function SkillForm({
     const base =
       skills.find((s) => s.id === seed?.id) ?? (replaceOnCollision ? collision : undefined);
     const source = seed?.source ?? base?.source;
+    setSaving(true);
     const result = await saveSkill({
       id: base?.id ?? crypto.randomUUID(),
       name: liveName,
@@ -91,6 +95,7 @@ export function SkillForm({
       enabled: base?.enabled ?? true,
       ...(source ? { source } : {}),
     });
+    setSaving(false);
     if (!result.ok) {
       setError(result.error);
       return;
@@ -156,7 +161,9 @@ export function SkillForm({
         <Button variant="ghost" onClick={onCancel}>
           {t("common.cancel")}
         </Button>
-        <Button onClick={() => void save()}>{t("skills.form.save")}</Button>
+        <Button disabled={saving} onClick={() => void save()}>
+          {t("skills.form.save")}
+        </Button>
       </div>
     </div>
   );
