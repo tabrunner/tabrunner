@@ -59,6 +59,8 @@ function ImportBody({ onDone }: { onDone: () => void }) {
   const [mcpChoice, setMcpChoice] = useState<Set<number>>(new Set());
   /** True while the GitHub tree scan runs — its honest label under Fetching…'s slot. */
   const [scanning, setScanning] = useState(false);
+  /** True while the checklist's save loop runs — drives the honest button label. */
+  const [savingRows, setSavingRows] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   /**
    * State updates land next render, so `stage.kind === "input"` alone cannot
@@ -169,6 +171,7 @@ function ImportBody({ onDone }: { onDone: () => void }) {
   const importSelected = async () => {
     if (busyRef.current || stage.kind !== "review-multi") return;
     busyRef.current = true;
+    setSavingRows(true);
     try {
       const stored = new Set((await listSkills()).map((s) => s.name));
       let count = stored.size;
@@ -213,12 +216,12 @@ function ImportBody({ onDone }: { onDone: () => void }) {
       }
     } finally {
       busyRef.current = false;
+      setSavingRows(false);
     }
   };
 
   if (stage.kind === "review-multi") {
     const allChecked = selected.size === stage.candidates.length;
-    const settledCount = outcomes?.filter(Boolean).length ?? 0;
     const savedCount = outcomes?.filter((o) => o?.status === "saved").length ?? 0;
     return (
       <div className="flex flex-col gap-3">
@@ -319,8 +322,11 @@ function ImportBody({ onDone }: { onDone: () => void }) {
                 : t("common.cancel")}
             </Button>
           ) : (
-            <Button disabled={selected.size === 0} onClick={() => void importSelected()}>
-              {settledCount > 0
+            <Button
+              disabled={savingRows || selected.size === 0}
+              onClick={() => void importSelected()}
+            >
+              {savingRows
                 ? t("skills.import.importingSelected")
                 : t("skills.import.importSelected", { count: selected.size })}
             </Button>

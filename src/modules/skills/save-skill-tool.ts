@@ -2,7 +2,8 @@ import { i18n } from "@/i18n";
 import { fetchSkillMarkdown, resolveSkillSource } from "./import-url";
 import { parseSkillMd } from "./skill-md";
 import { saveSkill } from "./store";
-import { normalizeSkillName, MAX_BODY_CHARS } from "./types";
+import { normalizeSkillName } from "./types";
+import { truncateTo } from "@/lib/format";
 
 /**
  * The agent-side door to the library — `save_skill`'s engine. One pipeline with
@@ -14,8 +15,7 @@ import { normalizeSkillName, MAX_BODY_CHARS } from "./types";
  * uses. Errors come back as strings the tool returns verbatim.
  */
 export type SaveSkillOutcome =
-  | { ok: true; saved: { name: string; description: string } }
-  | { ok: false; error: string };
+  { ok: true; saved: { name: string; description: string } } | { ok: false; error: string };
 
 export async function handleSaveSkill(args: {
   url?: unknown;
@@ -37,7 +37,7 @@ export async function handleSaveSkill(args: {
   const parsed = parseSkillMd(text);
   const name = normalizeSkillName(typeof args.name === "string" ? args.name : "") ?? parsed.name;
   if (!name) {
-    return { ok: false, error: i18n.t("errors.saveSkillUnnamed", { max: MAX_BODY_CHARS }) };
+    return { ok: false, error: i18n.t("errors.saveSkillUnnamed") };
   }
   const overrides =
     Array.isArray(args.sites) && args.sites.length > 0
@@ -53,9 +53,8 @@ export async function handleSaveSkill(args: {
     source: { url: source.url },
   });
   if (!result.ok) return result;
-  // The truncated description doubles as the wire payload's confirmation —
-  // bounded, so a giant description can't flood the tool result.
+  // The truncated line doubles as the tool result's confirmation — bounded,
+  // so a giant description can't flood the wire payload.
   const shown = parsed.description ? `${name} — ${parsed.description}` : name;
-  const bound = shown.length > 300 ? `${shown.slice(0, 297)}…` : shown;
-  return { ok: true, saved: { name, description: bound } };
+  return { ok: true, saved: { name, description: truncateTo(shown, 300) } };
 }
