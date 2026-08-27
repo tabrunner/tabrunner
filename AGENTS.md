@@ -173,7 +173,9 @@ never reach the service-worker bundle.
   transcript distillation, panel-context). Import takes a URL, GitHub `owner/repo` shorthand
   (repo-shaped inputs scan the repo's tree and offer multi-import), or pasted markdown —
   fetched from the page context, https-only, size-capped, always previewed before saving
-  (untrusted prose headed for the system prompt). One built-in ships with the binary
+  (untrusted prose headed for the system prompt). The model itself stocks the library through
+  `save_skill` (`save-skill-tool.ts`, the same pipeline) — ask-first like paying, never
+  overwriting an existing name. One built-in ships with the binary
   (`builtin.ts`, `tabrunner-help`) — seeded on install, refreshed on update, deletion sticks.
   Background-only except `ui/`.
 - `walkthrough/` — walkthroughs: "do X and document it" turns the task into a shareable

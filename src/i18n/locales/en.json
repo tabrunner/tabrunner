@@ -795,7 +795,8 @@
       "retry": "Retrying",
       "warn": "Working",
       "interrupted": "Stopped",
-      "document": "Documenting"
+      "document": "Documenting",
+      "save_skill": "Saving skill"
     },
     "idle": [
       "Thinking",
@@ -1019,6 +1020,10 @@
     "skillLoaded": "Loaded skill \"{{name}}\"",
     "skillNotFound": "No skill named \"{{name}}\". Available: {{list}}",
     "usageUnreadable": "The provider's usage reply came back in a format TabRunner didn't recognize — try Refresh.",
-    "documentUnavailable": "Documenting is off — turn on Walkthroughs in Settings, then ask again."
+    "documentUnavailable": "Documenting is off — turn on Walkthroughs in Settings, then ask again.",
+    "skillSaved": "Saved \"{{name}}\" — it's in /skills.",
+    "saveSkillNoUrl": "No URL given — say where the skill lives (a raw https URL or owner/repo).",
+    "saveSkillBadUrl": "Couldn't reach a skill file at {{url}} — a direct https link to the markdown file, or owner/repo[/path], works.",
+    "saveSkillUnnamed": "The file names no skill and no override was given — pass a kebab-case name."
   }
 }

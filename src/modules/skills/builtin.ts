@@ -75,6 +75,7 @@ The marketing site with install steps and screenshots is tabrunner.app.
 - Signed-in sites just work: the agent uses the user's own tabs and sessions.
 - Anything consequential (paying, sending, deleting, submitting) always stops for explicit permission first.
 - Recurring drags ("check my invoices every Monday") belong in Schedules — ask the agent to schedule it.
+- Recipes worth keeping can be stockpiled by asking: "add the skill from owner/repo" or a raw SKILL.md URL — the agent fetches, confirms, and files it. Everything sits in /skills.
 `;
 
 /**

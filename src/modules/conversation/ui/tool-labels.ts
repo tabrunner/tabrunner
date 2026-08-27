@@ -29,6 +29,7 @@ const TOOL_VERB_KEYS = {
   read_console_messages: "run.tool.read_console_messages",
   remember: "run.tool.remember",
   skill: "run.tool.skill",
+  save_skill: "run.tool.save_skill",
   ask_user: "run.tool.ask_user",
   done: "run.tool.done",
   retry: "run.tool.retry",

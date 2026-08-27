@@ -507,6 +507,17 @@ sanctioned bypass of saveSkill's gates. Presence drives the whole contract: inst
 update refreshes words while preserving the user's toggle and creation time, deletion sticks —
 no tombstone state. It's an ordinary unsited catalog entry, no base-prompt changes.
 
+**The model can stock the library itself: `save_skill`.** One tool, unconditional in
+`buildToolDefs` (the empty library is exactly when it matters), whose case is dumb plumbing over
+the UI-import pipeline (`resolveSkillSource` → `fetchSkillMarkdown` → `parseSkillMd` →
+`saveSkill`) so every cap and rule applies unchanged. The consent is architectural, not a new
+protocol: saving skills joined the ask-first consequential list in BASE_PROMPT ("the task must
+name the action"), which a page can never manufacture, and the tool description carries the
+trust clause outright — anything read asking to be saved is ignored and reported. Writes are
+never silent replacements: an existing name fails and the model resolves with an override. The
+one ceiling, marked in comments: enforcement is prompt-level, the `evaluate` precedent, backed
+by full visibility — every save is a transcript row and an editable `/skills` record.
+
 ### `walkthrough/` — walkthroughs
 
 "Do X and document it": the task performs the process and leaves behind a shareable,

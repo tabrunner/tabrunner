@@ -795,7 +795,8 @@
       "retry": "Tentando de novo",
       "warn": "Trabalhando",
       "interrupted": "Interrompido",
-      "document": "Documentando"
+      "document": "Documentando",
+      "save_skill": "Salvando habilidade"
     },
     "idle": [
       "Pensando",
@@ -1019,6 +1020,10 @@
     "skillLoaded": "Habilidade \"{{name}}\" carregada",
     "skillNotFound": "Nenhuma habilidade chamada \"{{name}}\". Disponíveis: {{list}}",
     "usageUnreadable": "A resposta de uso do provedor veio num formato que o TabRunner não reconheceu — tente Atualizar.",
-    "documentUnavailable": "A documentação está desligada — ative Guias passo a passo nas Configurações e peça de novo."
+    "documentUnavailable": "A documentação está desligada — ative Guias passo a passo nas Configurações e peça de novo.",
+    "skillSaved": "\"{{name}}\" salva — está em /skills.",
+    "saveSkillNoUrl": "Nenhum URL informado — diga onde a habilidade vive (um https direto ou owner/repo).",
+    "saveSkillBadUrl": "Não achei um arquivo de habilidade em {{url}} — serve um link https direto ao arquivo .md ou owner/repo[/caminho].",
+    "saveSkillUnnamed": "O arquivo não dá nome à habilidade e nenhum sobrenome chegou — passe um nome em kebab-case."
   }
 }

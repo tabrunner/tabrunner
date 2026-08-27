@@ -1,6 +1,7 @@
 import type { BrowserDriver } from "@/modules/browser";
 import type { ToolCall } from "@/modules/providers/types";
 import type { Skill } from "@/modules/skills";
+import { handleSaveSkill } from "@/modules/skills/save-skill-tool";
 import type { RunRecorder } from "@/modules/walkthrough/recorder";
 import { normalizeMcpResult } from "@/modules/mcp";
 import { MCP_TOOL_PREFIX } from "@/modules/mcp";
@@ -256,6 +257,16 @@ export async function executeTool(
         return { ok: true, data: { name: found.name, instructions: found.body } };
       }
 
+      case "save_skill": {
+        // Consent lives in the prompt's ask-first rule, not here: the case is
+        // deliberately dumb plumbing over the SAME pipeline UI import uses
+        // (resolve → fetch → parse → saveSkill), so nothing about a model save
+        // bypasses what a human one passes through.
+        const outcome = await handleSaveSkill(call.args);
+        if (!outcome.ok) return { ok: false, error: outcome.error };
+        return { ok: true, data: { saved: outcome.saved.name, summary: outcome.saved.description } };
+      }
+
       case "schedule_task":
         // Gated on an approved plan (see GATED_TOOLS): committing the browser to
         // unattended future work needs the same yes an action on the page does.
@@ -453,6 +464,9 @@ export function formatSuccessSummary(tool: string, data: unknown): string {
   }
   if (tool === "skill" && data && typeof data === "object") {
     return i18n.t("errors.skillLoaded", { name: (data as { name?: string }).name ?? "" });
+  }
+  if (tool === "save_skill") {
+    return i18n.t("errors.skillSaved", { name: (data as { saved?: string }).saved ?? "" });
   }
   if (tool === "remember" && data && typeof data === "object") {
     // The fact itself is the summary — "Saved to memory" tells the user nothing
