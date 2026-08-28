@@ -114,4 +114,25 @@ describe("buildTaskMessage", () => {
 
     expect(message).not.toContain("scheduled task firing on its own");
   });
+
+  // The plan card never crosses the wire (buildConversationHistory drops it),
+  // so a follow-up like "check if it worked" would otherwise plan from that
+  // message alone — a four-step list replacing the arc the user approved.
+  it("carries the arc this conversation already approved", () => {
+    const message = buildTaskMessage("veja se tudo certo", '- heading "Form"', {
+      mode: "continued",
+      standingPlan: ["Open the September invoices", "Download the latest one", "Read its total"],
+    });
+
+    expect(message).toContain("already approved this plan and it still stands");
+    expect(message).toContain("1. Open the September invoices");
+    expect(message).toContain("3. Read its total");
+    expect(message).toContain("WHOLE arc");
+  });
+
+  it("says nothing about a standing plan on a conversation's first run", () => {
+    const message = buildTaskMessage("book the flight", '- heading "Flights"', { mode: "adopted" });
+
+    expect(message).not.toContain("already approved this plan");
+  });
 });

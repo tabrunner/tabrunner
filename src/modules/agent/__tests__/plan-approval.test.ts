@@ -556,4 +556,30 @@ describe("runAgentLoop plan approval gate", () => {
     expect(planResults[1]?.content).toContain(i18n.t("plan.narrowedNote"));
     expect(planResults[2]?.content).not.toContain("whole arc"); // converged, no repeat
   });
+
+  // The cross-run twin of the case above: a stop, then "veja se tudo certo",
+  // and the fresh run plans only the check. The standing yes waves that first
+  // call through without a card, so nothing else would notice the swap.
+  it("notes a first plan that comes in shorter than the conversation's approved arc", async () => {
+    const provider = scriptedProvider([
+      [planCall(["Check the answers"], 0, false)],
+      [planCall(["Fill the name", "Fill the email", "Check the answers"], 2)],
+    ]);
+    const wire: ChatMessage[] = await runAgentLoop({
+      provider,
+      driver: makeDriver(),
+      task: "veja se tudo certo",
+      signal: new AbortController().signal,
+      standingPlan: ["Fill the name", "Fill the email", "Check the answers"],
+      callbacks: { onPlanApproval: async () => ({ approved: true }) },
+    });
+
+    const planResults = wire
+      .filter((m) => m.role === "tool_results")
+      .flatMap((m) => m.toolResults ?? [])
+      .filter((r) => r.id === "c-plan");
+    expect(planResults[0]?.content).toContain(i18n.t("plan.shrunkNote", { count: 3 }));
+    // Re-sent whole, so the nudge stops — and a longer list never trips it.
+    expect(planResults[1]?.content).not.toContain("whole approved arc");
+  });
 });

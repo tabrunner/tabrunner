@@ -765,6 +765,7 @@
     "approve": "Approve",
     "revisionNote": "The user sent this plan back with requested changes. Call `plan` again with a revised list — it goes back to the user for approval, and no page action runs before that.",
     "narrowedNote": "This list dropped steps the run already finished — the progress card lost them. Call `plan` again with the whole arc (finished steps included, cursor past them) unless the user cancelled those steps.",
+    "shrunkNote": "This run's first plan is shorter than the {{count}}-step arc this conversation already approved, and the standing approval let it through without a card — so the user never saw their plan shrink. Call `plan` again with the whole approved arc, cursor where the work actually stands, unless they cancelled those steps or their new message replaced the task.",
     "reject": "Reject"
   },
   "run": {

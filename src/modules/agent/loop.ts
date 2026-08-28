@@ -497,6 +497,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         mode,
         ...(submitPage ? { submitPage } : {}),
         ...(scheduleId ? { scheduleId } : {}),
+        ...(standingPlan?.length ? { standingPlan } : {}),
       }),
       // The user's own attachments are the subject of the task — unlike screenshots
       // they are never pruned, or a long run would forget what it was asked about.
@@ -868,6 +869,13 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
           // its mouth); the note asks it to re-send the whole arc.
           if (approvedPlan && plan.current < approvedPlan.current) {
             note = i18n.t("plan.narrowedNote");
+          } else if (!approvedPlan && standing && plan.steps.length < standing.length) {
+            // The same smell one run later: this run's FIRST plan came in
+            // shorter than the arc the conversation already approved, and the
+            // standing yes just waved it through — so the user never saw their
+            // plan shrink. The task message carries that arc, so the model has
+            // what it needs to re-send it whole.
+            note = i18n.t("plan.shrunkNote", { count: standing.length });
           }
           approvedPlan = plan;
           // The gate just said yes to this list — silently (progress, a

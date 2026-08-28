@@ -237,6 +237,15 @@ export interface TaskContext {
    * is supposed to end.
    */
   scheduleId?: string;
+  /**
+   * The arc this conversation already had approved. History replay drops plan
+   * messages (see buildConversationHistory), so without this a continuation
+   * rebuilds its plan from the last message alone — and "check if it worked"
+   * honestly reads as a four-step plan, silently replacing the twenty-step one
+   * the user approved. The gate can't catch that either: the standing approval
+   * waves a run's first plan call through without a card.
+   */
+  standingPlan?: string[];
 }
 
 /**
@@ -249,7 +258,7 @@ export interface TaskContext {
  * invoice" are unanswerable without a real anchor.
  */
 export function buildTaskMessage(task: string, pageContent: string, ctx: TaskContext = {}): string {
-  const { previousTabs, mode, scheduleId, submitPage } = ctx;
+  const { previousTabs, mode, scheduleId, submitPage, standingPlan } = ctx;
   const now = new Date();
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
     now.getDate(),
@@ -297,6 +306,15 @@ export function buildTaskMessage(task: string, pageContent: string, ctx: TaskCon
   if (scheduleId) {
     parts.push(
       `This run is a scheduled task firing on its own — schedule id ${scheduleId}, listed under "Scheduled tasks". Nobody is watching it start. Everything above this line in the conversation is this schedule's OWN earlier fires: read it before you work, so you build on what the last one found instead of repeating it.`,
+    );
+  }
+  // The conversation's approved arc — the only place a later run can read what
+  // it already committed to, since the plan card never crosses the wire. The
+  // plan tool's "always send the whole arc" rule is unfollowable without it.
+  if (standingPlan?.length) {
+    const arc = standingPlan.map((step, i) => `${i + 1}. ${step}`).join("\n");
+    parts.push(
+      `This conversation already approved this plan and it still stands:\n${arc}\nEarlier runs may have finished part of it — read_history says how far they got. Your "plan" call carries this WHOLE arc, cursor where the work actually stands: a short list written for the last message alone replaces their plan with a fragment of it. A step comes off only when the user cancelled it, or when their new message plainly replaces the task.`,
     );
   }
   const count = previousTabs?.length ?? 0;

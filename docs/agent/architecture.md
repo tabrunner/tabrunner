@@ -253,7 +253,18 @@ would erase what the run already did; only steps the user cancelled come off. Th
 backstop for a model that narrows anyway is the cursor, not a diff: a replan whose
 `current` moves backwards dropped finished steps, so the plan tool's result appends a
 whole-arc note (`plan.narrowedNote`) — the update still lands, since the model is the
-list's one writer and a merged list would put words in its mouth.
+list's one writer and a merged list would put words in its mouth. One run later that
+tell is gone (a fresh run's `approvedPlan` starts null, so no cursor can move
+backwards), so the standing arc is the yardstick instead: a first plan call with fewer
+steps than the arc the conversation approved gets `plan.shrunkNote`. That case is the
+quiet one — the standing yes applies it without a card, so nothing else would show the
+user their plan shrinking.
+
+The arc rides into the run in the task message (`standingPlan` in `buildTaskMessage`),
+which is what makes the whole-arc rule followable at all across runs: the replayed
+history deliberately drops plan messages, so without it a continuation writes its plan
+from the last user message alone. "See if it all worked" honestly reads as a four-step
+check — and that fragment replaces the twenty steps the user approved.
 
 A re-ask is not the first card again, because the run is already mid-list: the
 `plan_approval` payload carries the cursor (`current`) and the list the user was last
