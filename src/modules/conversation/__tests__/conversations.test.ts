@@ -12,6 +12,7 @@ import {
   getMessages,
   isPartialTitle,
   listConversations,
+  MAX_MESSAGES,
   openScheduledConversation,
   recordApprovedPlan,
   recordDrivenTabFor,
@@ -335,9 +336,12 @@ describe("replaceMessageTo", () => {
     const id = await appendMessageFresh(msg("user", "add the ingress rule"));
     const evicted = msg("plan", "");
     await appendMessageTo(id, evicted);
-    // Push the card out the tail of the cap: MAX_MESSAGES appends later.
-    for (let i = 0; i < 100; i++) await appendMessageTo(id, msg("step", `step ${i}`));
-    expect(await getMessages(id)).toHaveLength(100);
+    // Push the card past the ceiling with spine messages — step rows are pruned
+    // above the recent window, so they never crowd a plan card out.
+    for (let i = 0; i < MAX_MESSAGES; i++) {
+      await appendMessageTo(id, msg("assistant", `turn ${i}`));
+    }
+    expect(await getMessages(id)).toHaveLength(MAX_MESSAGES);
     expect((await getMessages(id)).some((m) => m.id === evicted.id)).toBe(false);
 
     const revised = { ...evicted, steps: ["revised"], current: 1 };
@@ -347,7 +351,7 @@ describe("replaceMessageTo", () => {
     // The revision landed (at the tail) instead of being dropped, and the cap
     // held: the oldest message made room for it.
     expect(stored.some((m) => m.id === revised.id && m.steps?.length === 1)).toBe(true);
-    expect(stored).toHaveLength(100);
+    expect(stored).toHaveLength(MAX_MESSAGES);
   });
 });
 

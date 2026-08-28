@@ -129,13 +129,64 @@ export interface ConversationMeta {
   scheduled?: boolean;
 }
 
-// ponytail: fixed caps keep chrome.storage.local under quota — unbounded
-// transcripts eventually fail writes silently. Ceilings: a very long run loses
-// its oldest messages, and the 51st conversation evicts the least recently
-// touched one. Upgrade path is IndexedDB if transcripts must be permanent.
-export const MAX_MESSAGES = 100;
+// ponytail: fixed caps keep transcript writes bounded — every append rewrites
+// the whole array, so length is paid again on every step row a run ever adds.
+// Ceilings: a very long conversation loses its oldest turns, and the 51st
+// conversation evicts the least recently touched one. Upgrade path is IndexedDB
+// if transcripts must be permanent.
+
+/**
+ * The tail that survives whole — every step row, every thought, every tool
+ * detail. This is the crash window: what `read_history` replays when a run died
+ * mid-task, so it has to hold entire runs and not just their outcomes.
+ */
+export const RECENT_WINDOW = 100;
+
+/** The transcript's ceiling. Past RECENT_WINDOW only the spine counts. */
+export const MAX_MESSAGES = 300;
 const MAX_CONVERSATIONS = 50;
 const TITLE_LENGTH = 60;
+
+/**
+ * What survives past the crash window — everything except the two roles that
+ * are one run's machinery rather than the conversation itself.
+ *
+ * A step row and a thought earn their keep while their run is recent (that is
+ * what recovers an interrupted task) and earn nothing once the thread has moved
+ * on: the model's own replay reads neither role (`buildConversationHistory`),
+ * the standing plan approval lives on the conversation's metadata rather than
+ * in these cards, and in scrollback they are the noise a reader scrolls PAST to
+ * reach the turns. They are also where the bytes are — one stored snapshot
+ * detail runs to 2k chars — so letting them go is what buys the spine its far
+ * longer reach at no more weight than the flat cap carried before.
+ *
+ * `ask_user` is the exception that keeps the record honest: that step replays
+ * as an assistant turn, so without it the user's answer reads as a reply to a
+ * question the model never asked.
+ *
+ * Written as an exclusion so a role added later survives by default — quietly
+ * losing a new kind of message is the failure with no symptom.
+ */
+function isSpine(m: Message): boolean {
+  if (m.role === "step") return m.tool === "ask_user";
+  return m.role !== "reasoning";
+}
+
+/**
+ * The transcript, bounded: the newest RECENT_WINDOW messages exactly as they
+ * are, and above them the spine alone, up to MAX_MESSAGES.
+ *
+ * A flat cap spent nearly all of itself on step and reasoning rows — one run
+ * writes dozens — so a conversation lost the turns it was made of after a
+ * handful of exchanges while keeping every click of the last two runs. Two
+ * tiers keep the same recovery fidelity and reach an order of magnitude
+ * further back through what a reader (and `read_history`) actually looks for.
+ */
+export function pruneTranscript(list: Message[]): Message[] {
+  if (list.length <= RECENT_WINDOW) return list;
+  const older = list.slice(0, -RECENT_WINDOW).filter(isSpine);
+  return [...older.slice(RECENT_WINDOW - MAX_MESSAGES), ...list.slice(-RECENT_WINDOW)];
+}
 
 /** Index of every stored conversation, most recently touched first. */
 const indexItem = defineItem<ConversationMeta[]>("conversations", []);
@@ -494,7 +545,7 @@ export function flushConversationWrites(): Promise<void> {
 async function appendTo(id: string, msg: Message): Promise<string> {
   const meta = await ensureConversation(id);
   const item = messagesItem(meta.id);
-  const messages = [...(await item.get()), stripTransientImages(msg)].slice(-MAX_MESSAGES);
+  const messages = pruneTranscript([...(await item.get()), stripTransientImages(msg)]);
   await item.set(messages);
 
   const updated: ConversationMeta = {

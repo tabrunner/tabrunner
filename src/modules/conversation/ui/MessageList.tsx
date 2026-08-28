@@ -803,9 +803,9 @@ function TabStamp({ tab }: { tab: NonNullable<Message["tab"]> }) {
  * How many messages stay rendered. Everything older folds behind one row and
  * leaves the DOM entirely — not `display:none`, not `<details>` (both keep the
  * nodes and their decoded screenshots in memory), but unmounted until asked
- * for. A transcript is capped at 100 messages, so this is the difference
- * between ~100 subtrees and ~50 on the reasoning-shown path where nothing
- * folds into bursts.
+ * for. The messages above the window are the pruned spine — turns, not step
+ * rows — so unfolding a long transcript mounts the cheap half of it, and what
+ * stays folded is the expensive half: the newest runs and their screenshots.
  */
 const RENDER_WINDOW = 50;
 

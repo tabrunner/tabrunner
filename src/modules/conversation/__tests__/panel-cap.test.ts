@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { capMessages } from "../ui/store";
-import { MAX_MESSAGES } from "../conversations";
+import { RECENT_WINDOW } from "../conversations";
 import type { Message } from "../types";
 
 /**
  * The panel's in-memory transcript must stay bounded the way storage already
  * bounds its own. Before this, a long run grew the list without limit — every
  * step, every thought, every base64 screenshot — so the live panel was heavier
- * than the very same conversation reopened, which loads the capped 100 and no
- * screenshots at all.
+ * than the very same conversation reopened, which loads a pruned transcript and
+ * no screenshots at all.
  */
 function step(i: number, images?: string[]): Message {
   return {
@@ -22,13 +22,15 @@ function step(i: number, images?: string[]): Message {
 }
 
 describe("capMessages", () => {
-  it("keeps the newest MAX_MESSAGES and drops the oldest", () => {
-    const list = Array.from({ length: MAX_MESSAGES + 40 }, (_, i) => step(i));
+  it("keeps the newest window of step rows and drops the older ones", () => {
+    const list = Array.from({ length: RECENT_WINDOW + 40 }, (_, i) => step(i));
     const capped = capMessages(list);
 
-    expect(capped.length).toBe(MAX_MESSAGES);
+    // Steps are not spine: past the window they go, so the panel's copy stops
+    // at the window even though the transcript's ceiling is far above it.
+    expect(capped.length).toBe(RECENT_WINDOW);
     expect(capped[0]?.id).toBe("s40");
-    expect(capped.at(-1)?.id).toBe(`s${MAX_MESSAGES + 39}`);
+    expect(capped.at(-1)?.id).toBe(`s${RECENT_WINDOW + 39}`);
   });
 
   it("returns the same array when nothing needs dropping — no needless re-render", () => {

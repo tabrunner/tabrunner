@@ -51,9 +51,9 @@ export interface Recording {
 
 /**
  * One documented action: the screen it happened on, plus everything the caption
- * needs. Self-contained on purpose — the transcript caps at 100 messages
- * (`MAX_MESSAGES`), so a 200-step run's doc cannot be rebuilt by joining
- * against it.
+ * needs. Self-contained on purpose — the transcript keeps step rows only inside
+ * its newest window (`RECENT_WINDOW`), so a 200-step run's doc cannot be
+ * rebuilt by joining against it.
  */
 export interface Frame {
   recordingId: string;

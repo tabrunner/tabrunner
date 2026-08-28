@@ -22,7 +22,7 @@ import {
   getActiveId,
   getMessages,
   listConversations,
-  MAX_MESSAGES,
+  pruneTranscript,
   renameConversation,
   setActiveConversation,
   watchActiveConversation,
@@ -332,12 +332,12 @@ const MAX_PANEL_IMAGES = 6;
  *
  * Without this the live list grew without limit while a run worked — every
  * step, every thought, every screenshot — so a long run made the panel heavier
- * than the very same conversation reopened, which loads the capped 100 and no
- * images at all. The cap is shared with storage so the two agree; the
+ * than the very same conversation reopened, which loads a pruned transcript and
+ * no images at all. The prune is shared with storage so the two agree; the
  * screenshot sweep is the panel's alone, since storage keeps none.
  */
 export function capMessages(list: Message[]): Message[] {
-  const capped = list.length > MAX_MESSAGES ? list.slice(-MAX_MESSAGES) : list;
+  const capped = pruneTranscript(list);
   let budget = MAX_PANEL_IMAGES;
   let stripped: Message[] | null = null;
   for (let i = capped.length - 1; i >= 0; i--) {
