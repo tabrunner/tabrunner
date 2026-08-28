@@ -39,6 +39,16 @@ const values = new Map<string, unknown>();
 const watchers = new Map<string, Array<(v: unknown) => void>>();
 vi.mock("wxt/utils/storage", () => ({
   storage: {
+    // The batched read path (`defineItem().get()` coalesces a tick's reads into
+    // one call) goes through here, so the stub owes the same `?? fallback` rule
+    // the real driver applies.
+    getItems: (keys: Array<{ key: string; options?: { fallback?: unknown } }>) =>
+      Promise.resolve(
+        keys.map(({ key, options }) => ({
+          key,
+          value: values.has(key) ? values.get(key) : (options?.fallback ?? null),
+        })),
+      ),
     defineItem: <T>(key: string, opts: { fallback: T }) => ({
       getValue: () => Promise.resolve(values.has(key) ? (values.get(key) as T) : opts.fallback),
       setValue: (v: T) => {

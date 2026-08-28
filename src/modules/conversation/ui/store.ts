@@ -33,10 +33,13 @@ import { toolVerbKey } from "./tool-labels";
 import type { PastedText } from "./paste-collapse";
 import { isRestrictedUrl } from "@/modules/browser";
 import { runModePref } from "@/lib/prefs";
+import { createLogger } from "@/lib/logger";
 import { engineOf, engineProvider } from "@/modules/providers/engine";
 import { useProvidersStore } from "@/modules/providers/ui";
 import type { ConversationEngine } from "@/modules/providers/types";
 import type { RunMode } from "@/lib/prefs";
+
+const log = createLogger("panel");
 
 export interface ConversationState {
   messages: Message[];
@@ -44,6 +47,15 @@ export interface ConversationState {
   conversations: ConversationMeta[];
   /** Open conversation; null until the first message of a fresh one is stored */
   activeId: string | null;
+  /**
+   * The open conversation's first read has landed (or failed) — `messages` is
+   * now the truth rather than the empty array every panel starts on. What holds
+   * the boot cover up: an empty transcript and a not-yet-read one look
+   * identical from here, and MessageList draws the "nothing here yet" hero for
+   * both. Never flips back — a conversation SWITCH swaps a known transcript for
+   * another, which is a different thing from a panel that has never read one.
+   */
+  hydrated: boolean;
   status: AgentStatus;
   streamingText: string;
   /** Model reasoning stream for the current run (display-only, flushed at the next step or turn end) */
@@ -1272,7 +1284,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     post({ type: "query_run", conversationId: id });
     void getMessages(id).then((messages) => {
       // A switch that raced this read wins — never paint a stale transcript.
-      if (get().activeId === id) set({ messages });
+      if (get().activeId === id) set({ messages: capMessages(messages) });
     });
   };
 
@@ -1280,6 +1292,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     messages: [],
     conversations: [],
     activeId: null,
+    hydrated: false,
     status: "idle",
     streamingText: "",
     reasoningText: "",
@@ -1395,16 +1408,42 @@ export const useConversationStore = create<ConversationState>((set, get) => {
           // spinning. Safe at the end: `done` settles this panel to idle
           // before start-run's finally releases the slot and writes the board,
           // so the settle refetch this watch exists for still lands.
-          if (get().activeId === activeId && !ownsLiveView()) set({ messages });
+          if (get().activeId === activeId && !ownsLiveView())
+            set({ messages: capMessages(messages) });
         });
       });
-      void getActiveId().then(async (activeId) => {
-        set({ activeId, messages: activeId ? await getMessages(activeId) : [] });
-        // The board read may have landed before the open conversation was known
-        // — reconcile again now that both halves of "is the gate parked HERE"
-        // are on hand. Whichever load resolves second arms the card.
-        reconcileParkedAsks(get().board);
-      });
+      void (async () => {
+        try {
+          const activeId = await getActiveId();
+          const messages = activeId ? capMessages(await getMessages(activeId)) : [];
+          // Never over an owned view — see ownsLiveView, the gate every other
+          // storage repaint of `messages` already consults. A send that beat
+          // this read (the panel is typeable the moment it paints, and this
+          // read is at its slowest on the first open of the day) has already
+          // put the user's message on screen and minted the thread it belongs
+          // to; storage has not heard of either yet, so painting yesterday's
+          // transcript here erased the message the user just sent. A moved slot
+          // is the same story from the other side: whatever set `activeId`
+          // while this was in flight is fresher than what it just read.
+          if (!ownsLiveView() && get().activeId === null) {
+            // One commit, not two: `hydrated` is what lifts the boot cover, and
+            // it must not lift onto a frame the transcript hasn't reached yet.
+            set({ activeId, messages, hydrated: true });
+            // The board read may have landed before the open conversation was
+            // known — reconcile again now that both halves of "is the gate
+            // parked HERE" are on hand. Whichever load resolves second arms the
+            // card.
+            reconcileParkedAsks(get().board);
+            return;
+          }
+          set({ hydrated: true });
+        } catch (e) {
+          // A transcript we cannot read is a panel that shows its empty state —
+          // never a cover that never lifts.
+          log.error("could not read the open conversation:", e);
+          set({ hydrated: true });
+        }
+      })();
       attach();
     },
 

@@ -16,6 +16,7 @@ import {
 import { Onboarding, useProvidersStore } from "@/modules/providers/ui";
 import { initSkillsCatalog, SkillDraftDialog, SkillsManageDialog } from "@/modules/skills/ui";
 import { SettingsMenu } from "./SettingsMenu";
+import { mark } from "./boot";
 import { notePanelOpen, refreshTip } from "@/modules/tips/ui";
 import { Button } from "@/components/Button";
 import { XIcon } from "@/components/Icon";
@@ -113,6 +114,29 @@ export default function App() {
   useEffect(() => {
     void load(); // idempotent — the store dedupes concurrent mounts
   }, [load]);
+
+  // The boot cover (index.html) stays up until the panel has something true to
+  // show, and comes off in one move. Both halves are needed: `loaded` decides
+  // onboarding vs chat, `hydrated` decides "empty conversation" vs "not read
+  // yet" — lifting on the first alone lands on the "nothing here yet" hero for
+  // as long as the transcript read takes, which on the first open of the day is
+  // exactly when it takes longest.
+  const hydrated = useConversationStore((s) => s.hydrated);
+  useEffect(() => {
+    mark("mount");
+  }, []);
+  useEffect(() => {
+    if (loaded) mark("providers");
+  }, [loaded]);
+  useEffect(() => {
+    if (!loaded || !hydrated) return;
+    mark("content");
+    const boot = document.getElementById("boot");
+    if (!boot) return;
+    // Removes itself when the fade ends, so the duration lives only in the CSS.
+    boot.addEventListener("transitionend", () => boot.remove(), { once: true });
+    boot.classList.add("done");
+  }, [loaded, hydrated]);
 
   // The slash menu's skill picker reads synchronously — warm its mirror once.
   useEffect(() => {

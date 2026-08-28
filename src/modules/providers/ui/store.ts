@@ -9,7 +9,10 @@ import {
   watchActiveProvider,
 } from "../index";
 import { engineProvider } from "../engine";
+import { createLogger } from "@/lib/logger";
 import type { ProviderConfig } from "../types";
+
+const log = createLogger("providers-ui");
 
 interface ProvidersState {
   providers: ProviderConfig[];
@@ -70,6 +73,12 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
           watchProviders((providers) => set({ providers }));
           watchActiveProvider((activeId) => set({ activeId }));
         }
+      } catch (e) {
+        // A read that fails must not leave the panel behind its boot cover
+        // forever. Mark the load done with what we have — none — which lands on
+        // Onboarding: the one surface that offers a way forward from here.
+        log.error("could not read the provider list:", e);
+        set({ loaded: true });
       } finally {
         // A failed load stays retryable; a successful one is guarded by `loaded`.
         loadPromise = null;

@@ -5,17 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <title>TabRunner</title>
-    <!-- First-paint theme + boot mark, inline so it applies before any bundle
+    <!-- First-paint theme + boot cover, inline so it applies before any bundle
          loads. Backgrounds mirror the app shell (bg-white / dark:bg-neutral-950);
          the OS scheme decides pre-JS, the `dark` class (initTheme, pre-render)
          takes over the instant it lands. A stored theme forced against the OS
          shows the OS shade for those few ms — the app repaints over it.
          The mark waits 150ms before fading in, so a warm load never flashes it,
          and breathes while it's up so a slow one reads as starting, not hung.
-         It lives inside #root: React clears the container on first render, so
-         teardown costs no code. -->
+
+         It lives OUTSIDE #root, opaque, and the app removes it (App.tsx) only
+         once there is something true to show. Inside #root it was torn down by
+         React's own container clear at mount — which is the beat BEFORE the
+         provider read and the transcript read land, so the panel dropped its
+         one honest "starting" signal and spent the rest of the boot showing an
+         empty shell, then the "nothing here yet" hero, then yesterday's chat.
+         One state, held, is worth more than three that are each briefly a lie. -->
     <style>
-      html {
+      html,
+      #boot {
         background: #fff;
       }
       /* #070b16 is neutral-950 as theme.css retints it. It used to be #0a0a0a —
@@ -23,11 +30,13 @@
          the boot screen flashed a flatter, warmer dark than the app painted over
          it. A runtime copy of a token, like the injected page CSS keeps. */
       @media (prefers-color-scheme: dark) {
-        html {
+        html,
+        #boot {
           background: #070b16;
         }
       }
-      html.dark {
+      html.dark,
+      html.dark #boot {
         background: #070b16;
       }
       #boot {
@@ -35,6 +44,16 @@
         inset: 0;
         display: grid;
         place-items: center;
+        /* Above the mounted app: React renders the real panel underneath while
+           the cover is still up, so the first thing seen is the finished thing. */
+        z-index: 1;
+      }
+      /* Lifted when the panel has real content. The node removes itself on
+         transitionend — no duplicated duration in the TSX. */
+      #boot.done {
+        opacity: 0;
+        transition: opacity 180ms ease-out;
+        pointer-events: none;
       }
       #boot img {
         width: 40px;
@@ -62,9 +81,8 @@
     </style>
   </head>
   <body>
-    <div id="root">
-      <div id="boot"><img src="/icon.svg" alt="" /></div>
-    </div>
+    <div id="root"></div>
+    <div id="boot"><img src="/icon.svg" alt="" /></div>
     <script type="module" src="./main.tsx"></script>
   </body>
 </html>
