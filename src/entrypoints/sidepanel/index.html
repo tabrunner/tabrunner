@@ -59,7 +59,23 @@
         width: 40px;
         height: 40px;
         opacity: 0;
-        animation: boot-breathe 1.6s ease-in-out 0.15s infinite alternate;
+        /* Ramps in rather than appearing. The cover now outlives React's mount,
+           so a hard 150ms threshold would let an open that finishes around
+           300ms show a fully drawn mark for a single beat — a flash, which is
+           what the delay existed to prevent. The ramp makes the mark's presence
+           proportional to the wait: nothing under ~200ms, unmistakable past
+           half a second. It hands off to the breathe at its own value. */
+        animation:
+          boot-in 400ms ease-in 0.15s forwards,
+          boot-breathe 1.6s ease-in-out 0.55s infinite alternate;
+      }
+      @keyframes boot-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 0.35;
+        }
       }
       @keyframes boot-breathe {
         from {
