@@ -79,8 +79,8 @@ button "Submit"`); `sanitize.ts` caps tool output and keeps passwords, one-time 
   `chrome.storage`; the bridge protocol is declared twice on purpose
   (`src/modules/bridge/protocol.ts` ↔ `daemon/src/protocol.ts`).
 - Release mechanics: `package.json` version is the single source of truth; `bun run release`
-  gates, bumps, tags and builds two non-interchangeable zips (keyed `-chrome.zip` for the site,
-  key-stripped `-store.zip` for CWS). No CRX ships, ever.
+  gates, bumps, tags and builds one keyed `-chrome.zip` that serves the site, dev loads and the
+  Chrome Web Store alike. No CRX ships, ever.
 
 ## Brand Commitments
 

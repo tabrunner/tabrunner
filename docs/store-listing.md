@@ -540,7 +540,7 @@ text** — the store renders no Markdown in it (see §2).
 
 **The package** is a separate submission. Every new upload goes through review again, so a
 feature that must reach store users means: fix the code, then `bun run release patch | minor` and
-upload the new `dist/tabrunner-<version>-store.zip` (never `-chrome.zip`; see
+upload the new `dist/tabrunner-<version>-chrome.zip` (see
 [AGENTS.md → Releasing](../AGENTS.md#releasing)). The live listing's text, screenshots and privacy
 answers are inherited, not reset, by a package update — correct them above first.
 

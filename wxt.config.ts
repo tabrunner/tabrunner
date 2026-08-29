@@ -2,14 +2,10 @@ import { defineConfig } from "wxt";
 import tailwindcss from "@tailwindcss/vite";
 
 /**
- * The store and every other channel disagree about `key`: CWS derives the id
- * from its own item record, so the field is at best redundant there and its
- * validator rejects an upload for carrying one ("key field is not allowed in
- * manifest"). Reports of that firing on later uploads too are common enough
- * that stripping it is the only upload path that always works. Everywhere else
- * the key is what gives us one id (see below) — so there is ONE keyed build
- * here, and `scripts/pack-store.ts` derives the store zip from it by deleting
- * the field; no second compile.
+ * ONE keyed build serves every channel. The `key` below is what gives the
+ * unpacked install and every dev load the store listing's own id (see below);
+ * CWS derives that same id from its item record, so the field is redundant
+ * there but harmless — the keyed zip is the upload.
  */
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
@@ -23,8 +19,7 @@ export default defineConfig({
     // Public half of the Chrome Web Store item's key, straight from the
     // dashboard. It pins every unpacked and dev load to the store's own id,
     // ilnohobdcigbmlikjbkdpbkhciephdle, so one id covers every channel and the
-    // MCP bridge expects the id real users actually have. The store zip drops
-    // the field (pack-store.ts) and CWS re-derives the same id from its copy.
+    // MCP bridge expects the id real users actually have.
     //
     // Consequence to know: a store install and an unpacked build can no longer
     // be loaded side by side — Chrome keys its registry by id and refuses the

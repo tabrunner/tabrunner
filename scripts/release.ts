@@ -1,13 +1,13 @@
 /**
- * One-command release: gates → version bump → commit → tag → zips + daemon.
+ * One-command release: gates → version bump → commit → tag → zip + daemon.
  *
  *   bun run release patch   # 0.1.0 → 0.1.1
  *   bun run release minor   # 0.1.0 → 0.2.0
  *   bun run release major   # 0.1.0 → 1.0.0
  *
  * package.json `version` is the single source of truth: the git tag (`v0.1.0`)
- * and the artifact names (`dist/tabrunner-0.1.0-chrome.zip`, `-store.zip`,
- * `-mcp.js`) all derive from it. Never pushes — pushing stays an explicit act;
+ * and the artifact names (`dist/tabrunner-0.1.0-chrome.zip`, `-mcp.js`) all
+ * derive from it. Never pushes — pushing stays an explicit act;
  * the final line names the command. The push fires the Release workflow, which
  * rebuilds the artifacts and attaches them (plus `latest` aliases the website
  * hotlinks) to the tagged GitHub Release.
@@ -115,19 +115,17 @@ try {
   process.exit(1);
 }
 
-// Two zips, one per channel: the keyed `-chrome.zip` is the website's install
-// (loaded unpacked, so its manifest `key` pins it to the store listing's id);
-// `-store.zip` drops the key, which the store neither needs nor reliably accepts.
-for (const target of ["zip", "zip:store"]) {
-  try {
-    await $`bun run ${target}`;
-  } catch {
-    console.error(
-      `✗ ${target} failed, but v${next} is already committed and tagged. Do NOT re-run release — it bumps again.`,
-    );
-    console.error(`  Fix the build, then finish by hand: bun run ${target}`);
-    process.exit(1);
-  }
+// One zip for every channel: the keyed `-chrome.zip` is the website's unpacked
+// install AND the Chrome Web Store upload — the listing exists, so CWS derives
+// the id from its own item record and takes the manifest `key` in stride.
+try {
+  await $`bun run zip`;
+} catch {
+  console.error(
+    `✗ zip failed, but v${next} is already committed and tagged. Do NOT re-run release — it bumps again.`,
+  );
+  console.error("  Fix the build, then finish by hand: bun run zip");
+  process.exit(1);
 }
 
 // The daemon bundle names itself after the new version, so it builds here,
@@ -146,10 +144,4 @@ const artifacts = [...new Bun.Glob(`tabrunner-${next}-*.{zip,js}`).scanSync("dis
 console.log(`\n✔ Released v${next}`);
 for (const artifact of artifacts) console.log(`  artifact  dist/${artifact}`);
 console.log(`  tag       v${next}`);
-const storeZip = artifacts.find((a) => a.endsWith("-store.zip"));
 console.log("  publish   git push --follow-tags — CI attaches the artifacts to the GitHub Release");
-console.log(
-  storeZip
-    ? `  store     upload dist/${storeZip} to the Chrome Web Store — never -chrome.zip, whose manifest key the store does not need and may reject`
-    : "  store     store zip missing — run bun run zip:store, then upload it to the Chrome Web Store",
-);

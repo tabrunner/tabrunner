@@ -17,8 +17,7 @@ bun run i18n:check # locale parity + every static t() key resolves (--unused for
 bun run icons      # regenerate public/icon/* + docs/og.png from src/shared/logo.ts
 bun run shots      # store screenshots → docs/screenshots/ (+ site sync when ../site exists)
 bun run shots:ui   # light/dark UI previews → preview/ (gitignored)
-bun run zip        # build + pack dist/tabrunner-<version>-chrome.zip (the website's download)
-bun run zip:store  # same build minus the manifest `key` → dist/tabrunner-<version>-store.zip (CWS)
+bun run zip        # build + pack dist/tabrunner-<version>-chrome.zip (the one release artifact)
 bun run release    # bun run release <patch|minor|major> — gates, bump, commit, tag, zip
 bun run bridge     # run the MCP daemon by hand (clients spawn it themselves)
 bun run bridge:check # end-to-end check of the MCP bridge — no Chrome needed
@@ -38,21 +37,22 @@ Before submitting work: `compile`, `lint`, `test`, `deadcode`, `i18n:check` — 
 it (the manifest version comes from WXT automatically).
 
 ```bash
-bun run release minor   # gates → bump → commit "Release vX" → tag vX → zips + daemon; never pushes
+bun run release minor   # gates → bump → commit "Release vX" → tag vX → zip + daemon; never pushes
 ```
 
-A gate failure writes nothing. Publishing is manual: `git push --follow-tags`, upload
-`dist/tabrunner-<version>-store.zip` to the Chrome Web Store. **Two zips ship per version and
-they are not interchangeable**: `-chrome.zip` carries the manifest `key` — the store listing's own
-public key, which is what pins the unpacked install from tabrunner.app and every dev build to the
-one id (`ilnohobdcigbmlikjbkdpbkhciephdle`), per
+A gate failure writes nothing. Publishing is Gus's, and routine: `git push --follow-tags`, then
+the Chrome Web Store upload. **Never report that upload as an outstanding step** in a board post,
+a handoff, or a summary — it is his standing chore, not a handoff item.
+
+**One zip, every channel.** `dist/tabrunner-<version>-chrome.zip` is the download tabrunner.app
+links, the unpacked dev load, and the Chrome Web Store upload alike. It carries the manifest
+`key` — the store listing's own public key, which pins every unpacked and dev install to the one
+id (`ilnohobdcigbmlikjbkdpbkhciephdle`), per
 [Chrome's consistent-ID guidance](https://developer.chrome.com/docs/extensions/reference/manifest/key).
-`-store.zip` is the same build with that field dropped. The store never needs it (it derives the
-id from the item record) and its validator rejects a new item's first upload outright ("key field
-is not allowed in manifest"), so stripping is the one path that always uploads. The pushed tag fires `.github/workflows/release.yml`, which attaches
-versioned artifacts plus `tabrunner-latest-*` aliases that tabrunner.app hotlinks (and the MCP
-daemon bundle, `tabrunner-latest-mcp.js`, that Settings → MCP points users at). CI does not build
-the store zip — that one is submitted by hand, so it stays out of the public artifacts.
+CWS derives that same id from its own item record and takes the field in stride. The pushed tag
+fires `.github/workflows/release.yml`, which attaches versioned artifacts plus `tabrunner-latest-*`
+aliases that tabrunner.app hotlinks (and the MCP daemon bundle, `tabrunner-latest-mcp.js`, that
+Settings → MCP points users at).
 
 **No CRX.** Retired 2026-08-10. Chrome refuses to install a CRX served from anywhere but the
 store, and the store's own CRX is signed with a key only Google holds, so a self-signed one was

@@ -11,7 +11,6 @@
     "dev": "wxt",
     "build": "wxt build",
     "zip": "wxt zip",
-    "zip:store": "bun run scripts/pack-store.ts",
     "release": "bun run scripts/release.ts",
     "bridge": "bun daemon/src/index.ts",
     "bridge:check": "bun daemon/smoke.ts",

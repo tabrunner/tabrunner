@@ -19,10 +19,8 @@ The versioned artifacts (`tabrunner-<version>-chrome.zip`, `-mcp.js`) sit on the
 the permanent record; the site links only the `latest` aliases and the release page, so shipping a
 new version requires no site deploy.
 
-The Chrome Web Store upload is a **third, unlinked artifact** — `tabrunner-<version>-store.zip`,
-built locally by `bun run zip:store`. It is the same build with the manifest `key` removed, since
-the store rejects an upload that declares one. Never offer it as a download: without the key an
-unpacked install lands on a per-machine id.
+The Chrome Web Store upload is that same `-chrome.zip`, submitted by hand — the store listing
+carries no separate artifact, so there is nothing extra for the site to link or explain.
 
 ## Install instructions to present
 

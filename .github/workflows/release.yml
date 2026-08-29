@@ -15,9 +15,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      # The keyed zip — the website's install, loaded unpacked. The store upload
-      # (`bun run zip:store`, key stripped) is built and submitted by hand, so it
-      # is deliberately not an artifact here.
+      # The keyed zip — the website's install (loaded unpacked) and the same file
+      # that goes to the Chrome Web Store by hand. One artifact, every channel.
       - run: bun run zip
       # The single-file MCP daemon — what Settings → MCP tells users to curl.
       - run: bun run bridge:bundle
