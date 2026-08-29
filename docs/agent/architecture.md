@@ -698,6 +698,21 @@ same exchange. A new chat starts clean; the only context that crosses chats is A
 MEMORY.md. Steps and reasoning stay out of it; outcomes live in the assistant's own words,
 ask_user questions included. Conversations remain scrollback you can revisit and delete.
 
+That last sentence is also the retention rule. A transcript is bounded because every append
+rewrites the whole array, so its length is paid again on each of the dozens of rows one run adds —
+but a flat cap spent nearly all of itself on exactly the rows replay ignores, and a thread lost the
+turns it was made of after a handful of exchanges. `pruneTranscript` splits it: the newest
+`RECENT_WINDOW` messages survive untouched — the crash window, whole runs rather than their
+outcomes, which is what `read_history` reads to resume an interrupted task — and above it only the
+**spine**, every role except the step and reasoning rows that are one run's machinery, up to
+`MAX_MESSAGES`. `ask_user` steps are spine anyway, since they replay as assistant turns and their
+absence would leave the user's answer standing next to no question. Steps and thoughts are also
+where the bytes are (a stored snapshot detail runs to 2k chars), so dropping the older ones is what
+buys the spine an order of magnitude more reach at no more weight than the flat cap carried. The
+rule for anything new: a fact that must outlive its own run belongs on a spine role or on
+`ConversationMeta`, never on a step row. The panel's in-memory copy calls the same function
+(`capMessages`), so the live thread and the reopened one are bounded alike.
+
 Compaction (`agent/compact.ts`) is how that memory shrinks without the scrollback losing a
 line. `/compact` — or the context-overflow error's own fix button — summarizes everything
 since the last compaction into one `summary` message **appended** to the transcript: replay

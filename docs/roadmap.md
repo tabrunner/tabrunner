@@ -251,9 +251,10 @@ first-time offer inline on the card. `always` skips the ask, never the editable 
 AI-written recipe goes through `SkillForm` like every other one (the `ImportSkillDialog` rule).
 Panelless runs never auto-emit; the offer waits on the card.
 
-**Somewhere to find them.** The artifact card is the only home a walkthrough has, and
-`MAX_MESSAGES` is 100 — so on a long-running conversation the card eventually falls off the front
-of the transcript while its blobs sit in IndexedDB, reachable by nothing. That is a slow leak with
+**Somewhere to find them.** The artifact card is the only home a walkthrough has, and the
+transcript is bounded — the card is spine, so it outlives every step row around it, but past
+`MAX_MESSAGES` turns it still falls off the front while its blobs sit in IndexedDB, reachable by
+nothing. That is a slow leak with
 a UI hole in front of it. Settings → Walkthroughs (the `SkillsSection` shape: list, open, export,
 delete, a storage-used line) closes both.
 

@@ -237,7 +237,10 @@ flight" gets answered, and therefore which one auto-closes on walk-away — and 
 Conversations: a `conversations` metadata index + one `conversation:<id>` key per transcript;
 writes are serialized on one promise chain; the transcript is the model's per-conversation
 memory (`buildConversationHistory`); the `read_history` tool pages the full transcript mid-run.
-Tabs belong to messages, not to the conversation.
+Tabs belong to messages, not to the conversation. Retention is two-tier (`pruneTranscript`): the
+newest `RECENT_WINDOW` messages survive whole — the crash window, every step row and thought —
+and above it only the spine, the conversation's own turns, up to `MAX_MESSAGES`. So anything that
+must outlive its own run belongs on a spine role or on `ConversationMeta`, never on a step row.
 
 ## Deep-dive docs
 
