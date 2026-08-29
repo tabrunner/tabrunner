@@ -144,6 +144,12 @@ export const RECENT_WINDOW = 100;
 
 /** The transcript's ceiling. Past RECENT_WINDOW only the spine counts. */
 export const MAX_MESSAGES = 300;
+/**
+ * How far the spine reaches above the crash window. Must stay above zero: at
+ * zero `slice(-0)` reads as `slice(0)` and would keep every old turn rather
+ * than none — the inverted ceiling, and silent.
+ */
+const SPINE_BUDGET = MAX_MESSAGES - RECENT_WINDOW;
 const MAX_CONVERSATIONS = 50;
 const TITLE_LENGTH = 60;
 
@@ -185,7 +191,7 @@ function isSpine(m: Message): boolean {
 export function pruneTranscript(list: Message[]): Message[] {
   if (list.length <= RECENT_WINDOW) return list;
   const older = list.slice(0, -RECENT_WINDOW).filter(isSpine);
-  return [...older.slice(RECENT_WINDOW - MAX_MESSAGES), ...list.slice(-RECENT_WINDOW)];
+  return [...older.slice(-SPINE_BUDGET), ...list.slice(-RECENT_WINDOW)];
 }
 
 /** Index of every stored conversation, most recently touched first. */
