@@ -584,7 +584,7 @@
     "queue": "Encolar",
     "queueTitle": "Se inserta entre las próximas llamadas a herramientas",
     "queuePlaceholder": "Añade a la tarea en curso…",
-    "queuedSteerTitle": "En cola para la tarea en curso — entra entre las próximas llamadas a herramientas",
+    "queuedSteerTitle": "En cola para la tarea en curso — entra entre las próximas llamadas a herramientas. ↑ para editar.",
     "queuedSteer": "Pendiente de envío",
     "queuedSteerPosition": "Pendiente de envío · n.º {{position}}",
     "unqueueAria": "Descartar mensaje en cola",

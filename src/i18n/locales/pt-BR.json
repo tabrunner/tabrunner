@@ -584,7 +584,7 @@
     "queue": "Enfileirar",
     "queueTitle": "Entra entre as próximas chamadas de ferramenta",
     "queuePlaceholder": "Adicione à tarefa em andamento…",
-    "queuedSteerTitle": "Na fila para a tarefa em andamento — entra entre as próximas chamadas de ferramenta",
+    "queuedSteerTitle": "Na fila para a tarefa em andamento — entra entre as próximas chamadas de ferramenta. ↑ para editar.",
     "queuedSteer": "Aguardando envio",
     "queuedSteerPosition": "Aguardando envio · nº {{position}}",
     "unqueueAria": "Descartar mensagem enfileirada",

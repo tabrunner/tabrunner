@@ -428,9 +428,10 @@ export function ChatInput() {
       }
     }
     if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-    // ↑ recalls the newest queued line first: it is still unsent, so it is the
-    // most likely thing you meant to edit. Once the queue is empty ↑ walks back
-    // through what you already sent, ↓ walks forward and out.
+    // ↑ takes the whole queue back first — it is still unsent, so it is the
+    // most likely thing you meant to edit, and merged it is one draft you can
+    // rewrite end to end. Once the queue is empty ↑ walks back through what you
+    // already sent, ↓ walks forward and out.
     if (e.key === "ArrowUp" && !text && queued.length > 0) {
       e.preventDefault();
       recallQueued();

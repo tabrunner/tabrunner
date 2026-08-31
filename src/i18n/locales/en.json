@@ -584,7 +584,7 @@
     "queue": "Queue",
     "queueTitle": "Inserted between the next tool calls",
     "queuePlaceholder": "Add to the running task…",
-    "queuedSteerTitle": "Queued for the running task — lands between the next tool calls",
+    "queuedSteerTitle": "Queued for the running task — lands between the next tool calls. ↑ to edit.",
     "queuedSteer": "Waiting to send",
     "queuedSteerPosition": "Waiting to send · #{{position}}",
     "unqueueAria": "Drop queued message",

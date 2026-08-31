@@ -168,7 +168,7 @@ export interface ConversationState {
   cancelQueuedRun: () => void;
   /** Cancel any panel-owned waiting run — the run board's per-row cancel. */
   cancelQueuedById: (id: string) => void;
-  /** ↑-arrow recall: the newest queued message goes back to the composer. */
+  /** ↑-arrow recall: the whole queue comes back to the composer as one draft. */
   recallQueued: () => void;
   /**
    * Point this conversation at a provider / model / effort. One patch at a
@@ -1555,11 +1555,19 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     },
 
     recallQueued: () => {
+      // The WHOLE queue, not just the newest. Popping one at a time made every
+      // line below the last unreachable: the recall filled the composer, and
+      // from a filled composer ↑ is the sent-history walk — so the first thing
+      // you queued could only be edited by emptying the box between presses.
+      // They are consecutive steers on one task anyway; merged, they are one
+      // message you can rewrite whole, and the ✕ on each bubble is still there
+      // when you only meant to drop one.
       const queued = get().queued;
-      const last = queued[queued.length - 1];
-      if (!last) return;
-      set({ queued: queued.slice(0, -1), draft: last.text, collapseDisabled: false });
-      post({ type: "unqueue", id: last.id });
+      recallQueue();
+      // The loop holds its own copy — recallQueue is the run-end path, where
+      // the worker's queue is already going away and posting would only wake a
+      // dead port. This one happens mid-run, so the wire has to hear it.
+      for (const q of queued) post({ type: "unqueue", id: q.id });
     },
 
     setEngine: (patch, thisChatOnly) => {
