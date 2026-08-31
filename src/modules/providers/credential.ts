@@ -1,5 +1,7 @@
 import type { ProviderConfig } from "./types";
 import { ProviderError } from "./types";
+import { isTransportFailure } from "./error-classify";
+import { networkError } from "./http";
 import { OAUTH_FLOWS } from "./oauth-flows";
 import { saveProvider } from "./storage";
 import { createLogger } from "@/lib/logger";
@@ -48,9 +50,15 @@ export async function ensureProviderCredential(config: ProviderConfig): Promise<
     } catch (e) {
       const status = e instanceof ProviderError ? e.status : 0;
       log.warn("refresh failed:", e instanceof Error ? e.message : String(e));
+      // A refresh that never reached the server says nothing about the
+      // credential. "Sign in again" would send a user with dropped wifi to fix
+      // a sign-in that is fine — and the run retries a network failure on its
+      // own, which it would not do for a dead token.
+      if (isTransportFailure(e)) throw networkError(config);
       // A rejected refresh token is dead for good — drop it so the list shows
       // "Not signed in" with a Sign in button instead of pretending it works.
-      // A network blip (no status) leaves the credential alone to retry later.
+      // Anything else with no status — a reply we couldn't read — leaves the
+      // credential alone to retry later.
       if (status === 400 || status === 401 || status === 403) {
         const cleared = { ...config };
         delete cleared.auth;

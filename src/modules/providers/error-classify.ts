@@ -12,7 +12,41 @@
  * Upgrade path is adding patterns as new wordings are seen in the wild.
  */
 export type ErrorKind =
-  "entitlement" | "quota" | "auth" | "model" | "rate" | "overload" | "context";
+  | "entitlement"
+  | "quota"
+  | "auth"
+  | "model"
+  | "rate"
+  | "overload"
+  | "context"
+  | "network";
+
+/**
+ * A request that never reached the provider: `fetch` rejects with a TypeError
+ * and there is no status, no body, nothing for the patterns below to read. The
+ * cause is always on this side of the wire — wifi dropped, a VPN reconnecting,
+ * a proxy or blocker in the way, DNS, or a base URL whose host doesn't exist —
+ * which is why it is a `network` kind and not a provider fault. It gets the
+ * same treatment as a rate limit: an expected state with its own fix, warned
+ * rather than errored, so a user's flaky wifi never fills chrome://extensions'
+ * Errors page with our name.
+ *
+ * The message is checked, not just the type: `TypeError` is also what a real
+ * bug throws ("x is not a function"), and misfiling one of those as a blip
+ * would retry it three times and hide it from the Errors page it belongs on.
+ *
+ * ponytail: engine wordings — Chromium says "Failed to fetch", Firefox
+ * "NetworkError when attempting to fetch resource", Safari "Load failed", the
+ * daemon's runtime "fetch failed". Ceiling: an unlisted one falls through to
+ * the generic envelope — exactly where it lands today. Upgrade path is adding
+ * the wording.
+ */
+const TRANSPORT_MESSAGES =
+  /failed to fetch|fetch failed|network\s?error|load failed|unable to connect|connection (?:closed|refused|reset)/i;
+
+export function isTransportFailure(e: unknown): boolean {
+  return e instanceof TypeError && TRANSPORT_MESSAGES.test(e.message);
+}
 
 // The request outgrew the model's context window. Distinct from quota in the
 // one way that matters: nothing about the account is wrong and waiting fixes

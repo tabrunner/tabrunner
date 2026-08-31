@@ -44,14 +44,21 @@ export const MAX_STEPS = 500;
 /** Transient stream failures are retried in place this many times before surfacing. */
 const MAX_STREAM_ATTEMPTS = 3;
 /**
- * Auth failures get a longer trial than other retryables. Coding-plan gateways'
- * auth blips are time-correlated — an incident lasts seconds, so the standard
- * two fast retries (≈3s total) can all land inside it and a working credential
- * still reports "sign in again" (seen on Kimi). Five retries on the same
- * backoff curve span ~15–30s, past the blip; a genuinely dead key reaches the
- * same actionable message, just slower.
+ * Auth and network failures get a longer trial than other retryables — both are
+ * blips that clear on their own if you simply wait past them.
+ *
+ * Coding-plan gateways' auth blips are time-correlated: an incident lasts
+ * seconds, so the standard two fast retries (≈3s total) can all land inside it
+ * and a working credential still reports "sign in again" (seen on Kimi). A
+ * dropped connection is the same shape and slower to come back — a wifi
+ * handover, a VPN reconnect or a laptop waking takes 5–20s, and waiting IS the
+ * fix, so giving up in 3 kills runs that were about to survive.
+ *
+ * Five retries on the same backoff curve span ~15–30s, past both; a genuinely
+ * dead key or a genuinely wrong host reaches the same actionable message, just
+ * slower.
  */
-const MAX_AUTH_ATTEMPTS = 6;
+const MAX_BLIP_ATTEMPTS = 6;
 const BASE_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 15_000;
 /** Result payload kept for the panel's expandable step row — a page snapshot is far larger. */
@@ -390,7 +397,8 @@ async function streamTurn(
     } catch (e) {
       if (signal.aborted) throw e;
       const kind = e instanceof ProviderError ? e.kind : undefined;
-      const maxAttempts = kind === "auth" ? MAX_AUTH_ATTEMPTS : MAX_STREAM_ATTEMPTS;
+      const maxAttempts =
+        kind === "auth" || kind === "network" ? MAX_BLIP_ATTEMPTS : MAX_STREAM_ATTEMPTS;
       const canRetry = !emitted && attempt < maxAttempts && isRetryable(e);
       if (!canRetry) throw e;
       const reason = e instanceof Error ? e.message : String(e);

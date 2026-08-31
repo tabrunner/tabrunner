@@ -147,6 +147,65 @@ describe("OpenAI provider SSE parsing", () => {
     vi.restoreAllMocks();
   });
 
+  it("turns a request that never left into a network kind, not a provider fault", async () => {
+    const config = makeConfig("openai", "https://api.openai.com/v1");
+    const provider = createOpenAIProvider(config);
+
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    const error = await (async () => {
+      try {
+        for await (const delta of provider.stream([], [], new AbortController().signal)) {
+          void delta;
+        }
+      } catch (e) {
+        return e;
+      }
+      throw new Error("expected the stream to throw");
+    })();
+
+    expect(error).toBeInstanceOf(ProviderError);
+    // Classified is the whole point: an unclassified failure logs at error
+    // level, which is what fills chrome://extensions' Errors page.
+    expect((error as ProviderError).kind).toBe("network");
+    // No response happened, so there is no status to report.
+    expect((error as ProviderError).status).toBe(0);
+    // The host is named — the one token that diagnoses a typo'd base URL at a
+    // glance. The raw browser string never reaches the user.
+    expect((error as ProviderError).message).toContain("api.openai.com");
+    expect((error as ProviderError).message).not.toContain("Failed to fetch");
+    expect(isRetryable(error)).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  it("lets a stopped run's own abort through untouched", async () => {
+    const config = makeConfig("openai", "https://api.openai.com/v1");
+    const provider = createOpenAIProvider(config);
+    const controller = new AbortController();
+
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() => {
+      controller.abort();
+      return Promise.reject(new DOMException("The user aborted a request.", "AbortError"));
+    });
+
+    const error = await (async () => {
+      try {
+        for await (const delta of provider.stream([], [], controller.signal)) {
+          void delta;
+        }
+      } catch (e) {
+        return e;
+      }
+      throw new Error("expected the stream to throw");
+    })();
+
+    // Stop is not an error: dressing it as a network failure would put a red
+    // bubble on a run the user ended on purpose.
+    expect(error).not.toBeInstanceOf(ProviderError);
+    expect((error as DOMException).name).toBe("AbortError");
+    vi.restoreAllMocks();
+  });
+
   it("classifies a quota-shaped 429 as permanent — never retried", async () => {
     const config = makeConfig("openai", "https://api.openai.com/v1");
     const provider = createOpenAIProvider(config);

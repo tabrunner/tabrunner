@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyProviderError } from "../error-classify";
+import { classifyProviderError, isTransportFailure } from "../error-classify";
 import { ProviderError, isRetryable } from "../types";
 
 describe("classifyProviderError", () => {
@@ -131,5 +131,31 @@ describe("context overflow", () => {
     expect(classifyProviderError(400, "exceeds the maximum number of images allowed")).not.toBe(
       "context",
     );
+  });
+});
+
+describe("isTransportFailure", () => {
+  it("recognizes the request that never left, whichever engine words it", () => {
+    for (const message of [
+      "Failed to fetch",
+      "NetworkError when attempting to fetch resource.",
+      "Load failed",
+      "fetch failed",
+    ]) {
+      expect(isTransportFailure(new TypeError(message))).toBe(true);
+    }
+  });
+
+  it("leaves a real TypeError on the loud path — a bug is not a blip", () => {
+    // Misfiling this would retry a crash five times and keep it off the
+    // Errors page it belongs on.
+    expect(isTransportFailure(new TypeError("driver.click is not a function"))).toBe(false);
+    expect(isTransportFailure(new Error("Failed to fetch"))).toBe(false);
+  });
+
+  it("retries a network failure, however it arrived", () => {
+    expect(isRetryable(new ProviderError("offline", 0, "network"))).toBe(true);
+    expect(isRetryable(new TypeError("Failed to fetch"))).toBe(true);
+    expect(isRetryable(new TypeError("undefined is not iterable"))).toBe(false);
   });
 });

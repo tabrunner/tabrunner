@@ -1,6 +1,6 @@
 import type { ProviderConfig } from "./types";
 import { ProviderError } from "./types";
-import { classifyProviderError, type ErrorKind } from "./error-classify";
+import { classifyProviderError, isTransportFailure, type ErrorKind } from "./error-classify";
 import {
   formatResetRelative,
   parseRateLimitReset,
@@ -25,6 +25,10 @@ const ERROR_KIND_KEYS = {
   rate: "errors.kindRate",
   overload: "errors.kindOverload",
   context: "errors.kindContext",
+  // Unreachable from here — a `network` failure has no response to classify.
+  // Present because the map is exhaustive over the union, and the host-less
+  // wording is the right fallback if it ever did arrive this way.
+  network: "errors.kindNetwork",
 } as const satisfies Record<ErrorKind, string>;
 
 const WINDOW_KEYS = {
@@ -93,6 +97,43 @@ function providerErrorMessage(
       detail: text || fallbackDetail,
     }),
   };
+}
+
+/**
+ * The failure for a request that never reached the provider. It gets a lead
+ * line of its own because the generic envelope blames the wrong actor: the
+ * provider never heard us, so "the provider couldn't do that" is a sentence
+ * about a server that was never involved.
+ *
+ * `navigator.onLine === false` is the one definitive signal the browser gives
+ * us — no network at all, so say that instead of sending the user to check a
+ * base URL that is fine. `true` proves nothing (a captive portal is "online"),
+ * which is why it is the branch that names every cause it could be. The
+ * comparison is explicit: outside a browser the property is simply absent, and
+ * a missing signal must not read as "offline".
+ *
+ * Status 0 — there was no response to have one.
+ */
+export function networkError(provider: ProviderIdentity, url?: string): ProviderError {
+  const label = providerDisplayName(provider);
+  const host = hostOf(url);
+  const message =
+    navigator.onLine === false
+      ? i18n.t("errors.kindNetworkOffline", { provider: label })
+      : host
+        ? i18n.t("errors.kindNetworkHost", { provider: label, host })
+        : i18n.t("errors.kindNetwork", { provider: label });
+  return new ProviderError(message, 0, "network");
+}
+
+/** The host worth naming, or nothing — a URL we can't parse says nothing useful. */
+function hostOf(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url).host;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Base + path joined once — trailing slashes on stored base URLs would double up. */
@@ -307,12 +348,24 @@ export async function* streamSse(opts: {
   const { url, headers, body, provider, signal, meta } = opts;
   log.debug("request", { url, bytes: body.length, ...meta });
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
-    body,
-    signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body,
+      signal,
+    });
+  } catch (e) {
+    // A stopped run rejects here too, and that is not a failure — let it pass
+    // through untouched. Anything else that isn't a recognizable transport
+    // rejection is a bug of ours and keeps the loud path.
+    if (signal.aborted || !isTransportFailure(e)) throw e;
+    // warn, not error: the user's wifi is not a defect in this extension, and
+    // console.error is what feeds chrome://extensions' Errors page.
+    log.warn(`no response from ${url}: ${e instanceof Error ? e.message : String(e)}`);
+    throw networkError(provider, url);
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

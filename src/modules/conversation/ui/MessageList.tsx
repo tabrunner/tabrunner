@@ -102,6 +102,11 @@ function kindCta(kind: ErrorKind, signedIn: boolean): CtaKey | undefined {
   // the entire remedy is "compact and carry on" — the click compacts, and the
   // failed task re-runs itself when the summary lands.
   if (kind === "context") return "compact";
+  // A base URL the user typed is a real cause of "never reached the provider" —
+  // but only for a keyed provider. A signed-in one runs on the preset's own
+  // endpoint, so there is nothing there for them to have got wrong, and the
+  // offer would send them to a field they can't fix.
+  if (kind === "network") return signedIn ? undefined : "checkUrl";
   return undefined;
 }
 

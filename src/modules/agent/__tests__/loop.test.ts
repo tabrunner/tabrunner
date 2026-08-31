@@ -156,13 +156,39 @@ describe("runAgentLoop stream retries", () => {
     expect(retrySteps[0]?.summary).toContain("1/5");
   });
 
-  it("keeps the standard budget for non-auth stream errors", async () => {
+  it("gives a dropped connection the same longer trial — waiting is the whole fix", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     let attempts = 0;
     const provider: ChatProvider = {
       async *stream() {
         attempts++;
-        if (attempts > 0) throw new TypeError("fetch failed");
+        // A wifi handover outlasts the standard ≈3s budget; the fifth attempt
+        // is the one that finds the network back.
+        if (attempts <= 4) throw new ProviderError("offline", 0, "network");
+        yield { type: "tool_use", id: "d1", name: "done", args: { summary: "ok" } };
+        yield { type: "done" };
+      },
+    };
+    const summaries: (string | undefined)[] = [];
+    await runAgentLoop({
+      provider,
+      driver,
+      task: "go",
+      signal: new AbortController().signal,
+      callbacks: { onDone: (s) => summaries.push(s) },
+    });
+
+    expect(attempts).toBe(5);
+    expect(summaries).toEqual(["ok"]);
+  });
+
+  it("keeps the standard budget for the ordinary retryables", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let attempts = 0;
+    const provider: ChatProvider = {
+      async *stream() {
+        attempts++;
+        if (attempts > 0) throw new ProviderError("upstream is busy", 503, "overload");
         yield { type: "done" };
       },
     };

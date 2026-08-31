@@ -1,4 +1,4 @@
-import type { ErrorKind } from "./error-classify";
+import { isTransportFailure, type ErrorKind } from "./error-classify";
 
 /** Provider shape — determines wire format for API calls. */
 export type ProviderShape = "openai" | "anthropic" | "responses";
@@ -262,6 +262,9 @@ const MAX_RETRY_WAIT_MS = 60_000;
  * transient: OpenAI files "insufficient_quota" under 429. A 429 whose
  * retry-after exceeds MAX_RETRY_WAIT_MS isn't transient either.
  *
+ * A `network` failure is retryable by definition: nothing about the request was
+ * refused, it never arrived. Waiting is the whole fix.
+ *
  * Auth is the one kind a single response can't settle. Coding-plan gateways —
  * Kimi most visibly — reject roughly one request in fifty with
  * `authentication_error` on a credential that works on the next call, and that
@@ -276,10 +279,11 @@ export function isRetryable(e: unknown): boolean {
   if (e instanceof ProviderError) {
     if (e.kind && NON_RETRYABLE_KINDS.includes(e.kind)) return false;
     if (e.retryAfterMs !== undefined && e.retryAfterMs > MAX_RETRY_WAIT_MS) return false;
-    return e.kind === "auth" || e.status === 429 || e.status >= 500;
+    return e.kind === "auth" || e.kind === "network" || e.status === 429 || e.status >= 500;
   }
-  // Network-level failures (TypeError from fetch) have no status — retryable
-  return e instanceof TypeError;
+  // An unwrapped transport rejection — every fetch outside streamSse's envelope
+  // still reaches the loop as a bare TypeError.
+  return isTransportFailure(e);
 }
 
 /** Provider interface — both adapters implement this. */

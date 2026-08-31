@@ -29,7 +29,7 @@ import {
   sameEngine,
   tokenCost,
 } from "@/modules/providers";
-import type { ResolvedProviderConfig } from "@/modules/providers/types";
+import { ProviderError, type ResolvedProviderConfig } from "@/modules/providers/types";
 import {
   contextWindowFor,
   learnContextLimit,
@@ -227,9 +227,14 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      log.error("provider setup failed:", message);
-      // Raw exception text — we wrote no copy for it, so the bubble offers a report.
-      emit({ type: "error", message, unexpected: true });
+      const kind = e instanceof ProviderError ? e.kind : undefined;
+      // The same split the loop draws one layer down: a classified state — an
+      // expired sign-in, a connection that dropped mid-refresh — is expected
+      // and carries its own fix, so it warns and skips the report offer. Only
+      // raw exception text nobody wrote copy for is a bug worth the Errors page.
+      if (kind) log.warn("provider setup failed:", message);
+      else log.error("provider setup failed:", message);
+      emit({ type: "error", message, kind, ...(kind ? {} : { unexpected: true }) });
       return { ok: true };
     }
 
