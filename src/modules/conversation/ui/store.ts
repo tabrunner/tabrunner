@@ -107,7 +107,7 @@ export interface ConversationState {
   draft: string;
   /** Collapsed pastes — token in the input, content spliced back in on send. */
   pastedTexts: PastedText[];
-  /** A removed collapse teaches this draft to paste inline — the fold is only a surprise once. */
+  /** This draft already folded a paste (or lost one) — every later paste lands inline. */
   collapseDisabled: boolean;
   /** The tab the current run is driving; null when idle. */
   drivingTab: DrivingPayload | null;
@@ -1562,10 +1562,6 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       post({ type: "unqueue", id: last.id });
     },
 
-    // The single user-edit writer (ChatInput routes every edit here): a collapse
-    // whose token left the text drops its content — and, per draft, teaches the
-    // input to paste inline: the fold is only ever a surprise once. Store-side
-    // draft writers re-arm it — a recalled text is a fresh draft.
     setEngine: (patch, thisChatOnly) => {
       const { providers, activeId: storedId, update, activate } = useProvidersStore.getState();
       const inForce = engineProvider(providers, storedId, pinOf(get()));
@@ -1597,13 +1593,21 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       if (next.providerId !== storedId) void activate(next.providerId);
     },
 
+    // The single user-edit writer (ChatInput routes every edit here): a collapse
+    // whose token left the text drops its content, and the removal disarms the
+    // fold for this draft just as folding itself does. Store-side draft writers
+    // re-arm it — a recalled text is a fresh draft.
     setDraft: (text) =>
       set((st) => {
         const kept = st.pastedTexts.filter((p) => text.includes(p.token));
         const dropped = kept.length < st.pastedTexts.length;
         return { draft: text, pastedTexts: kept, collapseDisabled: dropped || st.collapseDisabled };
       }),
-    addPastedText: (entry) => set((st) => ({ pastedTexts: [...st.pastedTexts, entry] })),
+    // Folding disarms the fold: the note is a surprise the first time and an
+    // obstacle after that. You have seen what a long paste does, so the second
+    // one in the same draft is deliberate — it lands inline, in full.
+    addPastedText: (entry) =>
+      set((st) => ({ pastedTexts: [...st.pastedTexts, entry], collapseDisabled: true })),
     clearPastedTexts: () => set({ pastedTexts: [], collapseDisabled: false }),
     // Stored, not just held: the panel closes itself on every background
     // dispatch, and a mode that reset on each reopen made "in background" a

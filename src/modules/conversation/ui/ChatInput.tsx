@@ -254,16 +254,23 @@ export function ChatInput() {
           })),
         );
         setAttachments((prev) => [...prev, ...added]);
-        setText([text.trimEnd(), ...added.map((a) => a.token)].filter(Boolean).join(" "));
+        // The draft as it is NOW, not as it was when the paste fired: the encode
+        // above is async, so `text` here is a closure from before it. Writing
+        // that back would swallow whatever was typed while it ran — and, on a
+        // second image pasted into the same render, drop the first one's token,
+        // which is what decides whether that image is sent at all (see submit).
+        const draft = useConversationStore.getState().draft;
+        setText([draft.trimEnd(), ...added.map((a) => a.token)].filter(Boolean).join(" "));
       } catch {
         setAttachError(t("chat.attachFailed"));
       }
       return;
     }
 
-    // Text paste: a big block folds into a token at the caret, its full text
-    // spliced back in on send (see paste-collapse.ts). Short pastes fall
-    // through to the browser's normal inline paste.
+    // Text paste: the FIRST big block of a draft folds into a token at the
+    // caret, its full text spliced back in on send (see paste-collapse.ts).
+    // Short pastes fall through to the browser's normal inline paste — and so
+    // does everything after that first fold, which armed `collapseDisabled`.
     const pasted = e.clipboardData.getData("text/plain");
     if (!pasted || collapseDisabled || !shouldCollapse(pasted)) return;
     e.preventDefault();

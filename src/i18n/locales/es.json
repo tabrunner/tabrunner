@@ -892,7 +892,7 @@
     "foreground": "Toda tarea actúa en la pestaña que estás viendo — “En segundo plano” solo cierra el panel.",
     "queueSteer": "Puedes seguir escribiendo mientras la tarea corre — el mensaje se encola y la orienta entre pasos.",
     "pasteImage": "Pega una captura de pantalla directamente en el campo — el agente puede verla.",
-    "pasteCollapse": "Un texto largo pegado se pliega en un token compacto — el texto completo igual llega al agente.",
+    "pasteCollapse": "El primer texto largo pegado se pliega en un token compacto — el texto completo igual llega al agente.",
     "planApproval": "La tarea muestra su plan antes de tocar la página — aprueba, o responde con ajustes y replanifica.",
     "planExpand": "Pulsa E para expandir/cerrar el plan.",
     "widget": "Toda marca de TabRunner en la página es clicable — haz clic en una para volver al panel.",

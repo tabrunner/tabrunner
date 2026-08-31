@@ -892,7 +892,7 @@
     "foreground": "Toda tarefa age na aba que você está vendo — “Em segundo plano” só fecha o painel.",
     "queueSteer": "Digite enquanto a tarefa roda — a mensagem entra na fila e a orienta entre os passos.",
     "pasteImage": "Cole uma captura de tela direto no campo — o agente consegue vê-la.",
-    "pasteCollapse": "Um texto longo colado vira um token compacto — o texto completo ainda chega ao agente.",
+    "pasteCollapse": "O primeiro texto longo colado vira um token compacto — o texto completo ainda chega ao agente.",
     "planApproval": "A tarefa mostra o plano antes de mexer na página — aprove, ou responda com ajustes e ela replaneja.",
     "planExpand": "Aperte E para expandir/fechar o plano.",
     "widget": "Toda marca do TabRunner na página é clicável — clique em uma para trazer o painel de volta.",

@@ -892,7 +892,7 @@
     "foreground": "Every task works the tab you're looking at — “In background” just closes the panel.",
     "queueSteer": "You can keep typing while a task runs — the message queues and steers it between steps.",
     "pasteImage": "Paste a screenshot straight into the composer — the agent can see it.",
-    "pasteCollapse": "A long pasted text folds into a neat token — the full text still reaches the agent.",
+    "pasteCollapse": "The first long paste folds into a neat token — the full text still reaches the agent.",
     "planApproval": "A task shows its plan before it touches the page — approve it, or reply with adjustments and it replans.",
     "planExpand": "Press E to expand/collapse the plan.",
     "widget": "Every TabRunner mark on a page is clickable — click one to bring the panel back.",
