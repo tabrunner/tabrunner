@@ -109,21 +109,9 @@ export function SettingsMenu() {
                 >
                   {t("settings.addProvider")}
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="justify-start text-left"
-                  onClick={() => {
-                    setOpen(false);
-                    void chrome.runtime.openOptionsPage();
-                  }}
-                >
-                  {t("settings.allSettings")}
-                </Button>
                 {/* The lost user's door sits above the broken-build door:
                     "what can this do?" is the more common question, and the
-                    sheet it opens carries the report link too. */}
-                <Button
+                    sheet it opens carries the report link too. */}                <Button
                   variant="ghost"
                   size="sm"
                   className="justify-start text-left"
@@ -147,6 +135,20 @@ export function SettingsMenu() {
                 >
                   {t("settings.reportIssue")}
                 </a>
+                {/* The escape hatch sits last, where "the rest lives here" is
+                    read after every door this menu opens directly — the same
+                    convention as the browser's own Settings row. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start text-left"
+                  onClick={() => {
+                    setOpen(false);
+                    void chrome.runtime.openOptionsPage();
+                  }}
+                >
+                  {t("settings.allSettings")}
+                </Button>
               </div>
             </Popover.Popup>
           </Popover.Positioner>
