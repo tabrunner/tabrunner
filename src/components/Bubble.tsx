@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 
-type Variant = "user" | "secondary" | "muted" | "destructive";
+type Variant = "user" | "pending" | "secondary" | "muted" | "destructive";
 
 const VARIANTS: Record<Variant, string> = {
   /** The user's own turn — named for its role, because the variant that is
@@ -20,6 +20,15 @@ const VARIANTS: Record<Variant, string> = {
    *  one draws an empty line box, so a bullet list grew blank rows and model
    *  prose broke at the model's column instead of the panel's. */
   user: "bg-brand-500 text-brand-950 whitespace-pre-wrap dark:bg-brand-900 dark:text-brand-50",
+  /** The user's turn, committed but not sent — a queued steer, a submission
+   *  behind another run, a command waiting its turn. Same geometry and same
+   *  side of the column as `user`, drawn as an outline over a whisper of the
+   *  same brand: filled means sent, and at a glance that is the only thing the
+   *  reader needs to tell apart. The dashed edge is the second, redundant
+   *  signal — it survives both themes and a screenshot. Carries `user`'s
+   *  `whitespace-pre-wrap` for the same reason: the child is raw typed text. */
+  pending:
+    "border border-dashed border-brand-400/70 bg-brand-50/60 text-neutral-700 whitespace-pre-wrap dark:border-brand-700 dark:bg-brand-950/40 dark:text-neutral-300",
   secondary: "bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100",
   muted: "bg-neutral-100 dark:bg-neutral-800",
   /** An error is a notice, not an alarm: a whisper of red for shape, neutral

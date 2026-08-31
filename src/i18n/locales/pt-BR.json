@@ -585,6 +585,8 @@
     "queueTitle": "Entra entre as próximas chamadas de ferramenta",
     "queuePlaceholder": "Adicione à tarefa em andamento…",
     "queuedSteerTitle": "Na fila para a tarefa em andamento — entra entre as próximas chamadas de ferramenta",
+    "queuedSteer": "Aguardando envio",
+    "queuedSteerPosition": "Aguardando envio · nº {{position}}",
     "unqueueAria": "Descartar mensagem enfileirada",
     "queueNoImages": "Imagens não podem entrar numa tarefa em andamento — enfileire o texto agora e cole a imagem na próxima tarefa.",
     "pasteToken": "{{count}} linhas coladas",
@@ -865,7 +867,7 @@
     "receiptOut": "{{tokens}} de saída"
   },
   "queue": {
-    "position": "Na fila · nº {{position}}",
+    "position": "Aguardando execução · nº {{position}}",
     "queuedTitle": "Esperando a tarefa atual terminar",
     "cancel": "Cancelar"
   },

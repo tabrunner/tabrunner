@@ -585,6 +585,8 @@
     "queueTitle": "Inserted between the next tool calls",
     "queuePlaceholder": "Add to the running task…",
     "queuedSteerTitle": "Queued for the running task — lands between the next tool calls",
+    "queuedSteer": "Waiting to send",
+    "queuedSteerPosition": "Waiting to send · #{{position}}",
     "unqueueAria": "Drop queued message",
     "queueNoImages": "Images can't join a running task — queue the text now and paste the image with the next task.",
     "pasteToken": "Pasted {{count}} lines",
@@ -865,7 +867,7 @@
     "receiptOut": "{{tokens}} out"
   },
   "queue": {
-    "position": "Queued · #{{position}}",
+    "position": "Waiting to run · #{{position}}",
     "queuedTitle": "Waiting for the current task to finish",
     "cancel": "Cancel"
   },

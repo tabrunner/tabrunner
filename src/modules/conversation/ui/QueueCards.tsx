@@ -1,48 +1,64 @@
 import { useTranslation } from "react-i18next";
 import { useConversationStore } from "./store";
 import { XIcon } from "@/components/Icon";
+import { Bubble } from "@/components/Bubble";
 
 /**
- * A committed item waiting its turn — the dashed one-liner this replaced read
- * as a draft. The amber accent bar is the panel's parked/waiting language (the
- * awaiting dot, the board's "?"), the chip numbers the line like the run board
- * does, and two lines of text beat a truncated one.
+ * A message the user has committed but nothing has sent yet.
+ *
+ * Drawn as their own bubble — same geometry, same side of the column as a sent
+ * turn — because that is what it is: the next thing they said, still in line.
+ * The neutral bordered card this replaced sat in the composer's chrome and read
+ * as a control, so the one question it had to answer ("did that go through?")
+ * was the one it never did.
+ *
+ * Two signals separate it from a sent turn, and they are redundant on purpose:
+ * the fill is gone (filled = sent, and that reads at a glance without a word),
+ * and the edge is dashed. The amber meta line above carries the words and the
+ * take-back — same slot and same size as a user message's TabStamp, which is
+ * already this panel's idiom for "annotation on your own turn", and amber is
+ * already its parked/waiting colour (the run band's park, the board's "?").
  */
-function QueueCard({
-  chip,
+function QueuedBubble({
+  label,
   title,
   text,
   onRemove,
   removeAria,
 }: {
-  chip: string;
+  label: string;
   title: string;
   text: string;
   onRemove: () => void;
   removeAria: string;
 }) {
   return (
-    <div className="settle flex items-start gap-2 rounded-lg border border-neutral-200 border-l-2 border-l-amber-400 bg-neutral-50 px-2.5 py-1.5 dark:border-neutral-800 dark:border-l-amber-500 dark:bg-neutral-900">
-      <span
+    <div className="settle flex flex-col items-end gap-0.5">
+      <div
         title={title}
-        className="mt-px shrink-0 rounded border border-amber-300 px-1 py-px text-[10px] font-medium text-amber-700 dark:border-amber-700 dark:text-amber-300"
+        className="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300"
       >
-        {chip}
-      </span>
-      <span
-        title={text}
-        className="min-w-0 flex-1 line-clamp-2 text-xs text-neutral-700 dark:text-neutral-300"
-      >
-        {text}
-      </span>
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label={removeAria}
-        className="flex shrink-0 items-center rounded px-1 text-neutral-500 hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none dark:text-neutral-400 dark:hover:bg-neutral-800"
-      >
-        <XIcon />
-      </button>
+        {/* Still, not pulsing: the live band owns the panel's one waiting
+            motion, and a second blink in the same corner says nothing. */}
+        <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+        {label}
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={removeAria}
+          className="-my-0.5 ml-0.5 flex items-center rounded px-0.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+        >
+          <XIcon />
+        </button>
+      </div>
+      <Bubble variant="pending" align="end">
+        {/* Clamped, not truncated to a line: a queued paste is still a message
+            and deserves to be read back, but this band sits between the
+            transcript and the composer and must never grow into either. */}
+        <span title={text} className="line-clamp-4">
+          {text}
+        </span>
+      </Bubble>
     </div>
   );
 }
@@ -61,7 +77,7 @@ export function QueueCards() {
   const unqueueMessage = useConversationStore((s) => s.unqueueMessage);
   const queuedRun = useConversationStore((s) => s.queuedRun);
   const cancelQueuedRun = useConversationStore((s) => s.cancelQueuedRun);
-  // The chip's position reads the board live (like RunBoard does) — entries
+  // The label's position reads the board live (like RunBoard does) — entries
   // ahead of ours leaving the line move it up without a new event.
   const queuedPosition = useConversationStore((s) => {
     if (!s.queuedRun) return 0;
@@ -74,16 +90,25 @@ export function QueueCards() {
   if (queued.length === 0 && !queuedRun && !deferred) return null;
 
   return (
-    <div className="flex flex-col gap-1.5 px-3 py-2">
+    // Same 12px gutter as the transcript's, so a queued bubble's right edge
+    // lands exactly on the sent ones above it — the whole point is that the eye
+    // reads one column of the user's own turns, the last of them not sent yet.
+    <div className="flex flex-col gap-2 px-3 pt-1 pb-2">
       {queued.length > 0 && (
         // Capped and scrolled: nothing bounds how many steers you can queue, and
         // the transcript is the only `min-h-0 flex-1` sibling — so an unbounded
         // stack is the composer squeezing the conversation to zero height.
-        <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+        <div className="flex max-h-44 flex-col gap-2 overflow-y-auto">
           {queued.map((q, i) => (
-            <QueueCard
+            <QueuedBubble
               key={q.id}
-              chip={String(i + 1)}
+              // Numbered only once there is a line to be in — "#1" beside a
+              // lone queued message invents a queue the user cannot see.
+              label={
+                queued.length > 1
+                  ? t("chat.queuedSteerPosition", { position: i + 1 })
+                  : t("chat.queuedSteer")
+              }
               title={t("chat.queuedSteerTitle")}
               text={q.text}
               onRemove={() => unqueueMessage(q.id)}
@@ -93,20 +118,20 @@ export function QueueCards() {
         </div>
       )}
       {queuedRun && (
-        <QueueCard
-          chip={t("queue.position", { position: queuedPosition })}
+        <QueuedBubble
+          label={t("queue.position", { position: queuedPosition })}
           title={t("queue.queuedTitle")}
           text={queuedRun.task}
           onRemove={cancelQueuedRun}
           removeAria={t("queue.cancel")}
         />
       )}
-      {/* A command that had to wait its turn — the same card as a queued steer,
-          because it is the same fact: something committed, not yet run, still
-          take-back-able. */}
+      {/* A command that had to wait its turn — the same bubble as a queued
+          steer, because it is the same fact: something the user committed, not
+          yet run, still take-back-able. */}
       {deferred && (
-        <QueueCard
-          chip={t("commands.deferred.chip")}
+        <QueuedBubble
+          label={t("commands.deferred.chip")}
           title={t("commands.deferred.title")}
           text={`/${deferred.name}`}
           onRemove={cancelDeferred}
