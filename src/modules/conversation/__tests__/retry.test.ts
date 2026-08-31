@@ -8,7 +8,7 @@ import { retryTargetFrom, useConversationStore } from "../ui/store";
  * Retry resends the transcript's newest user message — derived from the
  * transcript, not panel state, so a reopened panel (lastRun died with the
  * close) still offers it. Drives the real store against a fake port, same
- * seam as walk-away-gate.test.ts.
+ * seam as plan-approved.test.ts.
  */
 
 interface FakePort {

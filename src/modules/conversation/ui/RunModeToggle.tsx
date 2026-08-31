@@ -37,16 +37,18 @@ function ForegroundIcon() {
  *
  * Once a run of this panel's own is live the question is settled — it is
  * already on its tab, and nothing a toggle says can move it. So the control
- * becomes the one move still on the table: leave it to work alone. Disabled
- * while the plan gate is still ahead, because closing then strands the approval
- * on a notification — the tooltip says so rather than leaving a dead grey
- * button. It goes back to being a preference the moment the run ends.
+ * becomes the one move still on the table: leave it to work alone. The move
+ * is on the table in every live state except one: parked on the user's answer
+ * (a plan gate or a server's question), where closing would strand it on an
+ * OS notification — so the button is disabled there and the tooltip says why,
+ * rather than leaving a dead grey button unexplained. It goes back to being a
+ * preference the moment the run ends.
  */
 export function RunModeToggle() {
   const { t } = useTranslation();
   const runMode = useConversationStore((s) => s.runMode);
   const setRunMode = useConversationStore((s) => s.setRunMode);
-  const { live, ready } = useWalkAway();
+  const { live, parked } = useWalkAway();
   const foreground = runMode === "foreground";
 
   if (live) {
@@ -55,12 +57,12 @@ export function RunModeToggle() {
         type="button"
         variant="quiet-brand"
         size="sm"
-        disabled={!ready}
+        disabled={parked}
         // Deliberately no setRunMode: this is an act on the run in flight,
         // not a vote on where the next one goes — so it dresses as the action
         // it is (brand, pressable), not the preference it was a second ago.
         onClick={() => window.close()}
-        title={t(ready ? "run.backgroundNowTitle" : "run.backgroundNowGated")}
+        title={t(parked ? "run.backgroundNowGated" : "run.backgroundNowTitle")}
         className="flex shrink-0 items-center gap-1.5"
       >
         <BackgroundIcon />

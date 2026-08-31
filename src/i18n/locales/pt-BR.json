@@ -859,7 +859,7 @@
     "modeAria": "A próxima tarefa roda: {{mode}}",
     "backgroundNow": "Rodar em segundo plano",
     "backgroundNowTitle": "Fecha o painel e deixa esta tarefa terminar sozinha — ela nunca mexe na sua tela. Reabra quando quiser acompanhar.",
-    "backgroundNowGated": "Aprove o plano primeiro — fechar agora deixaria a aprovação presa em uma notificação.",
+    "backgroundNowGated": "Responda primeiro o plano ou a pergunta que está aguardando — fechar agora deixaria a tarefa presa em uma notificação.",
     "modeTitle": "“Em primeiro plano” mantém o painel aberto para você acompanhar, e a tarefa traz para a frente a aba que ela abrir; “Em segundo plano” fecha o painel quando você aprova o plano e nunca mexe na sua tela. As duas dirigem a aba em que você está — trocar durante a tarefa já vale (com o plano aprovado)",
     "receiptIn": "{{tokens}} de entrada",
     "receiptOut": "{{tokens}} de saída"

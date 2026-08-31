@@ -859,7 +859,7 @@
     "modeAria": "La próxima tarea corre: {{mode}}",
     "backgroundNow": "Ejecutar en segundo plano",
     "backgroundNowTitle": "Cierra el panel y deja que esta tarea termine sola — nunca mueve tu pantalla. Vuelve a abrirlo cuando quieras verla.",
-    "backgroundNowGated": "Aprueba el plan primero — cerrar ahora dejaría la aprobación esperando en una notificación.",
+    "backgroundNowGated": "Responde primero el plan o la pregunta en espera — cerrar ahora dejaría la tarea esperando en una notificación.",
     "modeTitle": "“En primer plano” deja el panel abierto para que la veas, y la tarea trae al frente la pestaña a la que cambia; “En segundo plano” cierra el panel cuando apruebas el plan y nunca mueve tu pantalla. Ambas manejan la pestaña en la que estás — cambiar durante la tarea se aplica al momento (con el plan aprobado)",
     "receiptIn": "{{tokens}} de entrada",
     "receiptOut": "{{tokens}} de salida"

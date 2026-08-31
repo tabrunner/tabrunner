@@ -35,44 +35,35 @@ export function useNow(active: boolean): number {
 }
 
 /**
- * May the panel walk away from the run right now? Two bits, because the
- * composer's control needs both: `live` says this panel has a run of its own to
- * walk away FROM (so the target control becomes the walk-away action), `ready`
- * says it may go now.
+ * May this panel walk away from a run, and would closing park it? Two bits,
+ * because the composer's control needs both: `live` says there is a run to
+ * walk away FROM (so the target control becomes the walk-away action);
+ * `parked` says the run is blocked on the user's answer — a plan gate or a
+ * server's question — which is the one state the walk-away button declines.
  *
- * The plan gate must be behind the run — before that the panel is the only
- * place the approval can be answered, and closing strands it on an OS
- * notification the user has to click their way back from. A panel reopened
- * mid-run missed the handshake, so the transcript stands in: a plan card from
- * THIS run (its timestamp keeps a previous run's card from passing) means the
- * gate is past. Parked states (an armed approval here, the board's "awaiting"
- * mark) answer no outright. Idle — no live run at all — is never ready, however
- * many old plan cards the transcript holds.
+ * Closing while an answer is parked strands it on an OS notification the user
+ * has to click their way back from, so the button is disabled there and the
+ * tooltip says why rather than leaving a dead grey button unexplained. Every
+ * other live state — working, before the first gate, replanning — may be
+ * walked away from: the run is unattended by design, and if a gate parks
+ * later, the tab's "?" mark and a notification carry it.
  */
-export function useWalkAway(): { live: boolean; ready: boolean } {
+export function useWalkAway(): { live: boolean; parked: boolean } {
   const status = useConversationStore((s) => s.status);
   const runStartedAt = useConversationStore((s) => s.runStartedAt);
   const bridgeActive = useConversationStore((s) => s.bridgeActive);
-  const planApproved = useConversationStore((s) => s.planApproved);
-  const awaitingApproval = useConversationStore((s) => s.planApproval !== null);
-  // Selecting only the plan message (reference-stable until rewritten) keeps
-  // this from re-rendering on every unrelated message churn mid-run.
-  const plan = useConversationStore((s) => s.messages.findLast((m) => m.role === "plan"));
+  const parkedOnAnswer = useConversationStore(
+    (s) => s.planApproval !== null || s.elicitation !== null,
+  );
   const boardRun = useConversationStore(boardRunHere);
 
   // This panel's own run when it has one; the board's record of the run it
   // reopened into otherwise — but never a bridge session's: that client owns
   // the run, and the toggle's flip is not the walk-away there.
   const localLive = status === "running" && runStartedAt !== null;
-  const liveStartedAt = localLive
-    ? runStartedAt
-    : !bridgeActive && boardRun
-      ? boardRun.startedAt
-      : null;
-  if (liveStartedAt === null) return { live: false, ready: false };
-  if (awaitingApproval || boardRun?.awaiting === true) return { live: true, ready: false };
-  const ready = localLive ? planApproved : plan !== undefined && plan.timestamp >= liveStartedAt;
-  return { live: true, ready };
+  if (localLive) return { live: true, parked: parkedOnAnswer };
+  if (bridgeActive || !boardRun) return { live: false, parked: false };
+  return { live: true, parked: boardRun.awaiting === true };
 }
 
 /**

@@ -4,10 +4,11 @@ import { PORT_NAME } from "@/shared/protocol";
 import { useConversationStore } from "../ui/store";
 
 /**
- * The walk-away gate: the band's "Run in background" button keys on
- * planApproved, so the panel cannot be dismissed while the plan gate is still
- * ahead of the run (the approval would strand on an OS notification). Drives
- * the real store against a fake port, same seam as plan-stop.test.ts.
+ * The planApproved lifecycle the background auto-close keys on: a run starts
+ * unapproved, earns the handover on approve, re-arms on a revision, and resets
+ * with the run. (The walk-away button does not key on this — it disables only
+ * while an answer is parked: a plan gate or a server's question.) Drives the
+ * real store against a fake port, same seam as plan-stop.test.ts.
  */
 
 interface FakePort {
@@ -66,7 +67,7 @@ beforeEach(() => {
 
 afterEach(() => useConversationStore.getState().disconnect());
 
-describe("walk-away gate (planApproved)", () => {
+describe("planApproved lifecycle (background auto-close)", () => {
   it("starts gated, opens on approve, re-arms on a revision", async () => {
     const s = useConversationStore.getState();
     s.connect();

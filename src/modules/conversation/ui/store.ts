@@ -96,8 +96,8 @@ export interface ConversationState {
   planApproval: PlanApprovalPayload | null;
   /** A remote MCP server asking for input mid-tool-call — the plan card's twin. */
   elicitation: ElicitationAsk | null;
-  /** This run's plan has the user's yes — the walk-away gate. Closing the panel
-   *  before it strands the approval prompt on an OS notification. */
+  /** This run's plan has the user's yes — the handover a dispatched background
+   *  run auto-closes the panel on. */
   planApproved: boolean;
   /** Messages typed mid-run, waiting for the next tool boundary. */
   queued: { id: string; text: string }[];
@@ -1659,8 +1659,8 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     approvePlan: () => {
       if (!get().planApproval) return;
       post({ type: "plan_approval", approved: true });
-      // Approval is the handover: the gate is behind the run, so the band's
-      // walk-away button unlocks (and a dispatched background run auto-closes).
+      // Approval is the handover: the gate is behind the run, so a dispatched
+      // background run auto-closes.
       set({ planApproval: null, planApproved: true });
       // Approval is the handover: from here the run is unattended, so a
       // background one this panel dispatched takes the panel with it and gets
