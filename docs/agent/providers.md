@@ -49,7 +49,16 @@ The load-bearing details of talking to each provider shape. Read this when a tas
   tab list, and `pruneResultText` trims in cliffs precisely so it stops rewriting the old end
   of the history every turn (loop.ts). Break either and caching silently turns into a 25%
   surcharge. The OpenAI shapes take no markers — they cache automatically off the same stable
-  prefix above a ~1024-token minimum.
+  prefix above a ~1024-token minimum. OpenRouter is the one OpenAI-shape endpoint where
+  "automatic" isn't enough: its default routing picks a fresh upstream host per request and the
+  cache lives on that host, so the prefix re-prefilled cold every turn. When `baseUrl` is
+  `openrouter.ai`, `buildOpenAIBody` pins the model's own vendor —
+  `provider: {order: [slug], allow_fallbacks: true}` — via the verified vendor→slug map in
+  `openai.ts` (`qwen→alibaba`, `google→google-ai-studio`: the slug is often not the prefix).
+  Vendors that don't serve their own models there (`meta-llama`, `nvidia` — third-party hosting
+  only) aren't on the map and keep default routing rather than a guess. `allow_fallbacks` keeps
+  the pin a preference — one cold miss when the host is down, then back on. Single-host
+  OpenAI-shape endpoints get no block.
 - **No sampling params.** Never send temperature/topP — provider defaults always apply.
   The one knob we expose is `reasoningEffort` (`none|low|medium|high|max`, optional):
   verbatim `reasoning_effort` on OpenAI-shape; `thinking: {type:"adaptive"}` +

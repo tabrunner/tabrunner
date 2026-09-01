@@ -135,6 +135,8 @@ export function buildOpenAIBody(
 
   const pin = openRouterHostFor(config.baseUrl, config.model);
   if (pin) {
+    // allow_fallbacks keeps the pin a preference, not a lock: when the pinned
+    // host can't serve, OpenRouter falls back — one cold miss, then back on the pin.
     body.provider = { order: [pin], allow_fallbacks: true };
   }
 
@@ -148,10 +150,11 @@ export function buildOpenAIBody(
  * consecutive turns on one host, where its cache holds.
  *
  * Keys are model-id vendor prefixes whose vendor serves its own models on
- * OpenRouter; values are the provider slugs `order` accepts (checked against
- * OpenRouter's provider listing and each vendor's endpoint listings). Prefixes
- * not here — open-weight models served only by third parties (`meta-llama`,
- * `nvidia`, …), or a vendor added later — get no pin and keep default routing.
+ * OpenRouter; values are the provider slugs `order` accepts (verified 2026-09-01
+ * against OpenRouter's provider listing and each vendor's endpoint listings —
+ * slugs drift, so re-check before trusting a new entry). Prefixes not here —
+ * open-weight models served only by third parties (`meta-llama`, `nvidia`, …),
+ * or a vendor added later — get no pin and keep default routing.
  */
 const OPENROUTER_HOSTS: Record<string, string> = {
   anthropic: "anthropic",
@@ -184,9 +187,6 @@ function openRouterHostFor(baseUrl: string, model: string): string | undefined {
   }
   if (host !== "openrouter.ai") return undefined;
   const vendor = model.split("/")[0]?.toLowerCase();
-  // allow_fallbacks (sent by buildOpenAIBody) keeps the pin a preference, not
-  // a lock: when the pinned host can't serve, OpenRouter falls back — one cold
-  // miss, then back on the pin.
   return vendor ? OPENROUTER_HOSTS[vendor] : undefined;
 }
 
