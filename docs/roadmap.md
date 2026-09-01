@@ -296,6 +296,26 @@ fire"; and pinning an artifact so it survives its conversation being evicted —
 done, since "export it if you want to keep it" is the honest contract once Settings makes them
 findable.
 
+### 8. Stream-idle watchdog
+
+A stream that opens and then goes silent holds the run forever: `streamSse` classifies what comes
+BACK, and nothing comes back. Today the loop only retries what was refused — a hung connection is
+a run that simply never ends, until the user stops it by hand. The fix is a watchdog that aborts
+after ~60s without bytes and lets the loop's transient path retry.
+
+**The shape is already proven, courtesy of olhary's finish pass (their `0837c94e`):** a
+provider-agnostic wrapper applied at stream construction, never inside one transport; the caller's
+signal bridged via `AbortSignal.any([callerSignal, watchdogController.signal])` — which also covers
+the race where the caller's signal is ALREADY aborted and fires no event for a listener; idle
+identified by the controller's abort reason (`signal.reason === IDLE_SENTINEL` in the catch), never
+a mutable boolean; timer re-armed on every chunk, and the abort classified transient so the loop
+retries instead of going red.
+
+**One adaptation for this stack:** their `timer.unref()` is a Node-ism — a browser timer is just a
+number and cannot be unref'd. The concern it serves (an abandoned stream holding the loop) is
+self-bounded here: the watchdog's own timer is the only one, its firing ends the wait, and an MV3
+worker's lifetime is Port-held while a panel watches anyway.
+
 ---
 
 ## Later
