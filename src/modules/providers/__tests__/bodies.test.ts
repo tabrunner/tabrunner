@@ -1,12 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildOpenAIBody } from "../openai";
 import { buildAnthropicBody } from "../anthropic";
-import type {
-  ChatMessage,
-  ExternalJsonSchema,
-  ResolvedProviderConfig,
-  ToolDef,
-} from "../types";
+import type { ChatMessage, ExternalJsonSchema, ResolvedProviderConfig, ToolDef } from "../types";
 
 // Storage stand-in comes from src/test-setup.ts (vitest setupFiles).
 
@@ -93,6 +88,63 @@ describe("buildOpenAIBody", () => {
     const body = buildOpenAIBody(base, [{ role: "assistant", content: "done" }], []);
     const msgs = body.messages as Record<string, unknown>[];
     expect(msgs[0]).not.toHaveProperty("reasoning_content");
+  });
+
+  describe("OpenRouter upstream pinning", () => {
+    // OpenRouter routes each request to a fresh upstream host by default, and
+    // the prompt cache lives on that host — so without a pin the stable prefix
+    // re-prefills cold every turn. The pin keeps one conversation on one host.
+    const openrouter: ResolvedProviderConfig = {
+      ...base,
+      baseUrl: "https://openrouter.ai/api/v1",
+      model: "anthropic/claude-sonnet-5",
+    };
+
+    it("pins the model's own vendor when that vendor serves it", () => {
+      const body = buildOpenAIBody(openrouter, messages, []);
+      expect(body.provider).toEqual({ order: ["anthropic"], allow_fallbacks: true });
+    });
+
+    it("maps vendor prefixes to their OpenRouter provider slug", () => {
+      // Prefix and slug disagree on several vendors — the body must carry the
+      // slug `order` accepts, never the raw prefix.
+      const aliases: Record<string, string> = {
+        "qwen/qwen3.8-flash": "alibaba",
+        "mistralai/mistral-medium-3-5": "mistral",
+        "x-ai/grok-4.6": "xai",
+        "google/gemini-3.7-flash": "google-ai-studio",
+        "z-ai/glm-5.3": "z-ai",
+      };
+      for (const [model, slug] of Object.entries(aliases)) {
+        const body = buildOpenAIBody({ ...openrouter, model }, messages, []);
+        expect(body.provider, model).toEqual({ order: [slug], allow_fallbacks: true });
+      }
+    });
+
+    it("leaves default routing on for vendors OpenRouter doesn't serve first-party", () => {
+      // Open-weight models are hosted by third parties — there is no vendor
+      // host to pin, and an unknown slug in `order` is a request we never sent.
+      for (const model of ["meta-llama/llama-3.3-70b-instruct", "nvidia/nemotron-3.5-lightning"]) {
+        const body = buildOpenAIBody({ ...openrouter, model }, messages, []);
+        expect(body, model).not.toHaveProperty("provider");
+      }
+    });
+
+    it("leaves default routing on for a model id without a vendor prefix", () => {
+      const body = buildOpenAIBody({ ...openrouter, model: "bare-model" }, messages, []);
+      expect(body).not.toHaveProperty("provider");
+    });
+
+    it("never pins other OpenAI-shape endpoints — they are single-host", () => {
+      for (const baseUrl of ["https://api.groq.com/openai/v1", "https://api.deepseek.com"]) {
+        const body = buildOpenAIBody(
+          { ...base, baseUrl, model: "anthropic/claude-sonnet-5" },
+          messages,
+          [],
+        );
+        expect(body, baseUrl).not.toHaveProperty("provider");
+      }
+    });
   });
 });
 
@@ -283,7 +335,9 @@ describe("external (remote MCP) tool schemas", () => {
 
   it("rides through OpenAI parameters verbatim", () => {
     const body = buildOpenAIBody(base, messages, tools);
-    expect((body.tools as Array<{ function: { parameters: unknown } }>)[0]?.function.parameters).toBe(schema);
+    expect(
+      (body.tools as Array<{ function: { parameters: unknown } }>)[0]?.function.parameters,
+    ).toBe(schema);
   });
 
   it("rides through Anthropic input_schema verbatim", () => {

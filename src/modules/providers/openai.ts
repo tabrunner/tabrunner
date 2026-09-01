@@ -133,7 +133,61 @@ export function buildOpenAIBody(
     body.reasoning_effort = config.reasoningEffort;
   }
 
+  const pin = openRouterHostFor(config.baseUrl, config.model);
+  if (pin) {
+    body.provider = { order: [pin], allow_fallbacks: true };
+  }
+
   return body;
+}
+
+/**
+ * OpenRouter's default routing picks a fresh upstream host per request, but the
+ * prompt cache lives ON that host — so the stable prefix (system prompt, tools,
+ * history) re-prefills cold every turn. Pinning the model's own vendor keeps
+ * consecutive turns on one host, where its cache holds.
+ *
+ * Keys are model-id vendor prefixes whose vendor serves its own models on
+ * OpenRouter; values are the provider slugs `order` accepts (checked against
+ * OpenRouter's provider listing and each vendor's endpoint listings). Prefixes
+ * not here — open-weight models served only by third parties (`meta-llama`,
+ * `nvidia`, …), or a vendor added later — get no pin and keep default routing.
+ */
+const OPENROUTER_HOSTS: Record<string, string> = {
+  anthropic: "anthropic",
+  "arcee-ai": "arcee-ai",
+  cohere: "cohere",
+  deepseek: "deepseek",
+  google: "google-ai-studio",
+  meta: "meta",
+  minimax: "minimax",
+  mistralai: "mistral",
+  moonshotai: "moonshotai",
+  morph: "morph",
+  openai: "openai",
+  perplexity: "perplexity",
+  qwen: "alibaba",
+  stepfun: "stepfun",
+  tencent: "tencent",
+  upstage: "upstage",
+  "x-ai": "xai",
+  "z-ai": "z-ai",
+};
+
+/** The upstream slug an OpenRouter call should prefer, if the model's vendor serves it. */
+function openRouterHostFor(baseUrl: string, model: string): string | undefined {
+  let host: string;
+  try {
+    host = new URL(baseUrl).hostname;
+  } catch {
+    return undefined;
+  }
+  if (host !== "openrouter.ai") return undefined;
+  const vendor = model.split("/")[0]?.toLowerCase();
+  // allow_fallbacks (sent by buildOpenAIBody) keeps the pin a preference, not
+  // a lock: when the pinned host can't serve, OpenRouter falls back — one cold
+  // miss, then back on the pin.
+  return vendor ? OPENROUTER_HOSTS[vendor] : undefined;
 }
 
 interface OpenAIChunk {
