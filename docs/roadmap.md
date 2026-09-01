@@ -351,6 +351,16 @@ pre-redirect storage over its view and miss the new task bubble until the follow
 (self-healing, view-only). Covering every window needs a storage-side send marker on the thread,
 not a local flag — worth it only if multi-window-on-one-thread use ever makes the gap real.
 
+**Explicit crash seam in the panel** — when Chrome kills the worker mid-run (an extension update
+is the realistic one), the dead run heals for the MODEL by design: the crash window
+(`RECENT_WINDOW`) keeps every step row, and the standing prompt instruction sends the next run to
+`read_history` when a run looks interrupted. The USER half is implicit: the thread simply ends at
+its last persisted step with no marker, no receipt, no run band. The seam needs what does not exist
+today — a persisted run-START stamp on the conversation (nothing anywhere says "started but never
+ended"; `lastRun` is stamped only when a run finishes), a panel check on boot, and its own quiet
+line. Build it only if field evidence shows users waiting on dead runs — until then the composer
+works, the next send recovers the work, and the thread's bare ending is honest if quiet.
+
 ---
 
 ## Deliberately not doing
