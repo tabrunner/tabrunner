@@ -206,7 +206,11 @@ export class McpSession {
     try {
       res = await fetch(this.opts.url, {
         method: "POST",
-        headers: { accept: "application/json, text/event-stream", "content-type": "application/json", ...this.#headers() },
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+          ...this.#headers(),
+        },
         body,
         signal: o.signal ? AbortSignal.any([o.signal, timeout]) : timeout,
       });
@@ -318,7 +322,10 @@ export class McpSession {
       body = methodNotFoundResponse(id, method);
     } else {
       try {
-        const answer = await this.opts.onRequest(method, isRecord(msg.params) ? msg.params : undefined);
+        const answer = await this.opts.onRequest(
+          method,
+          isRecord(msg.params) ? msg.params : undefined,
+        );
         body =
           answer === "decline"
             ? declineResponse(id)
@@ -338,7 +345,11 @@ export class McpSession {
   async #fireAndForget(body: string): Promise<void> {
     await fetch(this.opts.url, {
       method: "POST",
-      headers: { accept: "application/json, text/event-stream", "content-type": "application/json", ...this.#headers() },
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        ...this.#headers(),
+      },
       body,
       signal: AbortSignal.timeout(ANSWER_TIMEOUT_MS),
     });
@@ -362,7 +373,9 @@ function toCallResult(result: unknown): McpCallResult {
   return {
     isError: result.isError === true,
     content,
-    ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
+    ...(result.structuredContent !== undefined
+      ? { structuredContent: result.structuredContent }
+      : {}),
   };
 }
 

@@ -33,7 +33,12 @@ export function McpServersSection() {
           </h3>
           <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t("mcpOut.help")}</p>
         </div>
-        <Button variant="outline" size="sm" className="shrink-0" onClick={() => setEditor({ open: true })}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={() => setEditor({ open: true })}
+        >
           {t("mcpOut.add")}
         </Button>
       </div>

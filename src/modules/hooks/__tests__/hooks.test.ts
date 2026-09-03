@@ -20,8 +20,12 @@ function posts(): { url: string; headers: Record<string, string>; body: string }
 
 describe("hook registry", () => {
   it("validates event and URL at save, caps the list", async () => {
-    expect((await saveHook({ event: "nope" as HookRule["event"], url: "https://x.example" })).ok).toBe(false);
-    expect((await saveHook({ event: "run_finished", url: "http://remote.example" })).ok).toBe(false);
+    expect(
+      (await saveHook({ event: "nope" as HookRule["event"], url: "https://x.example" })).ok,
+    ).toBe(false);
+    expect((await saveHook({ event: "run_finished", url: "http://remote.example" })).ok).toBe(
+      false,
+    );
     for (let i = 0; i < MAX_HOOKS; i++)
       await saveHook({ event: "run_finished", url: `https://h${i}.example` });
     const over = await saveHook({ event: "run_started", url: "https://over.example" });
@@ -30,7 +34,11 @@ describe("hook registry", () => {
   });
 
   it("toggles, deletes, and stamps delivery receipts", async () => {
-    const saved = await saveHook({ event: "error", url: "https://h.example", headers: { Authorization: "Bearer x" } });
+    const saved = await saveHook({
+      event: "error",
+      url: "https://h.example",
+      headers: { Authorization: "Bearer x" },
+    });
     if (!saved.ok) throw new Error("expected save");
     expect(await setHookEnabled(saved.rule.id, false)).toBe(true);
     expect((await listHookRules())[0]!.enabled).toBe(false);
@@ -45,7 +53,11 @@ describe("hook registry", () => {
 
 describe("fireHook", () => {
   it("delivers to enabled matching rules with auth headers and a bounded payload", async () => {
-    await saveHook({ event: "run_finished", url: "https://match.example", headers: { Authorization: "Bearer tok" } });
+    await saveHook({
+      event: "run_finished",
+      url: "https://match.example",
+      headers: { Authorization: "Bearer tok" },
+    });
     await saveHook({ event: "run_finished", url: "https://off.example", enabled: false });
     await saveHook({ event: "error", url: "https://other-event.example" });
     const seen = posts();

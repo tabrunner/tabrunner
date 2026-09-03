@@ -45,9 +45,16 @@ describe("handleSaveSkill", () => {
   it("never overwrites — an existing name comes back as the store's own error", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((input: RequestInfo | URL) =>
-        new Response(String(input).includes("billing-skill") ? DOC : "---\nname: other\ndescription: x\n---\nbody"),
-      ),
+      vi
+        .fn()
+        .mockImplementation(
+          (input: RequestInfo | URL) =>
+            new Response(
+              String(input).includes("billing-skill")
+                ? DOC
+                : "---\nname: other\ndescription: x\n---\nbody",
+            ),
+        ),
     );
     await handleSaveSkill({ url: "acme/billing-skill" });
     const second = await handleSaveSkill({

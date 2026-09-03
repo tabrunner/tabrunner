@@ -35,9 +35,7 @@ export async function stampServerStatus(
   });
 }
 
-export type SaveResult =
-  | { ok: true; server: McpServerConfig }
-  | { ok: false; error: string };
+export type SaveResult = { ok: true; server: McpServerConfig } | { ok: false; error: string };
 
 const ERRORS = {
   tooMany: "mcpOut.errors.tooMany",

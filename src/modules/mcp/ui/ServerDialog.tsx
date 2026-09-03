@@ -36,9 +36,9 @@ export function ServerDialog({
   );
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: true; count: number } | { ok: false; error: string } | null>(
-    null,
-  );
+  const [testResult, setTestResult] = useState<
+    { ok: true; count: number } | { ok: false; error: string } | null
+  >(null);
 
   const buildHeaders = (): Record<string, string> | undefined => {
     const rows = headers.filter((h) => h.name.trim() !== "");
@@ -117,9 +117,7 @@ export function ServerDialog({
                 <input
                   className={`${inputChrome} w-2/5 px-2 py-1.5 font-mono text-xs text-neutral-800 dark:text-neutral-200`}
                   value={row.name}
-                  onChange={(e) =>
-                    setHeaders(headers.with(i, { ...row, name: e.target.value }))
-                  }
+                  onChange={(e) => setHeaders(headers.with(i, { ...row, name: e.target.value }))}
                   placeholder={i === 0 ? "Authorization" : ""}
                   spellCheck={false}
                   aria-label={t("mcpOut.headerName")}
@@ -127,9 +125,7 @@ export function ServerDialog({
                 <input
                   className={`${inputChrome} min-w-0 flex-1 px-2 py-1.5 font-mono text-xs text-neutral-800 dark:text-neutral-200`}
                   value={row.value}
-                  onChange={(e) =>
-                    setHeaders(headers.with(i, { ...row, value: e.target.value }))
-                  }
+                  onChange={(e) => setHeaders(headers.with(i, { ...row, value: e.target.value }))}
                   placeholder="Bearer …"
                   type="password"
                   aria-label={t("mcpOut.headerValue")}

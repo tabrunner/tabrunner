@@ -1,11 +1,6 @@
 import { createLogger } from "@/lib/logger";
 import { stampDelivery, listHookRules } from "./store";
-import {
-  HOOK_TIMEOUT_MS,
-  MAX_HOOK_STRING_CHARS,
-  type HookEvent,
-  type HookRule,
-} from "./types";
+import { HOOK_TIMEOUT_MS, MAX_HOOK_STRING_CHARS, type HookEvent, type HookRule } from "./types";
 
 /**
  * Delivery: read rules, POST the event's JSON to each match, stamp the

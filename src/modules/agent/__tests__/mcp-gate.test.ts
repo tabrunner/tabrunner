@@ -22,7 +22,15 @@ describe("isGatedTool", () => {
   });
 
   it("still leaves reads and bookkeeping free", () => {
-    for (const name of ["snapshot", "read_network_requests", "plan", "remember", "skill", "done", "cancel_schedule"]) {
+    for (const name of [
+      "snapshot",
+      "read_network_requests",
+      "plan",
+      "remember",
+      "skill",
+      "done",
+      "cancel_schedule",
+    ]) {
       expect(isGatedTool(name)).toBe(false);
     }
   });

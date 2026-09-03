@@ -14,5 +14,11 @@ export function validOutboundUrl(raw: string): boolean {
   if (url.protocol === "https:") return true;
   if (url.protocol !== "http:") return false;
   const host = url.hostname.toLowerCase();
-  return host === "127.0.0.1" || host === "[::1]" || host === "::1" || host === "localhost" || host.endsWith(".localhost");
+  return (
+    host === "127.0.0.1" ||
+    host === "[::1]" ||
+    host === "::1" ||
+    host === "localhost" ||
+    host.endsWith(".localhost")
+  );
 }

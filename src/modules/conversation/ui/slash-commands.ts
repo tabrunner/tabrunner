@@ -575,11 +575,13 @@ export const COMMANDS: readonly SlashCommand[] = [
  * a citation task is inherently this conversation's.
  */
 function runSkillTask(name: string, rest?: string): void {
-  useConversationStore.getState().sendTask(
-    rest
-      ? i18n.t("commands.skill.taskWithArgs", { name, args: rest })
-      : i18n.t("commands.skill.task", { name }),
-  );
+  useConversationStore
+    .getState()
+    .sendTask(
+      rest
+        ? i18n.t("commands.skill.taskWithArgs", { name, args: rest })
+        : i18n.t("commands.skill.task", { name }),
+    );
 }
 
 function skillCommand(s: Skill): SlashCommand {
@@ -733,7 +735,9 @@ export function executeSlash(text: string, thisChatOnly = false): SlashOutcome {
   // Skills join only when no built-in carries the fragment.
   const builtins = COMMANDS.filter((c) => c.name.startsWith(parsed.fragment));
   const matches =
-    builtins.length > 0 ? builtins : allCommands().filter((c) => c.name.startsWith(parsed.fragment));
+    builtins.length > 0
+      ? builtins
+      : allCommands().filter((c) => c.name.startsWith(parsed.fragment));
   if (matches.length === 1 && matches[0]) {
     const command = matches[0];
     if (command.takesArg) return { complete: `/${command.name} ` };

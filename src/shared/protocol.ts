@@ -57,7 +57,12 @@ export type Command =
    * the run's parked wait; owner-scoped like plan_approval, since bridge and
    * schedule runs never park (nobody is present to answer).
    */
-  | { type: "elicitation_result"; requestId: string; action: "accept" | "decline"; value?: Record<string, unknown> }
+  | {
+      type: "elicitation_result";
+      requestId: string;
+      action: "accept" | "decline";
+      value?: Record<string, unknown>;
+    }
   /**
    * Ask what is live: an external agent in the browser (answered with
    * run_active), and — for the thread this panel is showing — its driven tab,

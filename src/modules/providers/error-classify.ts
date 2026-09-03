@@ -12,14 +12,7 @@
  * Upgrade path is adding patterns as new wordings are seen in the wild.
  */
 export type ErrorKind =
-  | "entitlement"
-  | "quota"
-  | "auth"
-  | "model"
-  | "rate"
-  | "overload"
-  | "context"
-  | "network";
+  "entitlement" | "quota" | "auth" | "model" | "rate" | "overload" | "context" | "network";
 
 /**
  * A request that never reached the provider: `fetch` rejects with a TypeError

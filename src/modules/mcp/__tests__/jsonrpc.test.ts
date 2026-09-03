@@ -39,7 +39,9 @@ describe("classifyMessage", () => {
   it("sorts the four shapes apart", () => {
     expect(classifyMessage({ jsonrpc: "2.0", id: 1, result: {} })).toBe("response");
     expect(classifyMessage({ jsonrpc: "2.0", method: "x" })).toBe("notification");
-    expect(classifyMessage({ jsonrpc: "2.0", id: 2, method: "elicitation/create" })).toBe("request");
+    expect(classifyMessage({ jsonrpc: "2.0", id: 2, method: "elicitation/create" })).toBe(
+      "request",
+    );
     expect(classifyMessage({ hello: true })).toBe("invalid");
   });
 });
@@ -60,15 +62,15 @@ describe("SseFrameReader", () => {
 
   it("joins multi-line data fields before parsing (a pretty-printed payload)", () => {
     const reader = new SseFrameReader();
-    expect(reader.push('data: {\n')).toEqual([]);
+    expect(reader.push("data: {\n")).toEqual([]);
     expect(reader.push('data:   "id": 1,\n')).toEqual([]);
     expect(reader.push('data:   "result": true\n')).toEqual([]);
-    expect(reader.push('data: }\n\n')).toEqual([{ id: 1, result: true }]);
+    expect(reader.push("data: }\n\n")).toEqual([{ id: 1, result: true }]);
   });
 
   it("drops unparseable frames instead of throwing", () => {
     const reader = new SseFrameReader();
-    expect(reader.push("data: not-json\n\ndata: {\"ok\":true}\n\n")).toEqual([{ ok: true }]);
+    expect(reader.push('data: not-json\n\ndata: {"ok":true}\n\n')).toEqual([{ ok: true }]);
   });
 
   it("end() flushes a final unterminated frame", () => {

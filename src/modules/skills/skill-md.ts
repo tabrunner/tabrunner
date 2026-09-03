@@ -121,7 +121,11 @@ function asList(value: FrontValue): string[] {
 }
 
 function asScalar(value: FrontValue): string {
-  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string").join(" ").trim();
+  if (Array.isArray(value))
+    return value
+      .filter((v): v is string => typeof v === "string")
+      .join(" ")
+      .trim();
   return typeof value === "string" ? value : "";
 }
 

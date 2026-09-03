@@ -61,9 +61,7 @@ describe("resolveGithubRepo", () => {
       ok: true,
       repo: { owner: "acme", repo: "skills", ref: "HEAD", dir: "pay-rent" },
     });
-    expect(
-      resolveGithubRepo("https://github.com/acme/skills/tree/main/library"),
-    ).toEqual({
+    expect(resolveGithubRepo("https://github.com/acme/skills/tree/main/library")).toEqual({
       ok: true,
       repo: { owner: "acme", repo: "skills", ref: "main", dir: "library" },
     });
@@ -89,15 +87,17 @@ describe("discoverRepoSkills", () => {
     });
 
   it("keeps only SKILL.md blobs under the directory, as raw fetch URLs, capped", async () => {
-    const fetchSpy = vi.fn().mockResolvedValue(
-      tree([
-        "SKILL.md",
-        "pay-rent/SKILL.md",
-        "library/billing/pay-rent/SKILL.md",
-        "README.md",
-        "notes",
-      ]),
-    );
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(
+        tree([
+          "SKILL.md",
+          "pay-rent/SKILL.md",
+          "library/billing/pay-rent/SKILL.md",
+          "README.md",
+          "notes",
+        ]),
+      );
     vi.stubGlobal("fetch", fetchSpy);
     const found = await discoverRepoSkills({
       owner: "acme",
@@ -125,23 +125,23 @@ describe("discoverRepoSkills", () => {
 
   it("maps rate limiting and junk payloads to typed failures, never a throw", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 403 })));
-    await expect(discoverRepoSkills({ owner: "a", repo: "b", ref: "HEAD", dir: "" })).resolves.toEqual(
-      { ok: false, reason: "rate-limit", status: 403 },
-    );
+    await expect(
+      discoverRepoSkills({ owner: "a", repo: "b", ref: "HEAD", dir: "" }),
+    ).resolves.toEqual({ ok: false, reason: "rate-limit", status: 403 });
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(new Response("not json at all", { status: 200 })),
     );
-    await expect(discoverRepoSkills({ owner: "a", repo: "b", ref: "HEAD", dir: "" })).resolves.toEqual(
-      { ok: false, reason: "status", status: 200 },
-    );
+    await expect(
+      discoverRepoSkills({ owner: "a", repo: "b", ref: "HEAD", dir: "" }),
+    ).resolves.toEqual({ ok: false, reason: "status", status: 200 });
   });
 
   it("an empty tree counts as a failed scan so the caller falls back to one file", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(tree([])));
-    await expect(discoverRepoSkills({ owner: "a", repo: "b", ref: "HEAD", dir: "" })).resolves.toEqual(
-      { ok: false, reason: "status", status: 200 },
-    );
+    await expect(
+      discoverRepoSkills({ owner: "a", repo: "b", ref: "HEAD", dir: "" }),
+    ).resolves.toEqual({ ok: false, reason: "status", status: 200 });
   });
 });
 

@@ -2,13 +2,21 @@ import { describe, expect, it } from "vitest";
 import { normalizeMcpResult } from "../results";
 import { MAX_MCP_RESULT_CHARS, MAX_MCP_RESULT_IMAGES } from "../types";
 
-function result(content: Array<Record<string, unknown>>, overrides: Partial<Parameters<typeof normalizeMcpResult>[0]> = {}) {
+function result(
+  content: Array<Record<string, unknown>>,
+  overrides: Partial<Parameters<typeof normalizeMcpResult>[0]> = {},
+) {
   return normalizeMcpResult({ isError: false, content, ...overrides });
 }
 
 describe("normalizeMcpResult", () => {
   it("joins text blocks", () => {
-    expect(result([{ type: "text", text: "line one" }, { type: "text", text: "line two" }])).toEqual({
+    expect(
+      result([
+        { type: "text", text: "line one" },
+        { type: "text", text: "line two" },
+      ]),
+    ).toEqual({
       ok: true,
       data: "line one\n\nline two",
     });
@@ -28,7 +36,9 @@ describe("normalizeMcpResult", () => {
     // Serialized and capped here rather than passed through unbounded — the
     // loop would stringify it onto the wire anyway.
     expect(result([], { structuredContent: { rows: 3 } }).data).toBe('{"rows":3}');
-    expect(result([{ type: "text", text: "x" }], { structuredContent: { rows: 3 } }).data).toBe("x");
+    expect(result([{ type: "text", text: "x" }], { structuredContent: { rows: 3 } }).data).toBe(
+      "x",
+    );
     const big = result([], { structuredContent: { blob: "y".repeat(MAX_MCP_RESULT_CHARS + 10) } });
     expect(big.data).toContain("[truncated");
   });

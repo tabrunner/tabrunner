@@ -38,8 +38,7 @@ export async function loadMcpForRun(
   onRequest?: McpRequestHandler,
 ): Promise<McpRunSnapshot> {
   const servers = (await listMcpServers()).filter((s) => s.enabled);
-  if (servers.length === 0)
-    return { tools: [], handle: EMPTY_HANDLE, failures: [] };
+  if (servers.length === 0) return { tools: [], handle: EMPTY_HANDLE, failures: [] };
 
   const opened = await Promise.all(servers.map((cfg) => openServer(cfg, signal, onRequest)));
 

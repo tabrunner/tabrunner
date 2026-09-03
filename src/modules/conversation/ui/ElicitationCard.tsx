@@ -73,9 +73,7 @@ export function ElicitationCard({
     if (v === undefined || v === "") return false;
     return f.kind !== "number" || Number.isFinite(Number(v));
   };
-  const readyToSend = fields
-    .filter((f) => required.has(f.name))
-    .every((f) => filled(f));
+  const readyToSend = fields.filter((f) => required.has(f.name)).every((f) => filled(f));
 
   const collect = (): Record<string, unknown> => {
     const value: Record<string, unknown> = {};

@@ -18,9 +18,7 @@ export function listHookRules(): Promise<HookRule[]> {
   return hookRulesItem.get();
 }
 
-export type SaveResult =
-  | { ok: true; rule: HookRule }
-  | { ok: false; error: string };
+export type SaveResult = { ok: true; rule: HookRule } | { ok: false; error: string };
 
 const ERRORS = {
   tooMany: "hooks.errors.tooMany",

@@ -72,7 +72,11 @@ export function normalizeMcpResult(result: McpCallResult): NormalizedMcpResult {
       ? cap(JSON.stringify(result.structuredContent))
       : undefined);
 
-  return { ok: true, ...(data !== undefined ? { data } : {}), ...(images.length ? { images } : {}) };
+  return {
+    ok: true,
+    ...(data !== undefined ? { data } : {}),
+    ...(images.length ? { images } : {}),
+  };
 }
 
 function cap(text: string): string {

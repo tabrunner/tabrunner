@@ -13,7 +13,11 @@ function server(id: string, name: string): McpServerConfig {
   return { id, name, url: "https://mcp.example", enabled: true, createdAt: 0 };
 }
 
-function tool(name: string, description?: string, inputSchema?: Record<string, unknown>): McpAdvertisedTool {
+function tool(
+  name: string,
+  description?: string,
+  inputSchema?: Record<string, unknown>,
+): McpAdvertisedTool {
   return { name, description, inputSchema };
 }
 
@@ -35,7 +39,10 @@ describe("buildCatalog", () => {
 
   it("accepts an absent schema as a no-argument object schema, rejects non-object ones", () => {
     const { servers } = buildCatalog([
-      { config: server("s1", "a"), advertised: [tool("noargs"), tool("bad", "x", { type: "string" })] },
+      {
+        config: server("s1", "a"),
+        advertised: [tool("noargs"), tool("bad", "x", { type: "string" })],
+      },
     ]);
     const slice = servers.get("s1")!;
     expect(slice.defs.map((d) => d.name)).toEqual(["mcp__a__noargs"]);
@@ -47,7 +54,10 @@ describe("buildCatalog", () => {
       {
         config: server("s1", "a"),
         advertised: [
-          tool("fat", "fine", { type: "object", properties: { x: { type: "string", description: "z".repeat(MAX_TOOL_SCHEMA_CHARS) } } }),
+          tool("fat", "fine", {
+            type: "object",
+            properties: { x: { type: "string", description: "z".repeat(MAX_TOOL_SCHEMA_CHARS) } },
+          }),
           tool("lean", "fine", { type: "object" }),
         ],
       },

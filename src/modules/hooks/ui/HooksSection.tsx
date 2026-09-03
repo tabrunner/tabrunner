@@ -8,12 +8,7 @@ import { PencilIcon, PlusIcon, TrashIcon } from "@/components/Icon";
 import { TitledDialog } from "@/components/TitledDialog";
 import { useStoredItem } from "@/components/useStoredItem";
 import { HOOK_EVENTS, MAX_HOOKS, type HookEvent, type HookRule } from "../types";
-import {
-  deleteHook,
-  hookRulesItem,
-  saveHook,
-  setHookEnabled,
-} from "../store";
+import { deleteHook, hookRulesItem, saveHook, setHookEnabled } from "../store";
 
 const EVENT_KEY = {
   run_started: "hooks.events.run_started",

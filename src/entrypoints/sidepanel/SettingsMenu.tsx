@@ -111,7 +111,8 @@ export function SettingsMenu() {
                 </Button>
                 {/* The lost user's door sits above the broken-build door:
                     "what can this do?" is the more common question, and the
-                    sheet it opens carries the report link too. */}                <Button
+                    sheet it opens carries the report link too. */}{" "}
+                <Button
                   variant="ghost"
                   size="sm"
                   className="justify-start text-left"

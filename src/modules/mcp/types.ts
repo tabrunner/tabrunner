@@ -95,7 +95,11 @@ export interface McpCallResult {
 
 /** The session surface tools execute against (McpSession implements this). */
 export interface McpSessionApi {
-  callTool(toolName: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<McpCallResult>;
+  callTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<McpCallResult>;
 }
 
 /** Live handle for one run's set of sessions. */

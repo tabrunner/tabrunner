@@ -38,7 +38,10 @@ function sse(frames: string[]): Response {
 }
 
 /** Install a fetch that answers queued responses in order and records posts. */
-function serve(responses: Array<Response | ((req: CapturedRequest) => Response)>, posts: CapturedRequest[]) {
+function serve(
+  responses: Array<Response | ((req: CapturedRequest) => Response)>,
+  posts: CapturedRequest[],
+) {
   let i = 0;
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
     const req: CapturedRequest = {
@@ -243,7 +246,9 @@ describe("McpSession", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
       void init?.headers;
       return new Promise((_, reject) => {
-        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason ?? new Error("abort")));
+        init?.signal?.addEventListener("abort", () =>
+          reject(init.signal?.reason ?? new Error("abort")),
+        );
       });
     });
 
@@ -283,9 +288,7 @@ describe("McpSession", () => {
   });
 
   it("throws typed connect errors from initialize", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("nope", { status: 401 }),
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 401 }));
     const s = new McpSession({ url: "https://mcp.example" });
     await expect(s.initialize()).rejects.toBeInstanceOf(McpHttpError);
     vi.restoreAllMocks();

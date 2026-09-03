@@ -146,7 +146,9 @@ body`);
   });
 
   it("leaves a flat scalar list under mcp_servers out of the refs entirely", () => {
-    const parsed = parseSkillMd(`---\nname: x\ndescription: d\nmcp_servers:\n  - not-a-map\n---\nb`);
+    const parsed = parseSkillMd(
+      `---\nname: x\ndescription: d\nmcp_servers:\n  - not-a-map\n---\nb`,
+    );
     expect(parsed.mcpServers).toEqual([]);
   });
 });

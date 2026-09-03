@@ -264,7 +264,10 @@ export async function executeTool(
         // bypasses what a human one passes through.
         const outcome = await handleSaveSkill(call.args);
         if (!outcome.ok) return { ok: false, error: outcome.error };
-        return { ok: true, data: { saved: outcome.saved.name, summary: outcome.saved.description } };
+        return {
+          ok: true,
+          data: { saved: outcome.saved.name, summary: outcome.saved.description },
+        };
       }
 
       case "schedule_task":

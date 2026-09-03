@@ -23,7 +23,10 @@ describe("exposedToolName", () => {
   });
 
   it("stays under the wire budget even with Anthropic's OAuth prefix in mind", () => {
-    const long = exposedToolName("a-very-long-server-name-indeed", "and-an-extremely-long-tool-name-here");
+    const long = exposedToolName(
+      "a-very-long-server-name-indeed",
+      "and-an-extremely-long-tool-name-here",
+    );
     expect(long.length).toBeLessThanOrEqual(MAX_MCP_NAME_CHARS);
   });
 
