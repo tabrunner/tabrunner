@@ -195,9 +195,6 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       getConversationMeta(conversationId),
       getMessages(conversationId),
     ]);
-    // What the thread had already spent before this run — the seed the gauge's
-    // full-usage number grows from (see onUsage below).
-    const contextBase = meta?.contextTokens ?? 0;
     const providerConfig = await getProviderFor(meta?.engine);
     if (!providerConfig) {
       emit({ type: "error", message: i18n.t("errors.noActiveProvider") });
@@ -589,12 +586,19 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             // arrived late. The panel and the transcript writer both just set.
             run.usage.input += tick.input;
             run.usage.output += tick.output;
-            // The conversation's FULL usage — everything the thread spent
-            // before this run, plus this run's own total — so it can never
-            // read smaller than the run band's number beside it. A fold
-            // subtracts what it freed, bringing the number down with the
-            // thread (noteContextFreed).
-            run.usage.contextTokens = contextBase + run.usage.input + run.usage.output;
+            // The context is what the provider just MEASURED, not what the
+            // thread has spent. Every turn re-sends the whole conversation, so
+            // summing turns counts the same tokens over and over: a 30-step run
+            // on a 200k thread reads as 6M against a 200k window, and the gauge
+            // sits permanently red on a context that never grew. The newest
+            // turn's input IS the size of the context that turn ran on (cache
+            // reads included — see the anthropic adapter), and it is the very
+            // number the auto-fold acts on, so the gauge and needsCompaction
+            // can no longer disagree. A new run's first turn already carries
+            // the replayed history, which is why nothing from earlier runs is
+            // added on top. A fold still moves it early (noteContextFreed) —
+            // an estimate until the next turn measures for real.
+            if (tick.input > 0) run.usage.contextTokens = tick.input;
             // A gateway that priced the call wins over the table's estimate;
             // an unknown model prices nothing and the run stays costless.
             const spent = tick.cost ?? tokenCost(resolvedProvider.model, tick);

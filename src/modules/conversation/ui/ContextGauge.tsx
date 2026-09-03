@@ -7,13 +7,21 @@ import {
   learnedContextLimits,
 } from "@/modules/providers/context-window";
 import { useStoredItem } from "@/components/useStoredItem";
-import { formatTokens } from "@/lib/format";
+import { formatMoney, formatTokens } from "@/lib/format";
 
 /**
- * What the conversation has spent — its full token usage across every run, the
- * number you read before deciding whether to compact.
+ * How big the conversation IS, and what it has cost — the two facts about the
+ * THREAD, on the row under the run's own numbers.
  *
- * **It shows a token count, not a percentage.** A percentage needs a
+ * **The count is a size, not a total.** It is the newest turn's input as the
+ * provider measured it — the whole replayed thread, cache reads included. Spend
+ * accumulates and a context does not: every turn re-sends the same history, so
+ * a run's `input` (the band above) passes this number many times over on a
+ * thread that never grew. It is also the exact number the auto-fold acts on
+ * (`needsCompaction`), so a fold can never fire at a size the gauge never
+ * showed.
+ *
+ * **The count has no percentage.** A percentage needs a
  * denominator, and for most providers nobody can tell us one: the extension is
  * provider-agnostic, any `baseUrl` can serve any model id, and no table stays
  * current. "42% full" against a number we guessed is a made-up statistic, and
@@ -43,6 +51,19 @@ import { formatTokens } from "@/lib/format";
  * task — or a second window watching it — reads the run in flight, never the
  * last one's leftovers.
  *
+ * **The money is the thread's, not the run's.** `spentTotal` — every finished
+ * run's estimate, summed — the same number a history row wears, borrowing its
+ * tooltip word for word so one fact never gets two explanations. It was only
+ * ever legible from the list, which left "what has this conversation cost me?"
+ * a question you had to leave the conversation to answer, while the band one
+ * row up answered it for a single run. It rides here rather than beside that
+ * one because it is the same KIND of fact as the context: about the thread,
+ * surviving the next message, unmoved by which run just ended. The run in
+ * flight is deliberately not added in — it is live on the band above, and
+ * reaching for it here would mean either double-counting it the moment its
+ * summary lands or watching the total dip and recover. The word "total" is what
+ * keeps the two dollar figures from reading as the same one.
+ *
  * Gold, because it measures rather than acts.
  */
 export function ContextGauge() {
@@ -52,6 +73,10 @@ export function ContextGauge() {
   // the panel was closed, or one a schedule ran overnight.
   const stored = useConversationStore(
     (s) => s.conversations.find((c) => c.id === s.activeId)?.contextTokens ?? 0,
+  );
+  // Every finished run's cost, summed on the index row as each summary lands.
+  const spent = useConversationStore(
+    (s) => s.conversations.find((c) => c.id === s.activeId)?.spentTotal ?? 0,
   );
   const learned = useStoredItem(learnedContextLimits);
   const { provider } = useEngine();
@@ -72,10 +97,19 @@ export function ContextGauge() {
     ? t("context.tooltip", { used: formatTokens(used), window: formatTokens(limit) })
     : t("context.tooltipUnknown", { used: formatTokens(used) });
 
+  const money = t("context.threadCost", { cost: formatMoney(spent) });
+  // The history row's words for the same number — an estimate at list prices.
+  const moneyTip = t("history.spentTip");
+
   return (
     // Self-aligning: both bands drop it in a column, and an empty wrapper left
     // behind by a gauge with nothing to say would still spend the column's gap.
-    <div className="flex justify-end">
+    <div className="flex items-center justify-end gap-2">
+      {spent > 0 && (
+        <span title={moneyTip} aria-label={moneyTip} className="telemetry text-[11px]">
+          {money}
+        </span>
+      )}
       <span
         title={explain}
         // "24.3k / 200k" read aloud is a pair of numbers with no subject — the

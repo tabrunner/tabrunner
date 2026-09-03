@@ -102,6 +102,40 @@ describe("the context gauge", () => {
     await act(async () => view.root.unmount());
   });
 
+  it("carries the thread's own spend, marked total so it can't read as the run's", async () => {
+    useConversationStore.setState({
+      activeId: "c1",
+      conversations: [
+        {
+          id: "c1",
+          title: "t",
+          createdAt: 0,
+          updatedAt: 0,
+          taskCount: 3,
+          contextTokens: 31_200,
+          spentTotal: 0.42,
+        },
+      ],
+    });
+    const view = await render();
+    // The band one row up carries THIS run's cost; the word is what tells the
+    // two dollar figures apart.
+    expect(view.container.textContent).toContain("$0.42 total");
+    await act(async () => view.root.unmount());
+  });
+
+  it("says nothing about money on a thread nothing priced — $0.00 would read as free", async () => {
+    useConversationStore.setState({
+      activeId: "c1",
+      conversations: [
+        { id: "c1", title: "t", createdAt: 0, updatedAt: 0, taskCount: 1, contextTokens: 31_200 },
+      ],
+    });
+    const view = await render();
+    expect(view.container.textContent).not.toContain("$");
+    await act(async () => view.root.unmount());
+  });
+
   it("is not a button — a measurement must not spend a model call on a stray click", async () => {
     useConversationStore.setState({ contextTokens: 24_300 });
     const view = await render();

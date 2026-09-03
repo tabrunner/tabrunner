@@ -88,7 +88,8 @@ export interface ConversationMeta {
    *
    * Absent until a turn reports usage — the gauge shows nothing rather than
    * guessing (see ContextGauge), and some OpenAI-compatible endpoints never
-   * report any.
+   * report any. It is a size, never a total: the last turn's measured input,
+   * not the thread's spend (which is `cost`'s business, and the run band's).
    */
   contextTokens?: number;
   /**

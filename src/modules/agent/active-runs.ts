@@ -21,9 +21,11 @@ export interface ActiveRun {
    * What this run has spent, kept here for the same reason the parked plan is:
    * a panel that opens mid-run has seen none of the deltas, and without this
    * the only number it could show is the PREVIOUS run's, stamped on the
-   * conversation at the last run's end. `contextTokens` is the conversation's
-   * full usage — the thread's spend before this run plus this run's own total —
-   * never smaller than the band's `input + output`.
+   * conversation at the last run's end. `input`/`output` are this run's spend,
+   * summed over its turns. `contextTokens` is a different quantity riding
+   * along: the conversation's CONTEXT — the newest turn's input, which is what
+   * the provider measured the replayed thread at. It is routinely far smaller
+   * than `input`, because every turn re-sends the same history.
    * `cost` is the running dollar estimate; absent until a call prices (a model
    * outside the pricing table never produces one — absent means unknown, not $0).
    */

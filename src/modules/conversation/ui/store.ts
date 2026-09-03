@@ -921,10 +921,10 @@ export const useConversationStore = create<ConversationState>((set, get) => {
             ...(event.cost !== undefined ? { cost: event.cost } : {}),
           },
           usageFromLiveRun: true,
-          // The wider number, not a slice of the one above: the conversation's
-          // full usage — this run's spend stacked on everything the thread had
-          // spent before it — and a fold moves it back down as the thread
-          // shrinks.
+          // A different quantity, not a slice of the one above: how big the
+          // conversation IS, as the provider measured it on the newest turn —
+          // routinely far smaller than the run's spend beside it, because every
+          // turn re-sends the same history. A fold moves it down early.
           ...(event.contextTokens > 0 ? { contextTokens: event.contextTokens } : {}),
         });
         break;

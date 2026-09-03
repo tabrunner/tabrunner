@@ -763,21 +763,33 @@ undefined instead of guessing, and is what anything the USER reads must call —
 gauge draws a bar and a "24.3k / 200k" ratio only when the window was measured or published,
 and otherwise shows the token count alone. A percentage computed against a guessed
 denominator is a statistic nobody verified, and the user would act on it. The count itself is
-the conversation's **full usage** — everything the thread's runs have spent, less what folds
-freed — never smaller than any single run's own total (a run stacks its spend on top of
-everything the thread had spent before it, so the gauge can never read smaller than the run
-band beside it). Both ride the same `usage` event, which carries the run's **running totals**
-rather than a per-turn delta: `input`/`output` are what the run has spent, `contextTokens` is
-the conversation-wide figure composed by start-run (`contextBase` + the run's totals), and a
+a **size, not a total**: the newest turn's input as the provider measured it, which is the
+whole replayed thread with cache reads folded in (the anthropic adapter sums them for exactly
+this reason). Spend accumulates and a context does not — every turn re-sends the same history
+— so a run's own `input` passes this number many times over on a thread that never grew. It
+used to be summed that way (`contextBase` + the run's running totals), which put 7.5M against
+a 1M window and pinned the bar red on a context sitting comfortably inside it. It is also
+precisely the number the auto-fold acts on (`needsCompaction` reads the same last input), so a
+fold can no longer fire at a size the gauge never showed. Both readings ride the same `usage`
+event, which carries the run's **running totals** rather than a per-turn delta: `input`/
+`output` are what the run has spent, `contextTokens` is the size riding alongside them, and a
 consumer sets rather than accumulates. Absolute because a panel that opened mid-run has seen
 none of the deltas — `query_run` answers with the totals and that is enough.
+
+Beside the count sits the **thread's spend** (`spentTotal`, every finished run's estimate
+summed as its summary lands) — the same number a history row wears, down to the tooltip, and
+until now only legible from that list. The two are the same kind of fact: about the thread,
+surviving the next message, unmoved by which run just ended. The run in flight is deliberately
+left out of it — it is live on the band one row up, and reaching for it here would mean either
+double-counting it the moment its summary lands or watching the total dip and recover. The
+word "total" is what keeps the two dollar figures on adjacent rows from reading as one.
 
 Between runs the reading comes from **`ConversationMeta.contextTokens`**, stamped by the
 writer when the run ends. It sits on the conversation rather than inside `RunSummary`, where
 it started, because it is not a fact about a run: a run's duration and cost are over when it
-ends, the usage it added is not. `lastRun` is retired by the next user message (the
+ends, the context it left standing is not. `lastRun` is retired by the next user message (the
 band above the composer speaks for the run that just finished); the usage total is not, or the
-gauge would blank the instant you press send and come back a minute later with the number it
+gauge would blank the instant you press send and come back a minute later with the size it
 already had — in exactly the panels with no live figure of their own, which is every reopened
 one and every other window. A fold moves it too (`noteContextFreed`), so the receipt's
 18.4k → 1.2k is not contradicted by the gauge right above it.

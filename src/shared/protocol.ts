@@ -238,9 +238,10 @@ export type Event =
    * Absolute because a panel that opened mid-run has missed every delta and
    * would otherwise dress a live run in the last one's numbers; one of these
    * answers it completely, which is what `query_run` re-sends. `contextTokens`
-   * is the wider number riding along: the conversation's full usage — the
-   * thread's spend before this run plus the run's own total, never smaller
-   * than this event's `input + output`. `cost` is
+   * is a different quantity riding along, not a slice of these: the size of the
+   * conversation's context as the provider measured it on the newest turn.
+   * Every turn re-sends the whole thread, so it is routinely far SMALLER than
+   * this event's `input` — spend accumulates, a context does not. `cost` is
    * the running dollar estimate at list price — absent until a call prices,
    * and absent forever on a model the pricing table doesn't know (unknown is
    * not zero).

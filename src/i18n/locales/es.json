@@ -746,8 +746,9 @@
   "context": {
     "used": "{{used}} de contexto",
     "usedOf": "{{used}} / {{window}}",
-    "tooltip": "Contexto: la conversa ya ha consumido {{used}} tokens; la ventana del modelo es {{window}} — usa /compact para resumir el chat y liberar espacio",
-    "tooltipUnknown": "Contexto: la conversa ya ha consumido {{used}} tokens. No se conoce el tamaño de ventana de este modelo, así que no hay porcentaje que mostrar — usa /compact para resumir el chat y liberar espacio"
+    "tooltip": "Contexto: esta conversación ocupa {{used}} de la ventana de {{window}} del modelo — /compact resume el chat para liberar espacio",
+    "tooltipUnknown": "Contexto: esta conversación ocupa {{used}}. No se conoce el tamaño de ventana de este modelo, así que no hay porcentaje que mostrar — /compact resume el chat para liberar espacio",
+    "threadCost": "{{cost}} en total"
   },
   "indicator": {
     "driving": "TabRunner está controlando esta pestaña",
