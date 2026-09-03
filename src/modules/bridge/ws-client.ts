@@ -22,6 +22,17 @@ export class BridgeSocket {
   private ws: WebSocket | null = null;
   /** Set across the async config read so two reconciles can't open two sockets. */
   private connecting = false;
+  /**
+   * Whether this outage has already been explained. Chromium logs a refused
+   * socket from its own network stack — `WebSocket connection to
+   * 'ws://127.0.0.1:17836/ws' failed: net::ERR_CONNECTION_REFUSED`, red, and
+   * unsilenceable from JS — which on its own reads like the extension is
+   * broken rather than like a daemon that simply isn't up yet. So we caption
+   * it. Once, though: the alarm retries every 30s forever, and a caption per
+   * retry is a console nobody can read. Cleared by a link that lands, so a
+   * daemon that goes away later gets its own explanation.
+   */
+  private outageExplained = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly alarm = "tabrunner-bridge";
 
@@ -79,6 +90,7 @@ export class BridgeSocket {
       let established = false;
       ws.onopen = () => {
         established = true;
+        this.outageExplained = false;
         log.info("bridge connected");
         void bridgeConnected.set(true);
         this.onOpen();
@@ -94,6 +106,20 @@ export class BridgeSocket {
         this.ws = null;
         log.debug("bridge ws closed");
         void bridgeConnected.set(false);
+        if (!established && !this.outageExplained) {
+          this.outageExplained = true;
+          // The caption for Chromium's red line above it. Not a warning: a
+          // daemon that isn't up is the normal state of an enabled bridge —
+          // it starts when the user's MCP client starts — so this says what
+          // the state is and where to change it, at the level of any other
+          // lifecycle line.
+          log.info(
+            `no daemon on ws://127.0.0.1:${port} — the refused-connection error above is ` +
+              `Chromium's own, not a failure inside TabRunner. The daemon starts with your MCP ` +
+              `client; the bridge keeps dialing every 30s until it does. Settings → MCP has the ` +
+              `port and the setup, and the switch that stops the dialing.`,
+          );
+        }
         // Only a link that actually existed earns the fast retry. A socket that
         // never opened means no daemon is listening — the overwhelmingly common
         // case — and retrying every 2s would hammer a closed port forever and

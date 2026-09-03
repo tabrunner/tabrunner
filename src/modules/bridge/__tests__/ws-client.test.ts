@@ -107,6 +107,64 @@ describe("BridgeSocket", () => {
     expect(FakeSocket.instances).toHaveLength(1);
   });
 
+  it("captions Chromium's refused-connection error once, not once per retry", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      await bridgeItem.set({ enabled: true, port: 17_836 });
+      const socket = new BridgeSocket(
+        () => {},
+        () => {},
+      );
+      socket.start();
+      await settle();
+      FakeSocket.instances[0]?.refuse();
+
+      const captions = () =>
+        info.mock.calls.filter(([, line]) => String(line).includes("no daemon on ws://"));
+      expect(captions()).toHaveLength(1);
+      // The port the user set is in the line — the whole point is telling them
+      // where nothing was listening.
+      expect(String(captions()[0]?.[1])).toContain("127.0.0.1:17836");
+
+      // The alarm keeps dialing every 30s for as long as the bridge is on, and
+      // a caption per attempt is a console nobody can read. A second refusal
+      // stands for the next dial here (the alarm stub fires nothing).
+      await vi.advanceTimersByTimeAsync(60_000);
+      FakeSocket.instances.at(-1)?.refuse();
+      expect(captions()).toHaveLength(1);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it("explains the next outage too — a daemon that came back and went away", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      await bridgeItem.set({ enabled: true, port: 17_836 });
+      new BridgeSocket(
+        () => {},
+        () => {},
+      ).start();
+      await settle();
+      FakeSocket.instances[0]?.refuse();
+      // The user starts their MCP client: the next dial lands. The same socket
+      // object stands in for it, the alarm being a stub — what matters is that
+      // an open clears the latch. Then the daemon goes away, the drop earns its
+      // fast retry, and that one finds nothing listening again.
+      FakeSocket.instances[0]?.open();
+      FakeSocket.instances[0]?.close();
+      await vi.advanceTimersByTimeAsync(2_500);
+      FakeSocket.instances.at(-1)?.refuse();
+
+      const captions = info.mock.calls.filter(([, line]) =>
+        String(line).includes("no daemon on ws://"),
+      );
+      expect(captions).toHaveLength(2);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
   it("fast-retries a link that was established and then dropped", async () => {
     await bridgeItem.set({ enabled: true, port: 17_836 });
     new BridgeSocket(
