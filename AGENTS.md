@@ -260,6 +260,11 @@ Quick invariants that bite often:
 
 - **Protocol declared twice on purpose**: `src/modules/bridge/protocol.ts` (source of truth) and
   `daemon/src/protocol.ts`. Change them together, then `bun run bridge:check`.
+- **No `chrome.debugger` listener at module scope**: WXT imports the background entrypoint at
+  build time under a fake browser whose `debugger.onEvent`/`onDetach` throw on `addListener`, and
+  whether a given module is reached depends on how that analysis bundle tree-shakes — so one sits
+  dormant until an unrelated import change takes the build down. Register at attach
+  (`wireSession` in `cdp-driver.ts`); `browser/__tests__/module-scope.test.ts` holds the line.
 - **Stop is not an error**: user abort ends a run with `done`, never a red bubble.
 - **No sampling params** (temperature/topP) on any provider — the only knob is `reasoningEffort`.
 - **A question in plain prose does not pause a run** — only the `ask_user` tool does.

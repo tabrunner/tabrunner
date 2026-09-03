@@ -1,6 +1,7 @@
 import type { TabId } from "@/shared/types";
 import { i18n } from "@/i18n";
 import { refreshAgentIndicator } from "./indicator";
+import { startInspecting } from "./inspect";
 
 /**
  * CDP driver — manages chrome.debugger attach/detach and dispatches trusted input events.
@@ -13,17 +14,30 @@ import { refreshAgentIndicator } from "./indicator";
 const attachedTabs = new Set<TabId>();
 let activeTab: TabId | null = null;
 
-chrome.tabs.onRemoved.addListener((tabId) => {
-  attachedTabs.delete(tabId);
-  if (activeTab === tabId) activeTab = null;
-});
+let wired = false;
 
-chrome.debugger.onDetach.addListener((source) => {
-  if (source.tabId) {
-    attachedTabs.delete(source.tabId);
-    if (activeTab === source.tabId) activeTab = null;
-  }
-});
+/**
+ * The session's listeners, registered on the first attach rather than at module
+ * scope — see startInspecting, which this brings up with them and which carries
+ * the whole reason. Equivalent by construction: everything they touch (the
+ * attached set, the capture rings) is empty until something attaches, so there
+ * is nothing for them to have missed.
+ */
+function wireSession(): void {
+  if (wired) return;
+  wired = true;
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    attachedTabs.delete(tabId);
+    if (activeTab === tabId) activeTab = null;
+  });
+  chrome.debugger.onDetach.addListener((source) => {
+    if (source.tabId) {
+      attachedTabs.delete(source.tabId);
+      if (activeTab === source.tabId) activeTab = null;
+    }
+  });
+  startInspecting();
+}
 
 export class DebuggerConflictError extends Error {
   constructor(tabId: TabId) {
@@ -46,6 +60,7 @@ export class RestrictedUrlError extends Error {
 }
 
 async function attach(tabId: TabId): Promise<void> {
+  wireSession();
   if (attachedTabs.has(tabId)) {
     activeTab = tabId;
     return;

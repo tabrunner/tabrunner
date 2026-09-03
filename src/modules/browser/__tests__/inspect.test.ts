@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 
 /**
- * inspect.ts registers its CDP/tab listeners at module scope, so the chrome
- * stub (which captures them) must replace globalThis.chrome before the import.
+ * inspect.ts registers its CDP/tab listeners when the driver attaches, so the
+ * chrome stub (which captures them) must be in place before startInspecting is
+ * called — which is what stands in for the attach here.
  * Each test drives its own tab id — the rings are module-level and never reset.
  */
 type DebuggerEvent = (source: { tabId?: number }, method: string, params?: unknown) => void;
@@ -29,7 +30,8 @@ let onTabRemoved!: (tabId: number) => void;
   },
 };
 
-const { listRequests, listConsoleMessages } = await import("../inspect");
+const { listRequests, listConsoleMessages, startInspecting } = await import("../inspect");
+startInspecting();
 
 let nextTab = 1000;
 /** A fresh tab id per test — module-level rings are never reset between tests. */

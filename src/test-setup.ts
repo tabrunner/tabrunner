@@ -4,9 +4,12 @@
  * storage write's watch notification (the in-memory store below has no real
  * change notifications).
  *
- * - Minimal chrome surface: modules like cdp-driver register event listeners
- *   at import time — real in the extension, absent under vitest. Individual
- *   tests replace globalThis.chrome with richer stubs as needed.
+ * - Minimal chrome surface: panel and background modules reach for tabs, alarms
+ *   and the manifest as they load — real in the extension, absent under vitest.
+ *   Individual tests replace globalThis.chrome with richer stubs as needed.
+ *   `debugger` is here for the modules that hold a session, not because any of
+ *   them registers a listener at import: that would break the build itself
+ *   (browser/__tests__/module-scope.test.ts).
  * - In-memory chrome.storage.local: one entry per defineItem key (the
  *   keyed-Map shape is what makes per-conversation keys observable). Reset
  *   between tests so every case starts from a clean store.

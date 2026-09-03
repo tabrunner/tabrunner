@@ -83,7 +83,27 @@ function pushConsole(tabId: TabId, entry: ConsoleEntry): void {
   if (list.length > MAX_ENTRIES) list.shift();
 }
 
-chrome.debugger.onEvent.addListener((source, method, params) => {
+let listening = false;
+
+/**
+ * Start capturing. Called by cdp-driver's first attach, never at module scope.
+ *
+ * Not a preference: WXT imports the background entrypoint at BUILD time to read
+ * its options, under a fake browser whose `debugger.onEvent.addListener` throws
+ * "not implemented" on sight. Whether this module is reached depends on how
+ * that analysis bundle tree-shakes, so a module-scope listener is a build that
+ * breaks on somebody else's unrelated import change — which is exactly how it
+ * broke. Attach is the honest home anyway: the rings hold events for tabs this
+ * session attached, and until one has, there is nothing to hear.
+ */
+export function startInspecting(): void {
+  if (listening) return;
+  listening = true;
+  chrome.debugger.onEvent.addListener(onCdpEvent);
+  chrome.tabs.onRemoved.addListener(forgetTab);
+}
+
+function onCdpEvent(source: chrome.debugger.Debuggee, method: string, params?: object): void {
   const tabId = source.tabId;
   if (tabId === undefined) return;
 
@@ -135,12 +155,12 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       ...(d.url ? { url: truncate(d.url, 120), line: (d.lineNumber ?? -1) + 1 } : {}),
     });
   }
-});
+}
 
-chrome.tabs.onRemoved.addListener((tabId) => {
+function forgetTab(tabId: TabId): void {
   requestsByTab.delete(tabId);
   consoleByTab.delete(tabId);
-});
+}
 
 /** The model-facing limit: how far back the read reaches. */
 const DEFAULT_LIMIT = 50;
