@@ -383,6 +383,15 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     let reopened = false;
 
     /**
+     * What the run last knew of its page, for the endings that outlive the tab:
+     * the address the error hands back, and the record the conversation keeps.
+     */
+    const lostPage = () => {
+      const url = resumableUrl(drivenUrl);
+      return url ? { url, title: drivenTitle } : undefined;
+    };
+
+    /**
      * The ending a lost tab gets when it cannot be undone: fatal, not transient
      * — every later tool call would fail on the same dead id, and the model
      * would burn its turns discovering that one at a time. The closed page
@@ -437,6 +446,17 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       endOnLostTab(resumableUrl(drivenUrl));
     };
     chrome.tabs.onRemoved.addListener(onTabGone);
+    // Where the driven tab IS, not where the run picked it up. A same-tab
+    // navigation moves the page without firing onSwitch (which speaks for
+    // re-targeting, not for going somewhere), and both things that outlive a
+    // lost tab — the page the error hands back and the title it names — have to
+    // be the page that was actually lost.
+    const onDrivenTabChanged = (id: number, _info: object, tab: chrome.tabs.Tab) => {
+      if (id !== drivenTabId) return;
+      if (tab.url) drivenUrl = tab.url;
+      if (tab.title) drivenTitle = tabLabel(tab);
+    };
+    chrome.tabs.onUpdated.addListener(onDrivenTabChanged);
     // Tell the page itself it is being driven — the side panel may be scrolled
     // away or on another window.
     await clearAgentWait();
@@ -669,6 +689,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       emit({ type: "error", message, unexpected: true });
     } finally {
       chrome.tabs.onRemoved.removeListener(onTabGone);
+      chrome.tabs.onUpdated.removeListener(onDrivenTabChanged);
       // The walkthrough closes before the session does: its last frame is the
       // result the reader is working toward, and `detachAll()` below takes the
       // capture path with it. Every ending funnels through this one finally —
@@ -729,9 +750,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         // means a first-plan rejection happens before any grouping, and after a
         // mid-run replan the strip holds real work. Just put it away.
         await collapseRunGroup(runGroup.groupId);
-        await persistDrivenTabFor(conversationId, drivenTabId, threadGroupId);
+        await persistDrivenTabFor(conversationId, drivenTabId, threadGroupId, lostPage());
       } else {
-        await persistDrivenTabFor(conversationId, drivenTabId, threadGroupId);
+        await persistDrivenTabFor(conversationId, drivenTabId, threadGroupId, lostPage());
         const outcome = runFailed ? "failed" : endedOnQuestion ? "question" : "done";
         await settleRunTab(runGroup.groupId, task, outcome);
         // An unattended run's own tab is scratch space, not a result. Nobody
@@ -1330,11 +1351,17 @@ async function stripMembership(threadGroupId: number | undefined): Promise<strin
  * go back to the tab itself when it answers a question — plus what the strip
  * holds, in one write. The final state is read fresh: navigations mid-run leave
  * the start-time title, url and group stale.
+ *
+ * A tab that died during the run has no final state to read, and that is
+ * precisely the run whose page the user most wants back — so the run hands over
+ * what it last knew (`lost`) and the record keeps the page without the tab: no
+ * id, no group, just the address the settled band's chip reopens from.
  */
 async function persistDrivenTabFor(
   conversationId: string,
   tabId: number,
   threadGroupId: number | undefined,
+  lost?: { url: string; title: string },
 ): Promise<void> {
   const stripUrls = await stripMembership(threadGroupId);
   try {
@@ -1356,7 +1383,8 @@ async function persistDrivenTabFor(
       stripUrls,
     );
   } catch {
-    // The tab died during the run — nothing left to remember. The strip
-    // snapshot rides with it; the previous run's stands until one lands.
+    // The tab died during the run. The strip snapshot rides with it; the page
+    // itself survives whenever the run was still holding its address.
+    if (lost) await recordDrivenTabFor(conversationId, lost, stripUrls);
   }
 }
