@@ -118,6 +118,36 @@ describe("retry", () => {
     expect(runCommands()).toEqual([{ type: "run", conversationId: "c1", task: "do the thing" }]);
   });
 
+  it("a run its tab outlived retries by putting the page back first", () => {
+    useConversationStore.setState({
+      messages: [
+        { id: "u1", role: "user", content: "book the flight", timestamp: 0 },
+        {
+          id: "e1",
+          role: "error",
+          content: "The tab this task was driving (Flights) was closed",
+          tab: { title: "Flights", url: "https://flights.example/search?q=1" },
+          timestamp: 1,
+        },
+      ],
+      status: "error",
+      activeId: "c1",
+    });
+
+    useConversationStore.getState().retry();
+
+    // Named url, so the run reopens that page instead of adopting whatever the
+    // user moved to after closing the tab.
+    expect(runCommands()).toEqual([
+      {
+        type: "run",
+        conversationId: "c1",
+        task: "book the flight",
+        url: "https://flights.example/search?q=1",
+      },
+    ]);
+  });
+
   it("no user message above the error → no run, no crash", () => {
     useConversationStore.setState({
       messages: [{ id: "e1", role: "error", content: "boom", timestamp: 0 }],
@@ -158,5 +188,42 @@ describe("retryTargetFrom", () => {
 
   it("an empty transcript has nothing to retry", () => {
     expect(retryTargetFrom([])).toBeNull();
+  });
+
+  it("carries the page a closed tab took with it — newest error wins", () => {
+    const target = retryTargetFrom([
+      { id: "u1", role: "user", content: "task", timestamp: 0 },
+      {
+        id: "e1",
+        role: "error",
+        content: "tab closed",
+        tab: { title: "Old", url: "https://old.example" },
+        timestamp: 1,
+      },
+      {
+        id: "e2",
+        role: "error",
+        content: "tab closed again",
+        tab: { title: "New", url: "https://new.example" },
+        timestamp: 2,
+      },
+    ]);
+    expect(target).toEqual({ task: "task", url: "https://new.example" });
+  });
+
+  it("a closed tab from before the user's message is settled history", () => {
+    const target = retryTargetFrom([
+      {
+        id: "e1",
+        role: "error",
+        content: "tab closed",
+        tab: { title: "Old", url: "https://old.example" },
+        timestamp: 0,
+      },
+      { id: "u1", role: "user", content: "task", timestamp: 1 },
+      { id: "e2", role: "error", content: "boom", timestamp: 2 },
+    ]);
+    // The user has sent a message since — they said where to work by sending it.
+    expect(target).toEqual({ task: "task" });
   });
 });

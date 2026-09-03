@@ -238,6 +238,9 @@ export default defineBackground(() => {
               owner: "panel",
               task: msg.task,
               images: msg.images,
+              // Only a retry after a closed tab names one — it reopens the page
+              // the run lost instead of adopting the user's current tab.
+              ...(msg.url ? { url: msg.url } : {}),
               emit: (event) => {
                 writer.apply(event);
                 broadcast(conversationId, event);

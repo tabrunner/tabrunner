@@ -852,7 +852,7 @@
     "awaitingApproval": "Aguardando sua aprovação",
     "revisingPlan": "Revisando o plano…",
     "awaitingAnswer": "Aguardando sua resposta",
-    "drivingTabTip": "Mostrar a aba que o TabRunner está controlando",
+    "drivingTabTip": "Abrir esta página — reabre se a aba não existir mais",
     "bridgeTask": "{{client}} está executando uma tarefa no seu navegador",
     "bridgeDriving": "{{client}} está controlando seu navegador",
     "bridgeStopTitle": "Interrompe a tarefa e devolve o navegador",
@@ -879,7 +879,8 @@
     "expandHint": "Mostrar o widget de status do TabRunner",
     "settledDone": "Tarefa concluída",
     "settledFailed": "A tarefa falhou",
-    "settledHint": "Abrir o TabRunner para ver o resultado"
+    "settledHint": "Abrir o TabRunner para ver o resultado",
+    "dismiss": "Dispensar"
   },
   "board": {
     "title": "Tarefas",
@@ -932,7 +933,7 @@
     "noActiveTab": "Nenhuma aba ativa para trabalhar. Clique na aba que você quer e envie a tarefa de novo.",
     "runCancelled": "Essa tarefa na fila foi cancelada antes de começar",
     "tabCreateFailed": "Não foi possível abrir uma aba para a tarefa: {{message}}",
-    "tabClosed": "A aba que esta tarefa estava controlando ({{title}}) foi fechada, então a tarefa parou. O TabRunner precisa que a aba fique aberta — reabra a página e envie a tarefa de novo.",
+    "tabClosed": "A aba que esta tarefa estava controlando ({{title}}) foi fechada, então a tarefa parou. O TabRunner trabalha na página de verdade, nunca numa cópia — Tentar de novo reabre a página e continua de onde parou.",
     "providerError": "O provedor não conseguiu fazer isso — {{message}}",
     "outputLimit": "O modelo atingiu o limite de saída no meio da resposta, então ela pode estar cortada — peça para ele continuar, ou estreite a pergunta.",
     "textOnlyImages": "Este modelo não recebe imagens — as imagens que você anexou não foram enviadas. Ele trabalha com snapshots de texto da página.",

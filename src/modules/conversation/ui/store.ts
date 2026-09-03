@@ -300,15 +300,26 @@ function makeMsg(role: Message["role"], content: string, extra?: Partial<Message
  * sits right above the error it ended in. Read from the transcript rather than
  * panel state, so a reopened panel still offers it (lastRun dies with the
  * close, and the "rate limit resets in 4 hours" retry happens after one).
- * Nothing about where it runs travels with it: every run works the tab the user
- * is on, and the retry is a fresh send with a fresh answer to that.
+ * Where it runs is answered fresh, exactly like an ordinary send — the user
+ * message's own tab stamp is history, not a mode to restore. The one exception
+ * is the run that died BECAUSE its page went away: there is no tab to work and
+ * no answer to find, so the closed page comes back with the retry (`url`).
  */
-export function retryTargetFrom(messages: Message[]): { task: string; images?: string[] } | null {
+export function retryTargetFrom(
+  messages: Message[],
+): { task: string; images?: string[]; url?: string } | null {
   const last = messages.findLast((m) => m.role === "user");
   if (!last) return null;
+  // A run its tab outlived cannot simply be re-sent: the page has to come back
+  // first, or the retry adopts whatever the user is looking at now. The closed
+  // page rides on the error that ended the run — newest wins, and only errors
+  // since the user's own message count (an older one is settled history).
+  const failedSince = messages.slice(messages.lastIndexOf(last) + 1);
+  const url = failedSince.findLast((m) => m.role === "error" && m.tab?.url)?.tab?.url;
   return {
     task: last.content,
     ...(last.images?.length ? { images: last.images } : {}),
+    ...(url ? { url } : {}),
   };
 }
 
@@ -548,6 +559,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     conversationId: string,
     task: string,
     images?: string[],
+    url?: string,
   ) => {
     sawAssistantText = false;
     // Persistence is the worker's job now (it owns the transcript writer — the
@@ -588,6 +600,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       conversationId,
       task,
       ...(images?.length ? { images } : {}),
+      ...(url ? { url } : {}),
     };
     try {
       p.postMessage(dispatch);
@@ -982,7 +995,11 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // A stop redirect must never auto-fire into an error — hand it back.
         returnPending();
         pushDisplay(
-          makeMsg("error", event.message, { kind: event.kind, unexpected: event.unexpected }),
+          makeMsg("error", event.message, {
+            kind: event.kind,
+            unexpected: event.unexpected,
+            tab: event.tab,
+          }),
         );
         settleRun("error");
         // A failed run is a finished one — and a context overflow is the very
@@ -1640,7 +1657,9 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       }
       // Same as sendTask: the retry goes back through the plan gate, and the
       // panel leaves with the approval.
-      startRun(p, conversationId, target.task, target.images);
+      // The reopen rides with the retry: an error that ate its own tab hands
+      // back the page it was working, and the run puts it up again.
+      startRun(p, conversationId, target.task, target.images, target.url);
     },
 
     stop: () => {

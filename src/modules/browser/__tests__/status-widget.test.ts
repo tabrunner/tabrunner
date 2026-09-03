@@ -21,8 +21,8 @@ const BASE: WidgetState = {
 
 const SETTLED: Partial<WidgetState> = {
   settle: { ok: true, text: "Task finished" },
-  hideLabel: "",
-  hideHint: "",
+  hideLabel: "✕",
+  hideHint: "Dismiss",
 };
 
 function paint(overrides: Partial<WidgetState> = {}) {
@@ -42,9 +42,7 @@ function parts() {
     pill: root!.querySelector<HTMLElement>(".pill")!,
     open: root!.querySelector<HTMLButtonElement>(".open")!,
     mini: root!.querySelector<HTMLElement>(".mini")!,
-    hide: [...root!.querySelectorAll<HTMLButtonElement>(".btn")].find(
-      (b) => b.textContent === "Hide",
-    )!,
+    hide: root!.querySelector<HTMLButtonElement>(".btn")!,
   };
 }
 
@@ -208,9 +206,47 @@ describe("the settled receipt", () => {
     const { pill, open } = parts();
     expect(open.querySelector(".end.ok")?.textContent).toBe("✓");
     expect(open.textContent).toContain("Task finished");
-    // No Hide: the whole pill is already leaving on its own.
-    expect(parts().hide).toBeUndefined();
     expect(pill.className).not.toContain("bad");
+  });
+
+  it("the ✕ takes the receipt off the page for good — no collapse to a dot", () => {
+    paint(SETTLED);
+    const { hide } = parts();
+    // A glyph carries no name of its own; the tooltip's words are the label.
+    expect(hide.getAttribute("aria-label")).toBe("Dismiss");
+
+    hide.click();
+    // Gone, not collapsed: a receipt has nothing left to expand back into.
+    expect(document.getElementById(HOST_ID)).toBeNull();
+  });
+
+  it("clicking the receipt opens the panel and clears it in one gesture", () => {
+    const sendMessage = vi.fn();
+    const chromeBackup = globalThis.chrome;
+    (globalThis as Record<string, unknown>).chrome = { ...chromeBackup, runtime: { sendMessage } };
+    try {
+      paint(SETTLED);
+      parts().open.click();
+      expect(sendMessage).toHaveBeenCalledWith({ type: "tabrunner-mark", action: "open" });
+      // The result is in the panel now — leaving the pill up would be the same
+      // news twice, and the page's own timer may never come (a frozen tab).
+      expect(document.getElementById(HOST_ID)).toBeNull();
+    } finally {
+      (globalThis as Record<string, unknown>).chrome = chromeBackup;
+    }
+  });
+
+  it("a live pill's click opens the panel and stays — status outlives a glance", () => {
+    const sendMessage = vi.fn();
+    const chromeBackup = globalThis.chrome;
+    (globalThis as Record<string, unknown>).chrome = { ...chromeBackup, runtime: { sendMessage } };
+    try {
+      paint();
+      parts().open.click();
+      expect(document.getElementById(HOST_ID)).not.toBeNull();
+    } finally {
+      (globalThis as Record<string, unknown>).chrome = chromeBackup;
+    }
   });
 
   it("a failed run settles into the ✗ receipt and wears its ring", () => {

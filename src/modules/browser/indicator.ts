@@ -4,6 +4,7 @@ import { i18n } from "@/i18n";
 import {
   WIDGET_HOST_ID,
   drivenTabs,
+  noteReceipt,
   paintWidget,
   removeWidget,
   settleState,
@@ -332,6 +333,9 @@ export async function settleAgentIndicator(
   stopPulse(tabId);
   await clearMarks(tabId);
   await inject(tabId, paintWidget, [WIDGET_HOST_ID, settleState(outcome, "driven")]);
+  // The page clears its own receipt; the note is the floor under that timer for
+  // a tab Chrome freezes before it can fire (see clearStaleReceipts).
+  noteReceipt(tabId);
 }
 
 /**

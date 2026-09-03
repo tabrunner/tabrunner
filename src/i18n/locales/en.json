@@ -852,7 +852,7 @@
     "awaitingApproval": "Waiting for your approval",
     "revisingPlan": "Revising the plan…",
     "awaitingAnswer": "Waiting for your answer",
-    "drivingTabTip": "Show the tab TabRunner is controlling",
+    "drivingTabTip": "Go to this page — reopened if the tab is gone",
     "bridgeTask": "{{client}} is running a task in your browser",
     "bridgeDriving": "{{client}} is driving your browser",
     "bridgeStopTitle": "Stops the task and hands the browser back",
@@ -879,7 +879,8 @@
     "expandHint": "Show the TabRunner status widget",
     "settledDone": "Task finished",
     "settledFailed": "Task failed",
-    "settledHint": "Open TabRunner to see the result"
+    "settledHint": "Open TabRunner to see the result",
+    "dismiss": "Dismiss"
   },
   "board": {
     "title": "Tasks",
@@ -932,7 +933,7 @@
     "noActiveTab": "No active tab to work with. Click the tab you want, then send the task again.",
     "runCancelled": "That queued task was cancelled before it started",
     "tabCreateFailed": "Couldn't open a tab for the task: {{message}}",
-    "tabClosed": "The tab this task was driving ({{title}}) was closed, so the task stopped. TabRunner needs the tab to stay open — reopen the page and send the task again.",
+    "tabClosed": "The tab this task was driving ({{title}}) was closed, so the task stopped. TabRunner works the page itself, never a copy — Retry reopens it and picks up where the run left off.",
     "providerError": "The provider couldn't do that — {{message}}",
     "outputLimit": "The model hit its output limit mid-answer, so this may be cut short — ask it to carry on, or narrow the question.",
     "textOnlyImages": "This model can't receive images — the images you attached weren't sent to it. It works from text snapshots of the page.",

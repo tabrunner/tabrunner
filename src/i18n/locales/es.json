@@ -852,7 +852,7 @@
     "awaitingApproval": "Esperando tu aprobación",
     "revisingPlan": "Revisando el plan…",
     "awaitingAnswer": "Esperando tu respuesta",
-    "drivingTabTip": "Mostrar la pestaña que TabRunner está controlando",
+    "drivingTabTip": "Abrir esta página — se vuelve a abrir si la pestaña ya no existe",
     "bridgeTask": "{{client}} está ejecutando una tarea en tu navegador",
     "bridgeDriving": "{{client}} está controlando tu navegador",
     "bridgeStopTitle": "Detiene la tarea y devuelve el navegador",
@@ -879,7 +879,8 @@
     "expandHint": "Mostrar el widget de estado de TabRunner",
     "settledDone": "Tarea completada",
     "settledFailed": "La tarea falló",
-    "settledHint": "Abrir TabRunner para ver el resultado"
+    "settledHint": "Abrir TabRunner para ver el resultado",
+    "dismiss": "Descartar"
   },
   "board": {
     "title": "Tareas",
@@ -932,7 +933,7 @@
     "noActiveTab": "No hay ninguna pestaña activa con la que trabajar. Haz clic en la pestaña que quieras y envía la tarea de nuevo.",
     "runCancelled": "Esa tarea en cola se canceló antes de empezar",
     "tabCreateFailed": "No se pudo abrir una pestaña para la tarea: {{message}}",
-    "tabClosed": "La pestaña que manejaba esta tarea ({{title}}) se cerró, así que la tarea se detuvo. TabRunner necesita que la pestaña siga abierta — reabre la página y envía la tarea de nuevo.",
+    "tabClosed": "La pestaña que manejaba esta tarea ({{title}}) se cerró, así que la tarea se detuvo. TabRunner trabaja sobre la página real, nunca sobre una copia: Reintentar la vuelve a abrir y sigue donde se quedó.",
     "providerError": "El proveedor no pudo hacerlo — {{message}}",
     "outputLimit": "El modelo alcanzó su límite de salida a mitad de la respuesta, así que puede estar cortada — pídele que siga, o acota la pregunta.",
     "textOnlyImages": "Este modelo no recibe imágenes — las imágenes que adjuntaste no se enviaron. Trabaja con instantáneas de texto de la página.",

@@ -327,6 +327,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     // re-target itself with switch_tab — badge, panel chip and fail-fast all follow.
     let drivenTabId = tab.id;
     let drivenTitle = tabLabel(tab);
+    // The page, not the tab: a tab id dies with its tab, and what a stopped run
+    // needs to resume is the address it was working (see onTabGone).
+    let drivenUrl = tab.url;
     // The strip is born lazy: nothing is grouped at send time (the user may just
     // be passing through the tab they sent from) — the loop touches it into
     // being when the run lands its first action, and group_tab can mint it too.
@@ -346,6 +349,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         void hideAgentIndicator(drivenTabId);
         drivenTabId = info.id;
         drivenTitle = info.title;
+        drivenUrl = info.url;
         markRunningTab(conversationId, info.id, info.windowId);
         emit({
           type: "driving",
@@ -370,6 +374,12 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     // The driven tab going away is fatal, not transient: every later tool call
     // would fail the same way. End the run with a clear error instead of letting
     // the model burn turns retrying a dead tab id.
+    //
+    // Fatal, never undone from here: closing a tab is the one gesture that says
+    // "not that page, not now", and a run that reopened it would be arguing.
+    // The reopen is offered instead — the closed page rides out on the error
+    // (`tab`), so Retry puts it back and carries on with the transcript's own
+    // history rather than adopting whatever the user has since moved to.
     const onTabGone = (removedId: number) => {
       if (removedId !== drivenTabId) return;
       log.info("driven tab closed mid-run", { tabId: drivenTabId });
@@ -379,6 +389,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         type: "error",
         message: i18n.t("errors.tabClosed", { title: drivenTitle }),
         silent: true,
+        ...(drivenUrl && !isBlankPage(drivenUrl) && !isRestrictedUrl(drivenUrl)
+          ? { tab: { title: drivenTitle, url: drivenUrl } }
+          : {}),
       });
       run.controller.abort();
     };

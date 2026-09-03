@@ -311,6 +311,9 @@ export class TranscriptWriter {
           makeMsg("error", event.message, {
             kind: event.kind,
             unexpected: event.unexpected,
+            // The page a closed tab took with it — stored, because the offer to
+            // put it back has to survive the panel being closed and reopened.
+            tab: event.tab,
           }),
         );
         this.writeReceipt();

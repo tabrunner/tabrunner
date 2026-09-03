@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useConversationStore } from "./store";
-import { focusTab } from "@/modules/browser";
+import { revealTab } from "@/modules/browser";
 import { hostnameOf } from "@/lib/format";
 
 /** Enough of a tab to name it and go there — the live run's, or a stored one. */
@@ -19,7 +19,10 @@ export interface TabChipTarget {
  * live band, on its own row under the verb line (run context, same lifecycle as
  * the band): squeezed between the verb and the timer it truncated to a letter.
  * No dot of its own — the band's is the live signal. One click brings the tab
- * to the front.
+ * to the front — or the page back, when the tab is gone (revealTab): the chip
+ * on the settled band names a page the user closed hours ago as often as a live
+ * tab, and a chip that answers a click with nothing is a dead end wearing the
+ * costume of a button.
  *
  * The settled band passes the conversation's last tab explicitly, so the row
  * survives the run that made it. It replaced a bare "Go to tab" button there:
@@ -52,14 +55,16 @@ export function DrivenTabChip({ tab }: { tab?: TabChipTarget }) {
   // Destructured before the guard: TypeScript drops a narrowing on `obj.prop`
   // the moment it crosses into a callback, so reading tabId off the object in
   // onClick would need a `!` the guard has already earned.
-  const { tabId, windowId, favIconUrl } = drivingTab ?? {};
+  const { tabId, windowId, url, favIconUrl } = drivingTab ?? {};
   const label = drivingTab?.title || (drivingTab?.url ? hostnameOf(drivingTab.url) : "");
-  if (!label || tabId === undefined) return null;
+  // A url is enough: it outlives the tab, and reopening it is what the click
+  // does anyway. Only a page with no name AND no address has nothing to offer.
+  if (!label || (tabId === undefined && !url)) return null;
 
   return (
     <button
       type="button"
-      onClick={() => void focusTab(tabId, windowId)}
+      onClick={() => void revealTab({ tabId, windowId, url })}
       title={t("run.drivingTabTip")}
       aria-label={t("run.drivingTabTip")}
       className="-ml-1 flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 self-start rounded-full bg-brand-100/80 py-1 pr-2.5 pl-1 text-xs text-brand-900 hover:bg-brand-200 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none dark:bg-brand-900/60 dark:text-brand-100 dark:hover:bg-brand-800"

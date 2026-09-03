@@ -22,7 +22,11 @@ export const WIDGET_HOST_ID = "tabrunner-status-widget";
  * - settled: a run's receipt. When a run ends, the mark does not quietly
  *   vanish — it settles into the same ✓/✗ the run's tab group wears, and the
  *   page takes it down itself after a few seconds. An ending you can see beats
- *   one you infer from a mark that disappeared.
+ *   one you infer from a mark that disappeared. Three exits, because the page
+ *   timer is the one that can fail (a background tab Chrome froze runs no
+ *   timers at all, and the receipt then outstays the run by however long the
+ *   user is away): the timer, the click that opens the panel, and its own ✕.
+ *   Coming back to the tab is a fourth — see clearStaleReceipts.
  *
  * One host id, one paint function, one Hide button: the corner is always the
  * same, so the eye learns exactly one place to look, and the words alone say
@@ -66,7 +70,7 @@ export interface WidgetState {
    *  excerpt moves to the tooltip. */
   awaitingText: string;
   /** The run's receipt — painted where the working mark was; the page clears
-   *  it (SETTLE_MS). No Hide in this state: the whole pill is already leaving. */
+   *  it (SETTLE_MS), and the ✕ / a click on the pill clear it sooner. */
   settle?: { ok: boolean; text: string };
   hideLabel: string;
   /** The pill's own tooltip — clicking anywhere on it opens the panel. */
@@ -93,6 +97,33 @@ export const drivenTabs = new Set<number>();
 /** The last sync's inputs — activation churn reconciles against them. */
 let lastState: WidgetState | null = null;
 let lastExclude: number | undefined;
+
+/**
+ * Tabs wearing a run's receipt, and when the newest one was painted. The page
+ * clears its own (SETTLE_MS) — but only a page whose timers run: Chrome freezes
+ * background tabs, and a frozen tab keeps the mark until the user comes back to
+ * it, which is exactly when a stale "Task finished" is most confusing. So the
+ * worker keeps the note and finishes the job on the next activation.
+ */
+let receipts: { at: number; tabs: Set<number> } | null = null;
+
+/** Marks a tab as wearing a receipt — including the driven tab's, which
+ *  indicator.ts paints into this same host. */
+export function noteReceipt(tabId: number): void {
+  receipts = { at: Date.now(), tabs: (receipts?.tabs ?? new Set<number>()).add(tabId) };
+}
+
+/**
+ * Take down receipts the page should have cleared itself. Only past SETTLE_MS —
+ * before that the receipt is still being read — and never a tab that has since
+ * been given a mark of its own: a new run's pill is not this one's to remove.
+ */
+async function clearStaleReceipts(): Promise<void> {
+  if (!receipts || Date.now() - receipts.at < SETTLE_MS) return;
+  const stale = [...receipts.tabs].filter((id) => !drivenTabs.has(id) && !widgetTabs.has(id));
+  receipts = null;
+  await Promise.all(stale.map((tabId) => inject(tabId, removeWidget, [WIDGET_HOST_ID])));
+}
 
 /**
  * Runs in the page. Must be fully self-contained — it is serialized, not closed
@@ -226,6 +257,10 @@ export function paintWidget(hostId: string, state: WidgetState): void {
   open.setAttribute("aria-label", state.openHint);
   open.addEventListener("click", () => {
     void chrome.runtime.sendMessage({ type: "tabrunner-mark", action: "open" });
+    // A read receipt is a read receipt: the panel is opening with the result in
+    // it, so the pill has nothing left to say. Only the receipt goes — a live
+    // run's pill is a status, and status outlives the glance you gave it.
+    if (state.settle) host.remove();
   });
   // Self-identifying on unrelated pages — but only the ambient voice needs it:
   // the driven badge's sentence already names TabRunner.
@@ -266,15 +301,19 @@ export function paintWidget(hostId: string, state: WidgetState): void {
     pill.style.display = collapsed ? "none" : "";
     mini.style.display = collapsed ? "" : "none";
   };
-  if (!state.settle) {
-    const hide = document.createElement("button");
-    hide.className = "btn";
-    hide.type = "button";
-    hide.textContent = state.hideLabel;
-    hide.title = state.hideHint;
-    hide.addEventListener("click", () => setCollapsed(true));
-    pill.append(hide);
-  }
+  // One control, two jobs, because the two states want opposite things: a
+  // working pill collapses (it has more to say later), a receipt leaves for
+  // good. Neither state is without a way out — a mark on someone's page must
+  // always be one click from gone.
+  const hide = document.createElement("button");
+  hide.className = "btn";
+  hide.type = "button";
+  hide.textContent = state.hideLabel;
+  hide.title = state.hideHint;
+  // A glyph is not a name — the receipt's ✕ borrows its label from the tooltip.
+  if (state.settle) hide.setAttribute("aria-label", state.hideHint);
+  hide.addEventListener("click", () => (state.settle ? host.remove() : setCollapsed(true)));
+  pill.append(hide);
   mini.addEventListener("click", () => setCollapsed(false));
 
   root.append(style, pill, mini);
@@ -311,9 +350,12 @@ export function settleState(outcome: SettleOutcome, mode: "driven" | "ambient"):
     awaiting: false,
     awaitingText: "",
     settle: { ok, text: i18n.t(ok ? "widget.settledDone" : "widget.settledFailed") },
-    hideLabel: "",
+    // The receipt's own way out. A glyph, not a word: "Hide" would promise the
+    // collapse it no longer does, and ✕ needs no translating — the name behind
+    // it does.
+    hideLabel: "✕",
     openHint: i18n.t(mode === "driven" ? "indicator.open" : "widget.settledHint"),
-    hideHint: "",
+    hideHint: i18n.t("widget.dismiss"),
     expandHint: "",
   };
 }
@@ -409,6 +451,9 @@ export async function syncStatusWidget(
  * drives that through syncStatusWidget.
  */
 export async function reconcileStatusWidgets(): Promise<void> {
+  // Before anything else, and whether or not a run is on: coming back to a tab
+  // is how a stuck receipt gets noticed, so it is also how it gets cleared.
+  await clearStaleReceipts();
   if (!lastState) return;
   const eligible = await eligibleTabs(lastExclude);
   await removeFrom([...widgetTabs].filter((id) => !eligible.has(id)));
@@ -442,7 +487,12 @@ export async function settleStatusWidgets(
   if (await widgetHidden.get()) return;
   const eligible = await eligibleTabs(excludeTabId);
   const args = argsOf(settleState(outcome, "ambient"));
-  await Promise.all([...eligible].map((tabId) => inject(tabId, paintWidget, args)));
+  await Promise.all(
+    [...eligible].map((tabId) => {
+      noteReceipt(tabId);
+      return inject(tabId, paintWidget, args);
+    }),
+  );
 }
 
 /**
@@ -453,6 +503,7 @@ export async function settleStatusWidgets(
 export async function sweepStatusWidget(): Promise<void> {
   widgetTabs.clear();
   drivenTabs.clear();
+  receipts = null;
   lastState = null;
   let tabs: chrome.tabs.Tab[];
   try {

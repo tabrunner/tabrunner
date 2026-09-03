@@ -1,7 +1,7 @@
 export { createDriver } from "./driver";
 export type { BrowserDriver } from "./driver";
 export { captureVisibleTab } from "./capture";
-export { focusTab } from "./focus-tab";
+export { focusTab, revealTab } from "./focus-tab";
 export {
   showAgentIndicator,
   hideAgentIndicator,

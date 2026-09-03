@@ -28,6 +28,19 @@ when the request really is about that page. Adoption remains the fallback whenev
 stands to continue: the thread's first message, a lock whose tab died (its url seeds the
 own-tab fallback), a restricted page.
 
+**A closed tab ends the run, and hands back the page.** Closing the driven tab is fatal by
+design — every later tool call would fail on the same dead id — and it is never undone
+from inside the run: closing a tab is the one gesture that says "not that page, not now",
+and a run that reopened it would be arguing with the user. What the ending owes them is
+the way back, so the lost page rides out on the error event (`tab: { title, url }`, stored
+on the error message so it survives a panel close) and the bubble's own Retry carries it as
+the run command's `url` — which, being a named url, skips adoption entirely. The retry
+therefore reopens the page the work was about instead of adopting whatever tab the user
+moved to after closing it, and the transcript's progress note is what tells the model where
+it had got to. The panel's tab chip is the same promise in miniature: `revealTab` focuses
+the tab while it lives and reopens its url once it doesn't, reusing a tab already on that
+page rather than minting duplicates.
+
 **One resolution, both modes.** The composer toggle (`runModePref`: `foreground`, the
 default, or `background`) decides one thing — whether approving the plan closes the
 panel — and nothing else. It never reaches the worker: there is no flag on the `run`
@@ -320,7 +333,13 @@ waiting-on-you, not working (`waitAgentIndicator`). When a run finishes or fails
 settles into a receipt instead of vanishing — ✓ "Task finished" / ✗ "Task failed", the same
 marks the run's tab group wears — and the page clears it after a few seconds
 (`settleAgentIndicator` / `settleStatusWidgets`; a user stop or a rejected plan just
-removes the mark, the panel already says so). The driven tab also gets an amber dot over
+removes the mark, the panel already says so). That page timer is the only one of the
+marks' mechanisms that can silently fail — Chrome freezes background tabs, and a frozen
+tab runs no timers at all, so a receipt could outstay its run by however long the user
+stayed away — so it has three more exits: clicking it (the panel is opening with the
+result in it, so the pill has said all it has to say), its own ✕, and the worker's
+`clearStaleReceipts`, which finishes the job on the next tab activation for any receipt
+past its deadline that no newer mark has replaced. The driven tab also gets an amber dot over
 its favicon so the strip shows where a run is working — the dot pulses via frames pushed
 from the worker, because Chrome throttles hidden-tab timers and hidden is exactly when the
 strip signal matters; a waiting run's favicon settles into the still "?" too. The badge is

@@ -22,6 +22,11 @@ export type Command =
       conversationId: string;
       task: string;
       images?: string[];
+      /** Put this page back before starting — a retry after the run's own tab
+       *  was closed. Named urls never adopt (see resolveRunTab), which is the
+       *  point: the work belongs to that page, not to the tab in front of the
+       *  user now. */
+      url?: string;
     }
   | { type: "stop" }
   /**
@@ -247,6 +252,13 @@ export type Event =
       message: string;
       kind?: ErrorKind;
       /** user-initiated ending (driven tab closed) — no notification */ silent?: boolean;
+      /**
+       * The page the run lost, when losing it is what ended the run. It is the
+       * error's own fix: Retry reopens this url instead of adopting whatever
+       * tab the user has moved to since, so the task picks up on the page it
+       * was actually about.
+       */
+      tab?: { title: string; url: string };
       /**
        * Nobody wrote copy for this one: a raw exception, or a provider failure
        * the classifier couldn't read — the same line loop.ts draws between
