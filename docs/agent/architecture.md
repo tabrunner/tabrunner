@@ -28,10 +28,22 @@ when the request really is about that page. Adoption remains the fallback whenev
 stands to continue: the thread's first message, a lock whose tab died (its url seeds the
 own-tab fallback), a restricted page.
 
-**A closed tab ends the run, and hands back the page.** Closing the driven tab is fatal by
-design — every later tool call would fail on the same dead id — and it is never undone
-from inside the run: closing a tab is the one gesture that says "not that page, not now",
-and a run that reopened it would be arguing with the user. What the ending owes them is
+**A closed tab ends the run, and hands back the page — unless nobody was there.** Closing
+the driven tab is fatal by design — every later tool call would fail on the same dead id.
+Whether the run may undo it is a question about who was in its loop (`reopenTargetFor`):
+for a panel run, and for a bridge run dispatched from an editor with the browser in reach,
+closing a tab is the plainest "not that page, not now" there is, and a run that reopened it
+would be arguing with the user. A schedule fire has nobody in its loop — it went off at
+3am, its plan auto-approved because there was no one to ask, and there is no one to press
+Retry either — so whatever took that tab was not a user saying stop: it reopens the page
+through the driver's own `openTab` (which re-targets, so the badge, the chip and the strip
+bookkeeping follow), leaves one neutral step row, and carries on. Once per run, so a page
+that closes itself cannot spin the run forever. The model is told, because it may be one
+step from repeating an action that already landed: `drainNotices` is the injection queue's
+system-voice twin — the same seam at the tool boundary and the same wire shape, minus the
+transcript entry, since nobody typed it.
+
+For every other run, what the ending owes the user is
 the way back, so the lost page rides out on the error event (`tab: { title, url }`, stored
 on the error message so it survives a panel close) and the bubble's own Retry carries it as
 the run command's `url` — which, being a named url, skips adoption entirely. The retry

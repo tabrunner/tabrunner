@@ -4,6 +4,7 @@ import {
   createRunGroup,
   labelRunTab,
   liveThreadGroup,
+  reopenTargetFor,
   settleRunTab,
 } from "../start-run";
 import type { LastTab } from "@/modules/conversation/conversations";
@@ -45,6 +46,33 @@ describe("continuesThreadTab", () => {
     expect(continuesThreadTab("bridge", false)).toBe(false);
     expect(continuesThreadTab("schedule", true)).toBe(true);
     expect(continuesThreadTab("bridge", true)).toBe(true);
+  });
+});
+
+describe("reopenTargetFor", () => {
+  const page = "https://example.com/checkout";
+
+  it("a schedule fire puts its own page back — nobody is there to press Retry", () => {
+    expect(reopenTargetFor("schedule", false, page)).toBe(page);
+  });
+
+  it("once per run: a page that closes itself must not spin the run", () => {
+    expect(reopenTargetFor("schedule", true, page)).toBeUndefined();
+  });
+
+  it("a run with a person at the browser ends instead — the close was the answer", () => {
+    // Panel and bridge alike: a bridge run is dispatched from an editor with
+    // the browser in reach, so closing its tab is as deliberate as it gets.
+    expect(reopenTargetFor("panel", false, page)).toBeUndefined();
+    expect(reopenTargetFor("bridge", false, page)).toBeUndefined();
+  });
+
+  it("nothing worth reopening is nothing to reopen", () => {
+    expect(reopenTargetFor("schedule", false, undefined)).toBeUndefined();
+    // A blank tab is not a page, and a restricted one could not be driven —
+    // either would put up a tab nobody asked for.
+    expect(reopenTargetFor("schedule", false, "about:blank")).toBeUndefined();
+    expect(reopenTargetFor("schedule", false, "chrome://settings")).toBeUndefined();
   });
 });
 

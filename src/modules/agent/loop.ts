@@ -332,6 +332,12 @@ export interface LoopOptions {
    * and lands them in the conversation exactly where the user meant them.
    */
   drainInjected?: () => { id: string; text: string }[];
+  /**
+   * What the run itself needs the model to know mid-flight — the same seam and
+   * the same wire shape as an injection, minus the transcript entry, because
+   * nobody typed these. Today: the page a schedule run had to reopen under it.
+   */
+  drainNotices?: () => string[];
   signal: AbortSignal;
   callbacks: LoopCallbacks;
 }
@@ -442,6 +448,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
     standingPlan,
     contextWindow = DEFAULT_CONTEXT_WINDOW,
     drainInjected,
+    drainNotices,
     signal,
     callbacks: rawCallbacks,
   } = opts;
@@ -1004,6 +1011,15 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
     // natural end, or sends it as the next task on a user stop. Draining here
     // would bubble messages the model never saw (done already fired above).
     if (taskDone) return messages;
+
+    // What the RUN has to say for itself — a page it had to put back under the
+    // model, say. Same seam and same wire shape as an injection, and first,
+    // because it is context for whatever the user's own message steers next.
+    // No callback: nobody typed these, so no user bubble is drawn for them.
+    for (const note of drainNotices?.() ?? []) {
+      log.info("run notice:", truncateTo(note, 120));
+      messages.push({ role: "user", content: note });
+    }
 
     // Queued mid-run messages join here, after the tool results they comment on.
     for (const item of drainInjected?.() ?? []) {

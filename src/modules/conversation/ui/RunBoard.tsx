@@ -79,6 +79,10 @@ export function RunBoard() {
   // whether the panel watched it start or reopened into it (the worker re-sends
   // the driving event on connect, so the tab chip is there either way).
   const running = board.running?.conversationId === activeId ? undefined : board.running;
+  // Pulled out of the object before the guard below: TypeScript drops a
+  // narrowing on `obj.prop` the moment it crosses into a callback, so reading
+  // running.tabId inside onClick would need a cast the guard already earned.
+  const { tabId: runningTabId, windowId: runningWindowId } = running ?? {};
   // Numbered off the whole line, not the visible remainder: hiding our own
   // entry must not renumber the ones behind it — the composer card and this
   // strip name the same positions.
@@ -118,14 +122,14 @@ export function RunBoard() {
           >
             {running.task}
           </span>
-          {running.tabId !== undefined && (
+          {runningTabId !== undefined && (
             <Button
               variant="ghost"
               size="sm"
               className="shrink-0 px-1.5"
               title={t("board.jump")}
               aria-label={t("board.jump")}
-              onClick={() => void focusTab(running.tabId as number)}
+              onClick={() => void focusTab(runningTabId, runningWindowId)}
             >
               <JumpIcon />
             </Button>

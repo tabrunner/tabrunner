@@ -864,7 +864,9 @@
     "backgroundNowGated": "Responda primeiro o plano ou a pergunta que está aguardando — fechar agora deixaria a tarefa presa em uma notificação.",
     "modeTitle": "“Em primeiro plano” mantém o painel aberto para você acompanhar, e a tarefa traz para a frente a aba que ela abrir; “Em segundo plano” fecha o painel quando você aprova o plano e nunca mexe na sua tela. As duas dirigem a aba em que você está — trocar durante a tarefa já vale (com o plano aprovado)",
     "receiptIn": "{{tokens}} de entrada",
-    "receiptOut": "{{tokens}} de saída"
+    "receiptOut": "{{tokens}} de saída",
+    "tabReopened": "Aba fechada — {{host}} reaberta",
+    "tabReopenedNote": "The tab you were working was closed, so TabRunner reopened {{url}} in a new tab. Nothing the old page was holding survived — unsaved input, scroll position, anything mid-flow — so check what actually completed before repeating a step."
   },
   "queue": {
     "position": "Aguardando execução · nº {{position}}",

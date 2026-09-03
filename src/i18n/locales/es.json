@@ -864,7 +864,9 @@
     "backgroundNowGated": "Responde primero el plan o la pregunta en espera — cerrar ahora dejaría la tarea esperando en una notificación.",
     "modeTitle": "“En primer plano” deja el panel abierto para que la veas, y la tarea trae al frente la pestaña a la que cambia; “En segundo plano” cierra el panel cuando apruebas el plan y nunca mueve tu pantalla. Ambas manejan la pestaña en la que estás — cambiar durante la tarea se aplica al momento (con el plan aprobado)",
     "receiptIn": "{{tokens}} de entrada",
-    "receiptOut": "{{tokens}} de salida"
+    "receiptOut": "{{tokens}} de salida",
+    "tabReopened": "Pestaña cerrada — {{host}} reabierta",
+    "tabReopenedNote": "The tab you were working was closed, so TabRunner reopened {{url}} in a new tab. Nothing the old page was holding survived — unsaved input, scroll position, anything mid-flow — so check what actually completed before repeating a step."
   },
   "queue": {
     "position": "Pendiente de ejecución · n.º {{position}}",

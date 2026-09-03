@@ -49,6 +49,7 @@ import {
   type ThreadTabs,
 } from "@/modules/conversation/conversations";
 import type { Message } from "@/modules/conversation/types";
+import { hostnameOf } from "@/lib/format";
 import { defaultStartUrl, walkthroughsEnabled } from "@/lib/prefs";
 import { createLogger, truncate } from "@/lib/logger";
 import type { ElicitationAsk, Event, PlanApprovalPayload } from "@/shared/protocol";
@@ -371,29 +372,69 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       favIconUrl: tab.favIconUrl || undefined,
     });
 
-    // The driven tab going away is fatal, not transient: every later tool call
-    // would fail the same way. End the run with a clear error instead of letting
-    // the model burn turns retrying a dead tab id.
-    //
-    // Fatal, never undone from here: closing a tab is the one gesture that says
-    // "not that page, not now", and a run that reopened it would be arguing.
-    // The reopen is offered instead — the closed page rides out on the error
-    // (`tab`), so Retry puts it back and carries on with the transcript's own
-    // history rather than adopting whatever the user has since moved to.
-    const onTabGone = (removedId: number) => {
-      if (removedId !== drivenTabId) return;
-      log.info("driven tab closed mid-run", { tabId: drivenTabId });
+    /**
+     * Notices the RUN owes the model — drained at the loop's next tool boundary.
+     * Nobody typed these, so they take the injection's wire shape but not its
+     * transcript entry: a page that came back under the model must not read as
+     * something the user said.
+     */
+    const notices: string[] = [];
+    /** One reopen per run — a page that closes itself must not spin the run. */
+    let reopened = false;
+
+    /**
+     * The ending a lost tab gets when it cannot be undone: fatal, not transient
+     * — every later tool call would fail on the same dead id, and the model
+     * would burn its turns discovering that one at a time. The closed page
+     * rides out on the error, so the panel's Retry can put it back rather than
+     * adopting whatever tab the user has moved to since.
+     */
+    const endOnLostTab = (lost: string | undefined) => {
       runFailed = true;
       // The user closed the tab — that IS the answer, no notification on top.
       emit({
         type: "error",
         message: i18n.t("errors.tabClosed", { title: drivenTitle }),
         silent: true,
-        ...(drivenUrl && !isBlankPage(drivenUrl) && !isRestrictedUrl(drivenUrl)
-          ? { tab: { title: drivenTitle, url: drivenUrl } }
-          : {}),
+        ...(lost ? { tab: { title: drivenTitle, url: lost } } : {}),
       });
       run.controller.abort();
+    };
+
+    /**
+     * Put the page back and carry on, or end the way an attended run ends. The
+     * driver's own openTab is the whole move: it creates the tab, waits out the
+     * load and re-targets, which fires onSwitch and takes the badge, the strip
+     * bookkeeping and the panel's chip along with it.
+     */
+    const reopenDrivenTab = async (lost: string) => {
+      try {
+        await driver.openTab(lost);
+        log.info("reopened the driven tab", { tabId: drivenTabId });
+        emit({
+          type: "step",
+          tool: "tab",
+          summary: i18n.t("run.tabReopened", { host: hostnameOf(lost) }),
+        });
+        // The model has to hear it: it may be one step from repeating an action
+        // that already landed, and a fresh copy of the page cannot tell it so.
+        notices.push(i18n.t("run.tabReopenedNote", { url: lost }));
+      } catch (e) {
+        log.warn("could not reopen the driven tab:", e instanceof Error ? e.message : String(e));
+        endOnLostTab(lost);
+      }
+    };
+
+    const onTabGone = (removedId: number) => {
+      if (removedId !== drivenTabId) return;
+      log.info("driven tab closed mid-run", { tabId: drivenTabId });
+      const reopenTo = reopenTargetFor(owner, reopened, drivenUrl);
+      if (reopenTo) {
+        reopened = true;
+        void reopenDrivenTab(reopenTo);
+        return;
+      }
+      endOnLostTab(resumableUrl(drivenUrl));
     };
     chrome.tabs.onRemoved.addListener(onTabGone);
     // Tell the page itself it is being driven — the side panel may be scrolled
@@ -462,6 +503,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         ...(target.submitPage ? { submitPage: target.submitPage } : {}),
         ...(tab.url ? { startUrl: tab.url } : {}),
         drainInjected: () => run.injectedQueue.splice(0, run.injectedQueue.length),
+        drainNotices: () => notices.splice(0, notices.length),
         signal: run.controller.signal,
         callbacks: {
           onInjected: (id, text) => emit({ type: "injected", id, text }),
@@ -800,6 +842,36 @@ interface RunTab {
 
 /** Last-resort start page when neither the task nor the preference names one. */
 const FALLBACK_START_URL = "https://www.google.com";
+
+/**
+ * The address a lost tab can be brought back from, if it has one. A blank tab
+ * is not a page to reopen, and a restricted one could not be driven anyway —
+ * both would turn "put it back" into a tab nobody asked for.
+ */
+function resumableUrl(url: string | undefined): string | undefined {
+  return url && !isBlankPage(url) && !isRestrictedUrl(url) ? url : undefined;
+}
+
+/**
+ * Whose gesture was that? When a person is at the browser, closing the tab
+ * TabRunner is driving is the plainest "not that page, not now" there is, and a
+ * run that reopened it would be arguing with them — so a panel run and a bridge
+ * run (dispatched from an editor, the browser in reach) end there, and the page
+ * is offered back through the error's Retry instead.
+ *
+ * A schedule fire is the one run with nobody in its loop: it went off at 3am,
+ * its plan auto-approved because there was no one to ask, and there is no one to
+ * press Retry either. Whatever took that tab — the page itself, a crash, Chrome
+ * — was not a user saying stop, so the run puts the page back and carries on.
+ * Once: a page that closes itself must not spin the run forever.
+ */
+export function reopenTargetFor(
+  owner: RunOwner,
+  reopened: boolean,
+  url: string | undefined,
+): string | undefined {
+  return owner === "schedule" && !reopened ? resumableUrl(url) : undefined;
+}
 
 /**
  * Pages that mean "no page" rather than "a page we were blocked from": the user

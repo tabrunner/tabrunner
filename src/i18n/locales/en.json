@@ -864,7 +864,9 @@
     "backgroundNowGated": "Answer the waiting plan or question first — closing now would leave it parked on a notification.",
     "modeTitle": "“In foreground” keeps the panel open so you can watch, and the run brings a tab it switches to forward; “In background” closes the panel once you approve the plan and never moves your screen. Both drive the tab you're on — flipping mid-task applies at once (once the plan is approved)",
     "receiptIn": "{{tokens}} in",
-    "receiptOut": "{{tokens}} out"
+    "receiptOut": "{{tokens}} out",
+    "tabReopened": "Tab closed — reopened {{host}}",
+    "tabReopenedNote": "The tab you were working was closed, so TabRunner reopened {{url}} in a new tab. Nothing the old page was holding survived — unsaved input, scroll position, anything mid-flow — so check what actually completed before repeating a step."
   },
   "queue": {
     "position": "Waiting to run · #{{position}}",

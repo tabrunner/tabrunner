@@ -99,6 +99,42 @@ describe("runAgentLoop mid-run queue", () => {
     expect(sawSteer).toBe(true);
   });
 
+  it("a run's own notice reaches the model without a user bubble behind it", async () => {
+    // The page a schedule run had to put back under itself: the model has to
+    // hear it (it may be one step from repeating an action that already
+    // landed), but nobody typed it, so nothing is drawn in the chat.
+    const notices = ["TabRunner reopened https://example.com in a new tab."];
+    const injected: string[] = [];
+    let calls = 0;
+    let heard = false;
+    const provider: ChatProvider = {
+      async *stream(messages) {
+        calls++;
+        if (calls === 2) {
+          heard = messages.some((m) => m.role === "user" && m.content === notices[0]);
+          yield { type: "tool_use", id: "d1", name: "done", args: { summary: "ok" } };
+        } else {
+          yield { type: "tool_use", id: `c${calls}`, name: "snapshot", args: {} };
+        }
+        yield { type: "done" };
+      },
+    };
+    const pending = [...notices];
+    await runAgentLoop({
+      provider,
+      driver,
+      task: "do it",
+      signal: new AbortController().signal,
+      drainNotices: () => pending.splice(0, pending.length),
+      callbacks: { onInjected: (id, text) => injected.push(text) },
+    });
+
+    expect(heard).toBe(true);
+    expect(pending).toHaveLength(0);
+    // onInjected is the transcript's user message — a notice must never fire it.
+    expect(injected).toEqual([]);
+  });
+
   it("leaves the queue alone when the run ends — the panel recalls it, no phantom bubble", async () => {
     const queue = [{ id: "m1", text: "one more thing" }];
     const injected: string[] = [];
