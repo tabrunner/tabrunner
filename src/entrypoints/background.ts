@@ -542,11 +542,7 @@ export default defineBackground(() => {
       // needs no gesture.
       const runTab = board.running?.tabId;
       const windowId = board.running?.windowId ?? sender.tab?.windowId;
-      try {
-        if (windowId !== undefined) await chrome.sidePanel.open({ windowId });
-      } catch (e) {
-        log.debug("panel open skipped:", e instanceof Error ? e.message : String(e));
-      }
+      if (windowId !== undefined) await openPanelIn({ windowId });
       if (runTab !== undefined) void focusTab(runTab, board.running?.windowId);
     })();
   });
@@ -821,7 +817,14 @@ async function notifyIfAway(
   choices?: string[],
 ): Promise<boolean> {
   if (await userIsWatching()) return false;
-  if (conversationId) notificationTargets.set(id, { conversationId });
+  if (conversationId) {
+    // The tab this run is on, captured now: the click that answers this
+    // notification has to open the panel without awaiting anything, and a
+    // lookup there would be exactly the await that loses the gesture.
+    const running = currentBoard().running;
+    const tabId = running?.conversationId === conversationId ? running.tabId : undefined;
+    notificationTargets.set(id, { conversationId, ...(tabId !== undefined ? { tabId } : {}) });
+  }
   const body = choices?.length ? `${message} — ${choices.join(" · ")}` : message;
   try {
     void chrome.notifications.create(id, {
@@ -872,24 +875,48 @@ function notifyParkedRun(): void {
   void notifyPlanParked(run.conversationId, run.planApproval.ask);
 }
 
+/**
+ * Open the side panel, or don't — never throw. `sidePanel.open()` rejects
+ * whenever Chrome judges the call not to be carrying a user gesture, and in a
+ * service worker that means any call that crossed an await. The rejection is a
+ * panel that stayed shut, not a failure worth an uncaught stack in the console
+ * of a click that otherwise did its job.
+ */
+function openPanelIn(where: { tabId: number } | { windowId: number }): Promise<void> {
+  return chrome.sidePanel.open(where).catch((e: unknown) => {
+    log.debug("panel open skipped:", e instanceof Error ? e.message : String(e));
+  });
+}
+
 // Notification click opens the panel at the right conversation so the user can
-// answer — for a finished run, (best-effort) with its tab in front as well.
+// answer — for a finished run, with its tab in front as well.
 chrome.notifications.onClicked.addListener((id) => {
   if (id !== "tabrunner-question" && id !== "tabrunner-plan" && !id.startsWith("tabrunner-run-"))
     return;
   chrome.notifications.clear(id);
   const target = notificationTargets.get(id) ?? null;
   notificationTargets.delete(id);
+  // Nothing is awaited ahead of the open, the same rule the pill's click
+  // follows: a worker's gesture does not survive one await, and this handler
+  // used to spend two — a storage write and a window lookup — before asking for
+  // the panel. It asked, Chrome refused, and the refusal surfaced as an
+  // uncaught promise error while the click half-worked. The run's tab rides on
+  // the notification precisely so there is nothing to look up here.
+  if (target?.conversationId) void setActiveConversation(target.conversationId);
+  if (target?.tabId !== undefined) void openPanelIn({ tabId: target.tabId });
   void (async () => {
-    if (target?.conversationId) await setActiveConversation(target.conversationId);
-    const win = await chrome.windows.getLastFocused({ windowTypes: ["normal"] });
-    if (win.id) await chrome.sidePanel.open({ windowId: win.id });
-    if (target?.tabId !== undefined) {
-      try {
-        await chrome.tabs.update(target.tabId, { active: true });
-      } catch {
-        // The run's tab is gone — the panel alone still carries the answer.
-      }
+    // No tab rode along — a notification with no run behind it, or a worker
+    // that died between firing it and the click, which takes the targets with
+    // it. Ask Chrome where to put the panel; too late for the gesture, so it
+    // usually stays shut, and the toolbar button is one click away.
+    if (target?.tabId === undefined) {
+      const win = await chrome.windows.getLastFocused({ windowTypes: ["normal"] });
+      if (win.id !== undefined) await openPanelIn({ windowId: win.id });
+      return;
     }
+    // Page and panel together, window included — the pill's click lands them
+    // the same way, and a notification is answered from wherever the user is.
+    // A tab that died since takes nothing with it: the panel carries the answer.
+    await focusTab(target.tabId);
   })();
 });

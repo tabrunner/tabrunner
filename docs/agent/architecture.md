@@ -362,7 +362,15 @@ ambient half never paints over or strips a driven badge (`drivenTabs` guards eli
 which is what makes the switch_tab handover safe. Every mark is
 click-to-open (one `tabrunner-mark` message to the worker; it opens the panel beside the
 work in that window and pulls the driven tab forward — window included — so a pill clicked
-from some other window lands you next to the work. The panel opens FIRST, on a window the
+from some other window lands you next to the work. **The same rule governs every click that
+opens the panel**, notification clicks included: a worker's user gesture does not survive one
+await, so `sidePanel.open()` goes out on the event's own tick, with a target that was already
+in hand — which is why an ask_user or plan notification carries the run's tab (`notifyIfAway`
+reads the board when it fires, not when it is clicked). The notification handler used to
+spend a storage write and a window lookup first; Chrome refused the open, and the refusal
+surfaced as an uncaught promise error on a click that had already set the conversation and
+focused the tab. `openPanelIn` is now the one door, and it never throws — a panel that stayed
+shut is not a failure worth a stack. The panel opens FIRST, on a window the
 board already names (`running.windowId` rides beside `tabId`): zero awaits ahead of
 `sidePanel.open`, because an open() that lost the click's gesture behind a tab lookup was a
 pill that changed the tab and opened nothing), which is why every coordinate
