@@ -102,7 +102,13 @@ never reach the service-worker bundle.
   signal that never is. Never let the injected marks be the only thing saying a run is alive.
 - `providers/` — OpenAI/Anthropic/Responses adapters, presets, pricing (spend estimates —
   `pricing.ts`, see docs/agent/providers.md), storage, config UI. Adding a
-  provider is a data change in `presets.ts` — never a code change elsewhere. **The engine
+  provider is a data change in `presets.ts` — never a code change elsewhere.
+  **The vendor-neutral half lives in [`@providerkit/core`](https://providerkit.dev)** — error
+  classification (`classifyHttp`, `isTransportFailure`), tool-argument salvage
+  (`parseToolArgs`), rate-limit window parsing, SSE framing (`parseSseStream`), `apiUrl`.
+  Do not re-add any of them here. What stays is what the package cannot know: the translated
+  error envelope, the warn-vs-error log split, `formatResetRelative`, and `context-window.ts`,
+  which learns the real ceiling from a length rejection instead of guessing from a model name. **The engine
   (provider · model · effort) belongs to the conversation, not to the app**: `engine.ts` holds
   the one rule — the conversation's pin, else the stored pick (`active-provider` + the
   `model`/`reasoningEffort` on the config), else the first configured — and everything asks it,

@@ -988,6 +988,8 @@
     "windowMonthly": "monthly",
     "kindOverload": "{{provider}} is overloaded right now — try again in a few minutes",
     "kindContext": "This chat outgrew what {{provider}} can read in one request — compact it to carry on",
+    "kindTimeout": "{{provider}} stopped responding — nothing came back in time. Retry, or pick another model if it keeps stalling",
+    "kindContent": "{{provider}}'s safety filter blocked this message — rewrite it, or try another model",
     "kindNetworkOffline": "You're offline — the request to {{provider}} never left this machine. Reconnect, then Retry",
     "kindNetworkHost": "Couldn't reach {{provider}} at {{host}} — the request never left this machine. Check your connection, any VPN or blocker in the way, and the base URL",
     "kindNetwork": "Couldn't reach {{provider}} — the request never left this machine. Check your connection, and any VPN or blocker in the way",

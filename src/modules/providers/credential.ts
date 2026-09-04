@@ -1,6 +1,6 @@
 import type { ProviderConfig } from "./types";
 import { ProviderError } from "./types";
-import { isTransportFailure } from "./error-classify";
+import { isTransportFailure } from "@providerkit/core";
 import { networkError } from "./http";
 import { OAUTH_FLOWS } from "./oauth-flows";
 import { saveProvider } from "./storage";

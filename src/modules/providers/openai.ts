@@ -1,5 +1,6 @@
 import type { ChatProvider, ChatMessage, ToolDef, Delta, ResolvedProviderConfig } from "./types";
-import { apiUrl, logCacheUsage, parseToolArgs, streamSse } from "./http";
+import { apiUrl, parseToolArgs } from "@providerkit/core";
+import { logCacheUsage, streamSse } from "./http";
 
 /**
  * OpenAI-shape adapter — works with any OpenAI-compatible endpoint.
@@ -26,19 +27,6 @@ export function createOpenAIProvider(config: ResolvedProviderConfig): ChatProvid
       });
 
       for await (const data of stream) {
-        if (data === "[DONE]") {
-          for (const acc of toolCallAccumulators.values()) {
-            yield {
-              type: "tool_use",
-              id: acc.id,
-              name: acc.name,
-              args: parseToolArgs(acc.args),
-            };
-          }
-          yield { type: "done" };
-          return;
-        }
-
         let chunk: OpenAIChunk;
         try {
           chunk = JSON.parse(data);
@@ -104,6 +92,14 @@ export function createOpenAIProvider(config: ResolvedProviderConfig): ChatProvid
             }
           }
         }
+      }
+
+      // Flushed once the stream is over rather than on `[DONE]`: a gateway that
+      // drops the sentinel — or a stream cut after the last argument fragment —
+      // used to swallow every tool call of the turn, which reads as a model
+      // that answered nothing.
+      for (const acc of toolCallAccumulators.values()) {
+        yield { type: "tool_use", id: acc.id, name: acc.name, args: parseToolArgs(acc.args) };
       }
 
       yield { type: "done" };

@@ -10,7 +10,7 @@ import { toolVerbKey, toolHint, displacedHint } from "./tool-labels";
 import { pendingAskId } from "./ask-gate";
 import type { Message } from "../types";
 import { splitErrorDetail } from "../error-detail";
-import type { ErrorKind } from "@/modules/providers/error-classify";
+import type { ErrorKind } from "@providerkit/core";
 import { formatDuration, formatTokens, hostnameOf } from "@/lib/format";
 import { newIssueUrl } from "@/lib/report";
 import { showReasoning } from "@/lib/prefs";

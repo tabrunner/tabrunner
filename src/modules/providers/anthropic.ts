@@ -1,12 +1,6 @@
 import type { ChatProvider, ChatMessage, Delta, ResolvedProviderConfig, ToolDef } from "./types";
-import {
-  anthropicHeaders,
-  anthropicOAuthHeaders,
-  apiUrl,
-  logCacheUsage,
-  parseToolArgs,
-  streamSse,
-} from "./http";
+import { apiUrl, parseToolArgs } from "@providerkit/core";
+import { anthropicHeaders, anthropicOAuthHeaders, logCacheUsage, streamSse } from "./http";
 
 /**
  * Claude Code identities the subscription token as theirs, so OAuth traffic

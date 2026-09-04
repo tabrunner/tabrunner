@@ -1,4 +1,4 @@
-import { isTransportFailure, type ErrorKind } from "./error-classify";
+import { isTransportFailure, type ErrorKind } from "@providerkit/core";
 
 /** Provider shape — determines wire format for API calls. */
 export type ProviderShape = "openai" | "anthropic" | "responses";
@@ -263,7 +263,11 @@ const MAX_RETRY_WAIT_MS = 60_000;
  * retry-after exceeds MAX_RETRY_WAIT_MS isn't transient either.
  *
  * A `network` failure is retryable by definition: nothing about the request was
- * refused, it never arrived. Waiting is the whole fix.
+ * refused, it never arrived. Waiting is the whole fix. `timeout` is the same
+ * argument on the other side of the wire — a 408, or a body saying the request
+ * timed out, is a provider that ran out of time rather than one that refused.
+ * Both were retried on status before the classifier named them; keeping them
+ * here is what stops the naming from quietly narrowing the policy.
  *
  * Auth is the one kind a single response can't settle. Coding-plan gateways —
  * Kimi most visibly — reject roughly one request in fifty with
@@ -279,14 +283,23 @@ export function isRetryable(e: unknown): boolean {
   if (e instanceof ProviderError) {
     if (e.kind && NON_RETRYABLE_KINDS.includes(e.kind)) return false;
     if (e.retryAfterMs !== undefined && e.retryAfterMs > MAX_RETRY_WAIT_MS) return false;
-    return e.kind === "auth" || e.kind === "network" || e.status === 429 || e.status >= 500;
+    return (
+      e.kind === "auth" ||
+      e.kind === "network" ||
+      e.kind === "timeout" ||
+      e.status === 429 ||
+      e.status >= 500
+    );
   }
-  // An unwrapped transport rejection — every fetch outside streamSse's envelope
-  // still reaches the loop as a bare TypeError.
+  // An unwrapped rejection from a fetch outside streamSse's envelope. The
+  // shared guard matches on the MESSAGE and walks up to five `cause` levels, so
+  // a dead socket wrapped by an intermediate layer still reads as transport —
+  // it is no longer a bare-TypeError check. Safe to widen because a genuine bug
+  // ("driver.click is not a function") does not word itself like a failed fetch.
   return isTransportFailure(e);
 }
 
-/** Provider interface — both adapters implement this. */
+/** Provider interface — every adapter implements this. */
 export interface ChatProvider {
   stream(messages: ChatMessage[], tools: ToolDef[], signal: AbortSignal): AsyncIterable<Delta>;
 }

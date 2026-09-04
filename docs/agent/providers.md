@@ -98,13 +98,13 @@ The load-bearing details of talking to each provider shape. Read this when a tas
   nothing has been emitted yet — the UI never sees replayed tokens. A server's
   `retry-after` (≤ 60s) outranks the backoff guess; a longer one (a subscription 5h/weekly
   window, not a blip) makes the 429 non-retryable so the run fails fast with the reset
-  time. `rate-limit.ts` reads the reset off the 429 — Anthropic's
+  time. `parseRateLimitReset`/`parseUsageLimitBody` (@providerkit/core) read the reset off the 429 — Anthropic's
   `anthropic-ratelimit-unified-5h/7d-utilization/-reset` headers (which also name WHICH
   subscription window bound), the RFC 3339 `anthropic-ratelimit-*-reset`, `retry-after`,
   or the codex backend's body-carried `error.resets_at`/`resets_in_seconds` (the only
   place ChatGPT discloses it; the window name — 5h/weekly/monthly — is inferred from the
   wait, but only past 10 min so a per-minute throttle never gets a fake window label) —
-  and the error lead says when it actually resets instead of "try again in a moment".
+  and `rate-limit.ts` — which is now only the formatting half — turns that instant into a phrase in the reader's language, so the error lead says when it actually resets instead of "try again in a moment".
 - **Subscription usage endpoints** (`usage.ts`, all unofficial/undocumented — parsers omit
   windows they can't read): Claude `GET api.anthropic.com/api/oauth/usage` (Bearer +
   `anthropic-beta: oauth-2025-04-20`; `{five_hour, seven_day: {utilization, resets_at}}`),

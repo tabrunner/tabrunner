@@ -1,4 +1,4 @@
-import type { ErrorKind } from "@/modules/providers/error-classify";
+import type { ErrorKind } from "@providerkit/core";
 import type { ArtifactPayload } from "@/shared/protocol";
 
 export type MessageRole =

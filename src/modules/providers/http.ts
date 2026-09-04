@@ -1,12 +1,15 @@
 import type { ProviderConfig } from "./types";
 import { ProviderError } from "./types";
-import { classifyProviderError, isTransportFailure, type ErrorKind } from "./error-classify";
 import {
-  formatResetRelative,
+  classifyHttp,
+  isTransportFailure,
   parseRateLimitReset,
+  parseSseStream,
   parseUsageLimitBody,
+  type ErrorKind,
   type RateLimitReset,
-} from "./rate-limit";
+} from "@providerkit/core";
+import { formatResetRelative } from "./rate-limit";
 import { providerDisplayName } from "./presets";
 import { createLogger, truncate } from "@/lib/logger";
 import { i18n } from "@/i18n";
@@ -16,7 +19,17 @@ const log = createLogger("providers");
 /** Enough of a provider to name it and to know how it authenticates. */
 type ProviderIdentity = Pick<ProviderConfig, "id" | "name" | "auth">;
 
-/** Actionable lead line per failure kind — the raw body still rides along for Details. */
+/**
+ * The wording for each kind, or `null` for the ones that keep the generic
+ * envelope. Since the classifier moved to @providerkit/core it answers with
+ * all thirteen kinds rather than eight-or-undefined, and three of the new ones
+ * have nothing to add: `invalid` and `unknown` ARE their body, and telling a
+ * user "the request was malformed" hides the message that says how. They land
+ * exactly where they landed when the classifier returned undefined.
+ *
+ * Still exhaustive on purpose. A kind added upstream should fail this build
+ * and make someone decide, rather than silently fall through to a status code.
+ */
 const ERROR_KIND_KEYS = {
   entitlement: "errors.kindEntitlement",
   quota: "errors.kindQuota",
@@ -25,11 +38,18 @@ const ERROR_KIND_KEYS = {
   rate: "errors.kindRate",
   overload: "errors.kindOverload",
   context: "errors.kindContext",
+  timeout: "errors.kindTimeout",
+  content: "errors.kindContent",
   // Unreachable from here — a `network` failure has no response to classify.
   // Present because the map is exhaustive over the union, and the host-less
   // wording is the right fallback if it ever did arrive this way.
   network: "errors.kindNetwork",
-} as const satisfies Record<ErrorKind, string>;
+  // The body carries the remedy; a generic line would bury it.
+  invalid: null,
+  unknown: null,
+  // A stopped run is not a failure and never reaches this function.
+  aborted: null,
+} as const satisfies Record<ErrorKind, string | null>;
 
 const WINDOW_KEYS = {
   "5h": "errors.window5h",
@@ -77,17 +97,15 @@ function providerErrorMessage(
   now: number,
 ): { message: string; kind?: ErrorKind } {
   const label = providerDisplayName(provider);
-  const kind = classifyProviderError(status, text);
-  if (kind) {
+  const kind = classifyHttp(status, text);
+  const key = ERROR_KIND_KEYS[kind];
+  if (key) {
     const line =
       kind === "rate"
         ? rateLimitLine(label, reset, now)
-        : i18n.t(
-            kind === "auth" && provider.auth ? "errors.kindAuthSignedIn" : ERROR_KIND_KEYS[kind],
-            {
-              provider: label,
-            },
-          );
+        : i18n.t(kind === "auth" && provider.auth ? "errors.kindAuthSignedIn" : key, {
+            provider: label,
+          });
     return { message: text ? `${line}: ${text}` : line, kind };
   }
   return {
@@ -136,11 +154,6 @@ function hostOf(url: string | undefined): string | undefined {
   }
 }
 
-/** Base + path joined once — trailing slashes on stored base URLs would double up. */
-export function apiUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/$/, "")}${path}`;
-}
-
 /**
  * Anthropic dual-auth, shared by /v1/messages and /v1/models: Anthropic reads
  * x-api-key, coding-plan proxies (Kimi, Z.ai, QwenCloud) read Authorization:
@@ -181,36 +194,6 @@ export function anthropicOAuthHeaders(accessToken: string): Record<string, strin
 }
 
 /**
- * Tool-call args arrive in fragments and may end mid-JSON — parse defensively.
- *
- * A provider that hits its output limit cuts the stream mid-arguments, so the
- * raw text is `{ "summary": "the whole answer…` with no closing brace. JSON.parse
- * throws on that, and the caller used to get {} — which is how a run that wrote
- * its entire final report into `done.summary` surfaced as a hollow "task
- * complete": the answer was there, in the fragments, and got thrown away. On a
- * parse failure, salvage any string fields — the ones that closed before the
- * cut, and the one left open by it, whose content up to the cut is the answer.
- *
- * Both paths end in healUnicodeEscapes: a clean parse is not enough when the
- * model escaped its own accents twice.
- */
-export function parseToolArgs(raw: string): Record<string, unknown> {
-  if (!raw) return {};
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return healArgs(salvageStringArgs(raw));
-  }
-  // A non-object args payload is a protocol violation, not a value to pass on.
-  return healArgs(isRecord(parsed) ? parsed : {});
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
  * How much of this turn's prompt the provider served from cache — the only way
  * to answer "is caching actually working", which no amount of reading the
  * request body can tell you.
@@ -237,103 +220,13 @@ export function logCacheUsage(total: number, read: number, written = 0): void {
 }
 
 /**
- * Most models write non-ASCII inside tool-call JSON as `\uXXXX` — legal, and
- * JSON.parse turns it back into the character. Some escape it twice: they emit
- * `\\u00e7`, so even a correct parse leaves the six literal characters standing
- * and a Portuguese answer reaches the user as `aten\u00e7\u00e3o`. Decode
- * whatever survived the parse.
+ * POST an SSE request and yield each `data:` payload.
  *
- * `\uXXXX` only. An answer that legitimately spells that sequence is vanishingly
- * rare; one that mentions `\n` while talking about code is not.
- */
-const UNICODE_ESCAPE = /\\u([0-9a-fA-F]{4})/g;
-
-function healUnicodeEscapes(s: string): string {
-  return s.replace(UNICODE_ESCAPE, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
-}
-
-/** healUnicodeEscapes across every string in an args object, nested included. */
-function healArgs(args: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(args)) out[key] = healValue(value);
-  return out;
-}
-
-function healValue(value: unknown): unknown {
-  if (typeof value === "string") return healUnicodeEscapes(value);
-  if (Array.isArray(value)) return value.map(healValue);
-  if (isRecord(value)) return healArgs(value);
-  return value;
-}
-
-/**
- * Best-effort recovery of `"key": "value"` string fields from truncated JSON.
- * Only strings: they are what a `done` summary (the field worth rescuing) is
- * made of, and a closing quote is the one reliable boundary in a partial
- * stream. Numbers/booleans/objects are dropped — a salvaged half-value would be
- * worse than none. Fields that closed before the cut are kept; the single field
- * the cut left open (the summary) keeps its content up to the cut — a half-said
- * answer beats a thrown-away one.
- */
-function salvageStringArgs(raw: string): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  // The cut can land inside an escape (`…aten\u00`, or a lone `\`). That fragment
-  // is not text, and a trailing backslash also stops the field patterns matching.
-  const text = raw.replace(DANGLING_ESCAPE, "");
-  // A completed `"key": "value",` or `"key": "value"}` pair. Escaped quotes
-  // inside the value are handled by the string pattern.
-  const STRING_FIELD = /"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}]/gs;
-  let m: RegExpExecArray | null;
-  let lastCompleteEnd = 0;
-  while ((m = STRING_FIELD.exec(text)) !== null) {
-    out[unescapeJson(m[1]!)] = unescapeJson(m[2]!);
-    lastCompleteEnd = STRING_FIELD.lastIndex;
-  }
-
-  // The tail after the last complete field: if it opens one more string field
-  // that never closed (the `done` summary cut mid-value), keep its content up
-  // to the cut. A half-said answer beats a thrown-away one.
-  const LONE_FIELD = /"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)$/s;
-  const lone = LONE_FIELD.exec(text.slice(lastCompleteEnd));
-  if (lone && lone[2]) {
-    out[unescapeJson(lone[1]!)] = unescapeJson(lone[2]!);
-  }
-  return out;
-}
-
-/** Every escape JSON defines, matched whole so the pass can't re-read its output. */
-const JSON_ESCAPE = /\\(u[0-9a-fA-F]{4}|["\\/bfnrt])/g;
-const SIMPLE_ESCAPES: Record<string, string> = {
-  '"': '"',
-  "\\": "\\",
-  "/": "/",
-  b: "\b",
-  f: "\f",
-  n: "\n",
-  r: "\r",
-  t: "\t",
-};
-/** What a cut leaves behind mid-escape: `\u00`, or a lone trailing `\`. */
-const DANGLING_ESCAPE = /(?<!\\)\\(?:u[0-9a-fA-F]{0,3})?$/;
-
-/**
- * Reverse the JSON string escapes a streamed value carries (\", \\, \n, \uXXXX).
- * One left-to-right pass, not a chain of replaces: chained, `\\` became `\` before
- * the `\n` and `\uXXXX` rules ran, so a literal `\\n` turned into a newline.
- */
-function unescapeJson(s: string): string {
-  return s.replace(JSON_ESCAPE, (_, esc: string) =>
-    esc.startsWith("u")
-      ? String.fromCharCode(parseInt(esc.slice(1), 16))
-      : (SIMPLE_ESCAPES[esc] ?? esc),
-  );
-}
-
-/**
- * POST an SSE request and yield each `data:` payload, trimmed. The whole
- * transport envelope lives here once: non-2xx reads the body, logs it, and
- * throws the ProviderError both adapters surface; a missing body throws too.
- * Adapters keep only their per-event mapping.
+ * What stays here is the ENVELOPE, and only because it cannot be shared: the
+ * failure line is translated, the reset windows merge headers with body, and
+ * the log level splits on whether the kind is one we already explain in the
+ * chat. The framing below it is @providerkit/core's `parseSseStream` — spec
+ * frames, CRLF, continuation lines and `[DONE]`, none of which is ours.
  */
 export async function* streamSse(opts: {
   url: string;
@@ -372,7 +265,7 @@ export async function* streamSse(opts: {
     const now = Date.now();
     // Headers are authoritative (Anthropic names the window); the body fills
     // gaps (ChatGPT's codex backend carries the reset only in the 429 body).
-    const fromHeaders = parseRateLimitReset((name) => res.headers.get(name), now);
+    const fromHeaders = parseRateLimitReset(res.headers, now);
     const fromBody = parseUsageLimitBody(text, now);
     const reset: RateLimitReset = {
       ...(fromHeaders.resetAtMs !== undefined || fromBody.resetAtMs !== undefined
@@ -407,25 +300,5 @@ export async function* streamSse(opts: {
 
   if (!res.body) throw new Error(i18n.t("errors.noResponseBody"));
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data:")) continue;
-        yield trimmed.slice(5).trim();
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
+  yield* parseSseStream(res.body);
 }

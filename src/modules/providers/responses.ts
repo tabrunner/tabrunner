@@ -7,7 +7,8 @@ import type {
   ToolResult,
 } from "./types";
 import { ProviderError } from "./types";
-import { apiUrl, logCacheUsage, parseToolArgs, streamSse } from "./http";
+import { apiUrl, parseToolArgs } from "@providerkit/core";
+import { logCacheUsage, streamSse } from "./http";
 
 /**
  * Responses-shape adapter — the only consumer is the ChatGPT subscription

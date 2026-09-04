@@ -1,8 +1,8 @@
 import type { ModelInfo, ProviderConfig, ResolvedProviderConfig } from "./types";
 import { ProviderError } from "./types";
 import { PRESETS } from "./presets";
-import { classifyProviderError } from "./error-classify";
-import { anthropicHeaders, anthropicOAuthHeaders, apiUrl } from "./http";
+import { apiUrl, classifyHttp } from "@providerkit/core";
+import { anthropicHeaders, anthropicOAuthHeaders } from "./http";
 import { i18n } from "@/i18n";
 
 /** What a model listing is keyed on — the connection, never the per-task choices. */
@@ -99,7 +99,7 @@ export async function isKeyRejected(
     return false;
   } catch (e) {
     if (!(e instanceof ProviderError)) return false;
-    return classifyProviderError(e.status, e.message) === "auth";
+    return classifyHttp(e.status, e.message) === "auth";
   }
 }
 

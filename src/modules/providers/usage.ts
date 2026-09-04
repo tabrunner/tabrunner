@@ -1,5 +1,5 @@
 import { ensureProviderCredential } from "./credential";
-import { classifyProviderError } from "./error-classify";
+import { classifyHttp } from "@providerkit/core";
 import { str } from "./oauth";
 import { providerDisplayName } from "./presets";
 import { ProviderError } from "./types";
@@ -176,7 +176,7 @@ export async function fetchProviderUsage(provider: ProviderConfig): Promise<Prov
   if (!res.ok) {
     log.warn(`usage ${provider.id} HTTP ${res.status}: ${truncate(text)}`);
     const label = providerDisplayName(provider);
-    const kind = classifyProviderError(res.status, text);
+    const kind = classifyHttp(res.status, text);
     const message =
       kind === "auth"
         ? i18n.t("errors.kindAuthSignedIn", { provider: label })

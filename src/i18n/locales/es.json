@@ -988,6 +988,8 @@
     "windowMonthly": "mensual",
     "kindOverload": "{{provider}} está sobrecargado ahora mismo — inténtalo de nuevo en unos minutos",
     "kindContext": "Este chat superó lo que {{provider}} puede leer en una petición — compáctalo para seguir",
+    "kindTimeout": "{{provider}} dejó de responder — no llegó nada a tiempo. Inténtalo de nuevo o elige otro modelo si sigue colgándose",
+    "kindContent": "El filtro de seguridad de {{provider}} bloqueó este mensaje — reescríbelo o prueba con otro modelo",
     "kindNetworkOffline": "Estás sin conexión — la petición a {{provider}} ni salió de este equipo. Reconéctate y reintenta",
     "kindNetworkHost": "No se pudo conectar con {{provider}} ({{host}}) — la petición ni salió de este equipo. Revisa la conexión, alguna VPN o bloqueador de por medio, y la URL base",
     "kindNetwork": "No se pudo conectar con {{provider}} — la petición ni salió de este equipo. Revisa la conexión y cualquier VPN o bloqueador de por medio",

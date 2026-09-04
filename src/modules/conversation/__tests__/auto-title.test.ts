@@ -40,7 +40,7 @@ function mockTitleReply(text: string) {
             `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}`,
             "data: [DONE]",
           ]) {
-            controller.enqueue(encoder.encode(line + "\n"));
+            controller.enqueue(encoder.encode(line + "\n\n"));
           }
           controller.close();
         },
