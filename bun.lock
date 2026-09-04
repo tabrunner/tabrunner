@@ -6,7 +6,7 @@
       "name": "wxt-react-starter",
       "dependencies": {
         "@base-ui-components/react": "^1.0.0-rc.0",
-        "@providerkit/core": "^0.4.0",
+        "@providerkit/core": "^0.4.1",
         "@shadcn/react": "^0.3.0",
         "i18next": "^26.3.6",
         "react": "^19.2.4",
@@ -277,7 +277,7 @@
 
     "@pnpm/npm-conf": ["@pnpm/npm-conf@3.0.3", "", { "dependencies": { "@pnpm/config.env-replace": "^1.1.0", "@pnpm/network.ca-file": "^1.0.1", "config-chain": "^1.1.11" } }, "sha512-//0sR/cow/s4ICQaYoAobOl4aU8cjU6x/V24V7XkKotb9+O+3zySIYp146vpaobYHnxa4pZX8NkV54Z5AwbDKA=="],
 
-    "@providerkit/core": ["@providerkit/core@0.4.0", "", { "peerDependencies": { "zod": "^4" }, "optionalPeers": ["zod"] }, "sha512-hXUmjhhGw1NVE6qzXOteA0FEpbWCjP1QxNumP04OMrdKzQoyzzQQ7V+pbVZK36WVzJibbY3dqlIuGizRf3eYFg=="],
+    "@providerkit/core": ["@providerkit/core@0.4.1", "", { "peerDependencies": { "zod": "^4" }, "optionalPeers": ["zod"] }, "sha512-UeArf3aEkbPzINbAMy6+B6bS3i3Wbh1qAdgRsS3GCo6PvApwtAdla06Qz/MvsBpCNIUSs+V8HcvjVUPlyGOLqQ=="],
 
     "@puppeteer/browsers": ["@puppeteer/browsers@3.1.0", "", { "dependencies": { "modern-tar": "^0.7.6", "yargs": "^18.0.0" }, "peerDependencies": { "proxy-agent": ">=8.0.1", "yauzl": "^2.10.0 || ^3.4.0" }, "optionalPeers": ["proxy-agent", "yauzl"], "bin": { "browsers": "lib/main-cli.js" } }, "sha512-RDLpio3fH/qrj5k4DVY6eyiN8tCS0Zovd/6jW//n605oeqkWcUjn+3k+9ZtZBnbwMpsu0F7xDIiKXvVmG5c5Bw=="],
 
