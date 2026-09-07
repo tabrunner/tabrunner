@@ -339,7 +339,10 @@ export function generateSnapshot(opts: SnapshotOptions): SnapshotResult {
 
   let pageContent = lines.join("\n");
   if (count >= maxElements) {
-    pageContent += `\n[truncated at ${maxElements} elements — call find with a distinctive word to locate what you need, or a smaller depth to focus]`;
+    // Only tools the model actually has: the snapshot tool takes no arguments,
+    // so depth and filter are not knobs it can reach for (and must not be — the
+    // loop's ref-mint census compares against this exact no-arguments walk).
+    pageContent += `\n[truncated at ${maxElements} elements — call find with a distinctive word to locate what you need, or read_page_text to read the page as prose]`;
   }
 
   return {
