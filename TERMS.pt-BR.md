@@ -3,6 +3,9 @@
 _Última atualização: 2026-08-09 · Aplica-se ao TabRunner para navegadores Chromium (Chrome, Brave,
 Edge, Arc, Opera, Vivaldi)._
 
+Este documento também existe em [inglês](TERMS.md). Se a tradução e o texto em inglês divergirem,
+vale o texto em inglês.
+
 **Em resumo:** o TabRunner é um software de código aberto que você roda no seu próprio navegador,
 com o seu próprio provedor de IA. Não existe nenhum serviço do TabRunner no qual se cadastrar nem do
 qual depender. Você é responsável pelo que o agente faz com as suas sessões: ele pede confirmação

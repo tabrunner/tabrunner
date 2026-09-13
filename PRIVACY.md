@@ -3,6 +3,9 @@
 _Last updated: 2026-09-13 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
 Opera, Vivaldi)._
 
+TabRunner also publishes this document in Portuguese and Spanish. If a translation and this
+English text differ, the English text governs.
+
 **The short version:** TabRunner is a browser agent you run. There is no TabRunner server, no
 account, no telemetry, and no analytics. Everything you type or configure stays on your device, in
 your browser's local storage. The only places your data ever goes are (1) the AI provider **you**
@@ -22,8 +25,8 @@ you point it at.
 namespaced `local:tabrunner:*`):
 
 - **Provider configuration** — the providers you add (name, base URL, API shape, optional model
-  preference) and the **API key** you paste in. Keys are stored locally so you only enter them
-  once.
+  preference) and the **API key** you paste in, or the **sign-in token** from a subscription you
+  sign into. Keys and tokens are stored locally so you only enter them once.
 - **Chat history** — the transcripts of your tasks, including the task text you typed, the
   provider's replies, and a record of the actions TabRunner took. The 50 most recent chats
   are kept.
@@ -91,8 +94,8 @@ data.
 - **Clear memory** — Settings → Memory. Delete any remembered fact from its row, or switch off
   "Remember what it learns" to stop new ones being saved. Stops those contents being sent with
   future tasks.
-- **Remove a provider** — Settings → Providers → Remove. Deletes the stored API key; you can add it
-  again any time.
+- **Remove a provider** — Settings → Providers → Remove. Deletes the stored API key or sign-in
+  token; you can add it again any time.
 - **Delete a skill** — Settings → Skills. The switch pauses one without deleting it; delete
   removes it from every future task.
 - **Stop anytime** — Esc or the Stop button in the panel, the stop in the Tasks band's list,

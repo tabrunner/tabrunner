@@ -3,6 +3,9 @@
 _Última atualização: 2026-09-13 · Aplica-se ao TabRunner para navegadores Chromium (Chrome, Brave,
 Edge, Arc, Opera, Vivaldi)._
 
+Este documento também existe em [inglês](PRIVACY.md). Se a tradução e o texto em inglês divergirem,
+vale o texto em inglês.
+
 **Em resumo:** o TabRunner é um agente de navegador que você mesmo roda. Não existe servidor do
 TabRunner, nem conta, nem telemetria, nem analytics. Tudo o que você digita ou configura fica no seu
 dispositivo, no armazenamento local do navegador. Os seus dados só vão para (1) o provedor de IA que
@@ -23,8 +26,9 @@ navegador, o provedor que você configurou e os sites em que você a coloca para
 (`chrome.storage.local`, no namespace `local:tabrunner:*`):
 
 - **Configuração dos provedores**: os provedores que você adiciona (nome, URL base, formato da API
-  e, se quiser, o modelo preferido) e a **chave de API** que você cola. As chaves ficam guardadas
-  localmente para que você só precise informá-las uma vez.
+  e, se quiser, o modelo preferido) e a **chave de API** que você cola ou o **token de login** de
+  uma assinatura. As chaves e os tokens ficam guardados localmente para que você só precise
+  informá-los uma vez.
 - **Histórico de conversas**: as transcrições das suas tarefas, incluindo o texto da tarefa que você
   digitou, as respostas do provedor e um registro das ações que o TabRunner executou. As 50
   conversas mais recentes são mantidas.
@@ -97,8 +101,8 @@ servidor dos desenvolvedores) recebe os seus dados, em momento algum.
 - **Limpar a memória**: Configurações → Memória. Exclua qualquer fato lembrado na própria linha
   dele, ou desative "Lembrar o que aprende" para que novos fatos deixem de ser salvos. Isso impede
   que esse conteúdo seja enviado com as próximas tarefas.
-- **Remover um provedor**: Configurações → Provedores → Remover. Apaga a chave de API guardada; você
-  pode adicioná-la de novo quando quiser.
+- **Remover um provedor**: Configurações → Provedores → Remover. Apaga a chave de API ou o token de
+  login guardado; você pode adicionar de novo quando quiser.
 - **Excluir uma habilidade**: Configurações → Habilidades. O interruptor pausa uma habilidade sem
   excluí-la; ao excluir, ela sai de todas as próximas tarefas.
 - **Parar quando quiser**: aperte Esc ou o botão Parar no painel, use o botão de parar na lista da

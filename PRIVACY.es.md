@@ -3,6 +3,9 @@
 _Última actualización: 2026-09-13 · Se aplica a TabRunner para navegadores Chromium (Chrome, Brave,
 Edge, Arc, Opera, Vivaldi)._
 
+Este documento también existe en [inglés](PRIVACY.md). Si la traducción y el texto en inglés
+difieren, prevalece el texto en inglés.
+
 **En resumen:** TabRunner es un agente de navegador que ejecutas tú. No hay servidor de TabRunner,
 ni cuenta, ni telemetría, ni servicios de analítica. Todo lo que escribes o configuras se queda en
 tu dispositivo, en el almacenamiento local de tu navegador. Los únicos destinos de tus datos son (1)
@@ -23,8 +26,9 @@ proveedor que hayas configurado y los sitios en los que la pongas a trabajar.
 (`chrome.storage.local`, en el namespace `local:tabrunner:*`):
 
 - **Configuración de proveedores**: los proveedores que configuras (nombre, URL base, formato de la
-  API y, de forma opcional, el modelo preferido) y la **clave de API** que pegas. Las claves se
-  guardan localmente para que solo tengas que escribirlas una vez.
+  API y, de forma opcional, el modelo preferido) y la **clave de API** que pegas o el **token de
+  inicio de sesión** de una suscripción. Las claves y los tokens se guardan localmente para que solo
+  tengas que escribirlos una vez.
 - **Historial de chats**: las transcripciones de tus tareas, incluidos el texto que escribes para
   cada tarea, las respuestas del proveedor y un registro de las acciones de TabRunner. Se conservan
   los 50 chats más recientes.
@@ -97,8 +101,8 @@ desarrolladores) recibe nunca tus datos.
 - **Borrar la memoria**: Configuración → Memoria. Elimina cualquier dato recordado desde su fila, o
   desactiva "Recordar lo que aprende" para que no se guarden datos nuevos. Así ese contenido deja de
   enviarse con las próximas tareas.
-- **Quitar un proveedor**: Configuración → Proveedores → Eliminar. Borra la clave de API guardada;
-  puedes volver a configurarla cuando quieras.
+- **Quitar un proveedor**: Configuración → Proveedores → Eliminar. Borra la clave de API o el token
+  de inicio de sesión guardados; puedes volver a configurarlo cuando quieras.
 - **Eliminar una habilidad**: Configuración → Habilidades. El interruptor pausa una habilidad sin
   eliminarla; si la eliminas, deja de usarse en todas las próximas tareas.
 - **Detener en cualquier momento**: Esc o el botón Detener del panel, el botón de detener de la

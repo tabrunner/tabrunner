@@ -3,6 +3,9 @@
 _Last updated: 2026-08-09 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
 Opera, Vivaldi)._
 
+TabRunner also publishes this document in Portuguese and Spanish. If a translation and this
+English text differ, the English text governs.
+
 **The short version:** TabRunner is open-source software you run in your own browser, with your
 own AI provider. There is no TabRunner service to sign up for or depend on. You are responsible
 for what the agent does with your sessions — it asks before consequential actions, but
