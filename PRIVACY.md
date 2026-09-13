@@ -1,12 +1,13 @@
 # TabRunner Privacy Policy
 
-_Last updated: 2026-08-20 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
+_Last updated: 2026-09-13 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
 Opera, Vivaldi)._
 
 **The short version:** TabRunner is a browser agent you run. There is no TabRunner server, no
 account, no telemetry, and no analytics. Everything you type or configure stays on your device, in
 your browser's local storage. The only places your data ever goes are (1) the AI provider **you**
-configured and (2) the websites you ask TabRunner to act on.
+configured, (2) the websites you ask TabRunner to act on, and, only if you use them, (3) a local
+MCP bridge on your own machine and (4) a skill URL you import.
 
 ---
 
@@ -37,8 +38,9 @@ namespaced `local:tabrunner:*`):
 When a task runs, TabRunner reads the page you're working on and turns it into a **compact
 accessibility-tree snapshot** (`[ref=e12] button "Submit"`) — not raw HTML, not the page's scripts
 or media. That snapshot, your task text, the chat so far, and (when it captures one) a
-screenshot of the page are sent **to the provider you configured**, using your own API key, over
-HTTPS. The provider's replies and its tool calls come back to the extension, which executes them
+screenshot of the page are sent **to the provider you configured**, using your own API key or
+subscription sign-in, over HTTPS. The provider's replies and its tool calls come back to the
+extension, which executes them
 in your browser as real user input. When the tree and keystrokes aren't enough, a tool call can
 also **run a short script inside the page** (to set a stubborn field's value, or read something
 the tree omits) and read the tab's **network and console activity** (addresses and statuses —
@@ -49,8 +51,9 @@ inside a task whose plan you approved.
 **TabRunner never uploads your data anywhere else.** The complete list of network recipients is:
 
 1. **Your configured provider** — the model provider (or custom endpoint) you chose. It receives
-   the task, the page snapshots, screenshots, and your API key for authentication. Your key is
-   transmitted only to that provider, over TLS, as part of the provider's own API.
+   the task, the page snapshots, screenshots, and your API key or sign-in token for authentication.
+   Your key or token is transmitted only to that provider, over TLS, as part of the provider's own
+   API.
 2. **The websites you ask it to drive** — navigating, clicking, and typing on a site sends the same
    traffic your own browser session would, with your existing logins. TabRunner does not re-route,
    log, or capture this beyond what the site itself sees.
