@@ -24,7 +24,7 @@ jobs:
     # The ceiling is for a hang, not for a slow runner.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       # One install covers both packages — daemon/ is a bun workspace.
       - run: bun install --frozen-lockfile
