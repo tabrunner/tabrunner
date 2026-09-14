@@ -21,8 +21,7 @@ concurrency:
 jobs:
   gates:
     runs-on: ubuntu-latest
-    # The suite is the slow half (~1 min locally); the ceiling is for a hang,
-    # not for a slow runner.
+    # The ceiling is for a hang, not for a slow runner.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -32,9 +31,9 @@ jobs:
 
       # Ordered cheapest-first, so the common failure reports in seconds
       # rather than after the suite. Each is the same command you run locally.
+      # Tests run locally (`bun run test`), not in CI — minutes policy.
       - run: bun run compile
       - run: bun run lint
-      - run: bun run test
       - run: bun run deadcode
       - run: bun run i18n:check
 
