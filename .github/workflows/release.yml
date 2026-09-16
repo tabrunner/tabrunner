@@ -14,6 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
       - run: bun install --frozen-lockfile
       # The keyed zip — the website's install (loaded unpacked) and the same file
       # that goes to the Chrome Web Store by hand. One artifact, every channel.
