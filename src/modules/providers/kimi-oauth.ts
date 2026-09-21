@@ -1,6 +1,6 @@
 import type { OAuthCredential } from "./types";
 import type { DeviceEndpoint } from "./device-code";
-import { jwtClaims, postToken, str, toCredential } from "./oauth";
+import { accountFromToken, postToken, toCredential } from "./oauth";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("kimi-oauth");
@@ -45,16 +45,6 @@ export function withAccount(
   fallbackRefresh?: string,
 ): OAuthCredential {
   const credential = toCredential(body, fallbackRefresh);
-  const account = accountFromToken(credential.accessToken);
+  const account = accountFromToken(credential.accessToken, "email", "user_id", "sub");
   return account ? { ...credential, account } : credential;
-}
-
-/**
- * The account a token belongs to, for the UI to show. Kimi issues JWTs whose
- * claims carry the email, then a user id, then the subject.
- */
-export function accountFromToken(token: string): string | undefined {
-  const claims = jwtClaims(token);
-  if (!claims) return undefined;
-  return str(claims.email)?.toLowerCase() ?? str(claims.user_id) ?? str(claims.sub);
 }

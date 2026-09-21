@@ -1,8 +1,8 @@
 import type { OAuthCredential } from "./types";
 import {
+  accountFromToken,
   captureRedirect,
   generatePKCE,
-  jwtClaims,
   postToken,
   randomState,
   str,
@@ -127,19 +127,9 @@ export async function refreshCredential(credential: OAuthCredential): Promise<OA
 /** The credential a token response describes, named after the account it belongs to. */
 function withAccount(body: Record<string, unknown>, fallbackRefresh?: string): OAuthCredential {
   const credential = toCredential(body, fallbackRefresh);
-  const account = accountFromResponse(body) ?? accountFromToken(credential.accessToken);
+  const account =
+    accountFromResponse(body) ?? accountFromToken(credential.accessToken, "email", "sub");
   return account ? { ...credential, account } : credential;
-}
-
-/**
- * The account a token belongs to, for the UI to show. Anthropic names it in
- * the token response (`account.email_address`); this reads the JWT claims as a
- * fallback — email first, then the subject id.
- */
-export function accountFromToken(token: string): string | undefined {
-  const claims = jwtClaims(token);
-  if (!claims) return undefined;
-  return str(claims.email)?.toLowerCase() ?? str(claims.sub);
 }
 
 /** The account the token response itself names, if any. */

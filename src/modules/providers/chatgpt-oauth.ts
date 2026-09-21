@@ -1,5 +1,6 @@
 import type { OAuthCredential } from "./types";
 import {
+  accountFromToken,
   captureRedirect,
   generatePKCE,
   jwtClaims,
@@ -126,7 +127,8 @@ function withAccount(
   // The id_token is the richer claim set; the access token covers refresh
   // responses that omit it.
   const idToken = str(body.id_token);
-  const account = accountFromToken(idToken) ?? accountFromToken(credential.accessToken);
+  const account =
+    accountFromToken(idToken, "email") ?? accountFromToken(credential.accessToken, "email");
   const chatgptAccountId =
     chatgptAccountIdFromToken(idToken) ??
     chatgptAccountIdFromToken(credential.accessToken) ??
@@ -166,9 +168,4 @@ export function chatgptAccountIdFromToken(token?: string): string | undefined {
     }
   }
   return undefined;
-}
-
-/** The account a token belongs to, for the UI to show — ChatGPT JWTs carry the email directly. */
-export function accountFromToken(token?: string): string | undefined {
-  return str(jwtClaims(token)?.email)?.toLowerCase();
 }

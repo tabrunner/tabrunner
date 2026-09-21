@@ -287,6 +287,27 @@ export function jwtClaims(token?: string): Record<string, unknown> | undefined {
   }
 }
 
+/**
+ * The account a token belongs to, for the connected card to show.
+ *
+ * Every vendor puts it under a different claim, so the caller names the ones
+ * its own tokens carry, best first. Email wins wherever there is one — it is
+ * the thing a person recognises — and is lowercased, because the same mailbox
+ * written two ways is one account; an id claim is returned as issued.
+ */
+export function accountFromToken(
+  token: string | undefined,
+  ...claims: string[]
+): string | undefined {
+  const payload = jwtClaims(token);
+  if (!payload) return undefined;
+  for (const claim of claims) {
+    const value = str(payload[claim]);
+    if (value) return claim === "email" ? value.toLowerCase() : value;
+  }
+  return undefined;
+}
+
 export const str = (v: unknown): string | undefined =>
   typeof v === "string" && v.length > 0 ? v : undefined;
 

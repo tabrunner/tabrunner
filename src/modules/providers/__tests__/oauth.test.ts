@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { captureRedirect, generatePKCE, postToken, randomState, toCredential } from "../oauth";
+import {
+  accountFromToken,
+  captureRedirect,
+  generatePKCE,
+  postToken,
+  randomState,
+  toCredential,
+} from "../oauth";
 import { ProviderError, SignInError } from "../types";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
@@ -187,5 +194,38 @@ describe("toCredential", () => {
 
   it("throws on a half-built credential instead of storing one", () => {
     expect(() => toCredential({ access_token: "at" })).toThrow();
+  });
+});
+
+describe("accountFromToken", () => {
+  /** A JWT whose payload is `claims` — the signature is never checked, only decoded. */
+  const jwt = (claims: Record<string, unknown>) =>
+    `header.${btoa(JSON.stringify(claims)).replace(/\+/g, "-").replace(/\//g, "_")}.signature`;
+
+  it("takes the first claim the vendor named that the token actually carries", () => {
+    expect(accountFromToken(jwt({ user_id: "u-42", sub: "s-7" }), "email", "user_id", "sub")).toBe(
+      "u-42",
+    );
+    expect(accountFromToken(jwt({ sub: "s-7" }), "email", "user_id", "sub")).toBe("s-7");
+  });
+
+  it("lowercases an email, because one mailbox written two ways is one account", () => {
+    expect(accountFromToken(jwt({ email: "Gus@Example.COM" }), "email", "sub")).toBe(
+      "gus@example.com",
+    );
+  });
+
+  it("leaves an id claim exactly as issued", () => {
+    // Ids are opaque — case-folding one would print an account name the vendor
+    // never used.
+    expect(accountFromToken(jwt({ sub: "AbC-123" }), "email", "sub")).toBe("AbC-123");
+  });
+
+  it("returns undefined for anything that isn't a readable JWT", () => {
+    // The row then just says "Signed in" — never a crash, never a raw token.
+    expect(accountFromToken("not-a-jwt", "email")).toBeUndefined();
+    expect(accountFromToken("a.!!!not-base64!!!.c", "email")).toBeUndefined();
+    expect(accountFromToken("", "email")).toBeUndefined();
+    expect(accountFromToken(undefined, "email")).toBeUndefined();
   });
 });

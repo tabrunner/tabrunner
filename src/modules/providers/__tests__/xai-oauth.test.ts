@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { accountFromToken, refreshCredential, withAccount, XAI_DEVICE } from "../xai-oauth";
+import { refreshCredential, withAccount, XAI_DEVICE } from "../xai-oauth";
 
 // The device-code protocol xAI signs in with is shared, and tested in
 // device-code.test.ts. What's left here is xAI's own half.
@@ -61,16 +61,6 @@ describe("refreshCredential", () => {
     await expect(
       refreshCredential({ accessToken: "a", refreshToken: "dead", expiresAt: 0 }),
     ).rejects.toMatchObject({ status: 400 });
-  });
-});
-
-describe("accountFromToken", () => {
-  it("falls back to the subject when the token carries no email", () => {
-    expect(accountFromToken(jwt({ sub: "user-42" }))).toBe("user-42");
-  });
-
-  it("returns undefined for anything that isn't a readable JWT", () => {
-    expect(accountFromToken("opaque-token")).toBeUndefined();
   });
 });
 

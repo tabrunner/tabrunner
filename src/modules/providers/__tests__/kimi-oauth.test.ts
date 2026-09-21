@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { accountFromToken, refreshCredential, withAccount } from "../kimi-oauth";
+import { refreshCredential, withAccount } from "../kimi-oauth";
 
 // The device-code protocol Kimi signs in with is shared, and tested in
 // device-code.test.ts. What's left here is Kimi's own half: renewal, and which
@@ -72,25 +72,5 @@ describe("refreshCredential", () => {
     await expect(
       refreshCredential({ accessToken: "a", refreshToken: "dead", expiresAt: 0 }),
     ).rejects.toMatchObject({ status: 400 });
-  });
-});
-
-describe("accountFromToken", () => {
-  it("prefers the email, lowercased", () => {
-    expect(accountFromToken(jwt({ email: "Gus@Example.COM", user_id: "u1" }))).toBe(
-      "gus@example.com",
-    );
-  });
-
-  it("falls back to an id when there is no email", () => {
-    expect(accountFromToken(jwt({ user_id: "u-42" }))).toBe("u-42");
-    expect(accountFromToken(jwt({ sub: "s-7" }))).toBe("s-7");
-  });
-
-  it("returns undefined for anything that isn't a readable JWT", () => {
-    // The row then just says "Signed in" — never a crash, never a raw token.
-    expect(accountFromToken("not-a-jwt")).toBeUndefined();
-    expect(accountFromToken("a.!!!not-base64!!!.c")).toBeUndefined();
-    expect(accountFromToken("")).toBeUndefined();
   });
 });

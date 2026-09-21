@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
-  accountFromToken,
   buildAuthorizeUrl,
   chatgptAccountIdFromToken,
   exchangeCode,
@@ -127,17 +126,5 @@ describe("chatgptAccountIdFromToken", () => {
     expect(chatgptAccountIdFromToken(jwt({ email: "a@b.com" }))).toBeUndefined();
     expect(chatgptAccountIdFromToken("not-a-jwt")).toBeUndefined();
     expect(chatgptAccountIdFromToken(undefined)).toBeUndefined();
-  });
-});
-
-describe("accountFromToken", () => {
-  it("prefers the email, lowercased", () => {
-    expect(accountFromToken(jwt({ email: "Gus@Example.COM", sub: "u1" }))).toBe("gus@example.com");
-  });
-
-  it("returns undefined for anything that isn't a readable JWT", () => {
-    // The row then just says "Signed in" — never a crash, never a raw token.
-    expect(accountFromToken("not-a-jwt")).toBeUndefined();
-    expect(accountFromToken("")).toBeUndefined();
   });
 });

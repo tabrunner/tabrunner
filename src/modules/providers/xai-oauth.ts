@@ -1,6 +1,6 @@
 import type { OAuthCredential } from "./types";
 import type { DeviceEndpoint } from "./device-code";
-import { jwtClaims, num, postToken, str, toCredential } from "./oauth";
+import { accountFromToken, num, postToken, toCredential } from "./oauth";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("xai-oauth");
@@ -42,7 +42,7 @@ export function withAccount(
     { ...body, expires_in: num(body.expires_in) ?? DEFAULT_LIFETIME_SEC },
     fallbackRefresh,
   );
-  const account = accountFromToken(credential.accessToken);
+  const account = accountFromToken(credential.accessToken, "email", "sub");
   return account ? { ...credential, account } : credential;
 }
 
@@ -59,15 +59,4 @@ export async function refreshCredential(credential: OAuthCredential): Promise<OA
   );
   log.info("token refreshed");
   return withAccount(body, credential.refreshToken);
-}
-
-/**
- * The account a token belongs to, for the UI to show. The `openid profile
- * email` scopes put the email on the token; the subject id is the fallback
- * for an account that has none.
- */
-export function accountFromToken(token: string): string | undefined {
-  const claims = jwtClaims(token);
-  if (!claims) return undefined;
-  return str(claims.email)?.toLowerCase() ?? str(claims.sub);
 }
