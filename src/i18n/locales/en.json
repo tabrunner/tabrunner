@@ -1002,6 +1002,8 @@
     "signInRateLimitedFor": "The provider's sign-in service is turning requests down right now — too many in a short window. This isn't about your plan's usage. Try again in about {{seconds}}s.",
     "signInTokenResponse": "The sign-in response came back incomplete — no usable token. Start over to try again.",
     "signInDeviceResponse": "The sign-in service replied in a format TabRunner didn't recognize. Try again in a moment.",
+    "metaSetup": "Meta hasn't turned on Muse for this account yet. Finish setup in your Meta account, then sign in again.",
+    "metaSetupAt": "Meta hasn't turned on Muse for this account yet. Finish setup at {{url}}, then sign in again.",
     "noResponseBody": "The provider sent an empty response.",
     "restrictedPage": "TabRunner can't read this page — Chrome blocks extensions on chrome:// and Web Store pages. Navigate the tab to a regular page and resend the task.",
     "pageNavigating": "The page was still loading or navigating — wait for it to settle and retry.",

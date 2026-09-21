@@ -1002,6 +1002,8 @@
     "signInRateLimitedFor": "O serviço de login do provedor está recusando pedidos agora — muitos em pouco tempo. Isso não tem a ver com o uso do seu plano. Tente de novo em cerca de {{seconds}}s.",
     "signInTokenResponse": "A resposta do login veio incompleta — sem um token utilizável. Recomece para tentar de novo.",
     "signInDeviceResponse": "O serviço de login respondeu em um formato que o TabRunner não reconheceu. Tente de novo em instantes.",
+    "metaSetup": "A Meta ainda não liberou o Muse nesta conta. Conclua a configuração na sua conta Meta e entre de novo.",
+    "metaSetupAt": "A Meta ainda não liberou o Muse nesta conta. Conclua a configuração em {{url}} e entre de novo.",
     "noResponseBody": "O provedor enviou uma resposta vazia.",
     "restrictedPage": "O TabRunner não consegue ler esta página — o Chrome bloqueia extensões em páginas chrome:// e da Web Store. Navegue a aba para uma página comum e reenvie a tarefa.",
     "pageNavigating": "A página ainda estava carregando ou navegando — aguarde ela estabilizar e tente de novo.",

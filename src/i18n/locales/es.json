@@ -1002,6 +1002,8 @@
     "signInRateLimitedFor": "El servicio de inicio de sesión del proveedor está rechazando peticiones ahora mismo — demasiadas en poco tiempo. No tiene que ver con el uso de tu plan. Inténtalo de nuevo en unos {{seconds}}s.",
     "signInTokenResponse": "La respuesta de inicio de sesión llegó incompleta — sin un token utilizable. Empieza de nuevo para reintentarlo.",
     "signInDeviceResponse": "El servicio de inicio de sesión respondió en un formato que TabRunner no reconoció. Inténtalo en un momento.",
+    "metaSetup": "Meta todavía no ha activado Muse en esta cuenta. Termina la configuración en tu cuenta de Meta y vuelve a iniciar sesión.",
+    "metaSetupAt": "Meta todavía no ha activado Muse en esta cuenta. Termina la configuración en {{url}} y vuelve a iniciar sesión.",
     "noResponseBody": "El proveedor envió una respuesta vacía.",
     "restrictedPage": "TabRunner no puede leer esta página — Chrome bloquea las extensiones en páginas chrome:// y de la Web Store. Navega la pestaña a una página normal y reenvía la tarea.",
     "pageNavigating": "La página aún estaba cargando o navegando — espera a que se estabilice y reintenta.",

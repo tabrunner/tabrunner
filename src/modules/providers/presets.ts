@@ -50,6 +50,14 @@ export interface ProviderPreset {
    * because both of those are things the preset cannot know by itself.
    */
   headers?: (turn: "user" | "agent") => Record<string, string>;
+  /**
+   * Responses-shape only: this endpoint takes a tool result's images inside
+   * the `function_call_output` item, the way codex-rs does. The published
+   * Responses shape says that field is a string, so everyone else gets the
+   * images in a trailing user message instead. The ChatGPT backend is the only
+   * one — see responses.ts.
+   */
+  inlineToolImages?: true;
 }
 
 export type IconKey =
@@ -117,6 +125,7 @@ export const PRESETS: ProviderPreset[] = [
     models: ["gpt-5.4-mini", "gpt-5.5", "gpt-5.3-codex", "gpt-5.1-codex-max"],
     auth: "oauth",
     paired: true,
+    inlineToolImages: true,
     color: "#10A37F",
     icon: "openai",
   },
@@ -147,6 +156,19 @@ export const PRESETS: ProviderPreset[] = [
     paired: true,
     color: "#000000",
     icon: "xai",
+  },
+  {
+    // Muse, reached with the Meta subscription. Two hops: an identity token
+    // from the device flow, then a Model API key minted from it — see
+    // meta-oauth.ts. Responses shape, but the published one, not codex's.
+    id: "meta",
+    name: "Meta Muse",
+    shape: "responses",
+    baseUrl: "https://api.meta.ai/v1",
+    models: ["muse-spark-1.3", "muse-spark-1.3-contributor", "muse-spark-1.2"],
+    auth: "oauth",
+    color: "#0064E0",
+    icon: "meta",
   },
   {
     // Copilot, reached with the GitHub subscription. Two hops to a credential
@@ -271,7 +293,14 @@ export const PRESETS: ProviderPreset[] = [
     name: "OpenCode Zen",
     shape: "openai",
     baseUrl: "https://opencode.ai/zen/v1",
-    models: ["minimax-m3-free", "grok-code", "glm-5-free", "claude-sonnet-5", "gpt-5.4"],
+    models: [
+      "muse-spark-1.3-contributor-free",
+      "minimax-m3-free",
+      "grok-code",
+      "glm-5-free",
+      "claude-sonnet-5",
+      "gpt-5.4",
+    ],
     apiKeyUrl: "https://opencode.ai/auth",
     color: "#171717",
     icon: "opencode",

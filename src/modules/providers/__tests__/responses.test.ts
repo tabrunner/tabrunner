@@ -121,6 +121,42 @@ describe("buildResponsesBody", () => {
     expect(outputs[1]?.output).toBe("plain result");
   });
 
+  it("trails screenshots in a user message for an endpoint that isn't codex's", () => {
+    // The published Responses shape says function_call_output.output is a
+    // string. Sending codex's content array to Meta would 400 every turn that
+    // carried a screenshot — which, for a browser agent, is most of them.
+    const body = buildResponsesBody(
+      makeConfig({ id: "meta", baseUrl: "https://api.meta.ai/v1", model: "muse-spark-1.3" }),
+      [
+        {
+          role: "tool_results",
+          content: "",
+          toolResults: [{ id: "c1", content: "{}", images: ["data:image/jpeg;base64,abc"] }],
+        },
+      ],
+      [],
+    );
+    const items = body.input as Record<string, unknown>[];
+    expect(items[0]).toEqual({ type: "function_call_output", call_id: "c1", output: "{}" });
+    expect(items[1]).toMatchObject({
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "Screenshot from the tool call above:" },
+        { type: "input_image", image_url: "data:image/jpeg;base64,abc" },
+      ],
+    });
+  });
+
+  it("adds no trailing message when a tool result carried no images", () => {
+    const body = buildResponsesBody(
+      makeConfig({ id: "meta" }),
+      [{ role: "tool_results", content: "", toolResults: [{ id: "c1", content: "done" }] }],
+      [],
+    );
+    expect(body.input).toEqual([{ type: "function_call_output", call_id: "c1", output: "done" }]);
+  });
+
   it("omits the reasoning knob by default and with effort 'none', maps the rest", () => {
     expect(buildResponsesBody(makeConfig(), [], [])).not.toHaveProperty("reasoning");
     expect(buildResponsesBody(makeConfig({ reasoningEffort: "none" }), [], [])).not.toHaveProperty(

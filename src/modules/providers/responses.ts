@@ -9,19 +9,26 @@ import type {
 import { ProviderError } from "./types";
 import { apiUrl, parseToolArgs } from "@providerkit/core";
 import { logCacheUsage, streamSse } from "./http";
+import { PRESETS } from "./presets";
 
 /**
- * Responses-shape adapter — the only consumer is the ChatGPT subscription
- * provider (chatgpt.com/backend-api/codex), which exposes NO chat-completions
- * surface, so this speaks the Responses wire format at `POST {base}/responses`.
+ * Responses-shape adapter — `POST {base}/responses`, for endpoints that serve
+ * the Responses wire format. Two do: the ChatGPT subscription backend
+ * (chatgpt.com/backend-api/codex), which exposes no chat-completions surface
+ * at all, and Meta's Model API.
  *
- * Auth is a subscription access token (swapped in by ensureProviderCredential)
- * plus the account id the backend requires as `ChatGPT-Account-Id`.
+ * Auth is whatever the credential seam swapped into `apiKey` — a subscription
+ * token for ChatGPT, a minted key for Meta. The ChatGPT backend also requires
+ * the account id as `ChatGPT-Account-Id`; nobody else carries one, so the
+ * header is simply absent for them.
  *
- * Reasoning: the ChatGPT backend streams `reasoning_summary_text` and
- * `reasoning_text` live, but REQUIRES reasoning to be blanked when replayed —
- * so the outgoing input carries no reasoning items, ever (the loop still
- * commits reasoning locally for the panel; it just never goes back upstream).
+ * Reasoning is never replayed. The ChatGPT backend REQUIRES it blanked, and
+ * the spec makes reasoning items optional, so leaving them out is the one
+ * behaviour that is correct at both ends. (The loop still commits reasoning
+ * locally for the panel; it just never goes back upstream.)
+ *
+ * The one genuine fork is what a tool result does with its images — see
+ * `inlineToolImages` on the preset.
  */
 export function createResponsesProvider(config: ResolvedProviderConfig): ChatProvider {
   return {
@@ -201,9 +208,12 @@ export function buildResponsesBody(
   const systemMsg = messages.find((m) => m.role === "system");
   const conversation = messages.filter((m) => m.role !== "system");
 
+  // codex-rs takes a tool result's images inline; the published shape does not.
+  const inlineToolImages = PRESETS.find((p) => p.id === config.id)?.inlineToolImages === true;
+
   const body: Record<string, unknown> = {
     model: config.model,
-    input: conversation.flatMap(toResponsesInput),
+    input: conversation.flatMap((msg) => toResponsesInput(msg, inlineToolImages)),
     stream: true,
     store: false,
   };
@@ -234,13 +244,35 @@ type ResponsesInputItem =
     };
 
 /** Map one stored message to its Responses input item(s). Exported for tests. */
-export function toResponsesInput(msg: ChatMessage): ResponsesInputItem[] {
+export function toResponsesInput(
+  msg: ChatMessage,
+  inlineToolImages: boolean,
+): ResponsesInputItem[] {
   if (msg.role === "tool_results") {
     const results = msg.toolResults ?? [];
-    return results.map((r): ResponsesInputItem => {
-      const output = toolOutput(r);
-      return { type: "function_call_output", call_id: r.id, output };
+    if (inlineToolImages) {
+      return results.map((r): ResponsesInputItem => {
+        return { type: "function_call_output", call_id: r.id, output: toolOutput(r) };
+      });
+    }
+    // The published shape says `output` is a string, so screenshots ride in a
+    // trailing user message — the same turn, just the only slot that accepts
+    // them, and the same thing the chat-completions adapter does.
+    const items: ResponsesInputItem[] = results.map((r): ResponsesInputItem => {
+      return { type: "function_call_output", call_id: r.id, output: r.content ?? "" };
     });
+    const images = results.flatMap((r) => r.images ?? []);
+    if (images.length > 0) {
+      items.push({
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "Screenshot from the tool call above:" },
+          ...images.map((url): ResponsesContentPart => ({ type: "input_image", image_url: url })),
+        ],
+      });
+    }
+    return items;
   }
   if (msg.role === "user") {
     const content: ResponsesContentPart[] = [{ type: "input_text", text: msg.content }];
@@ -272,7 +304,7 @@ export function toResponsesInput(msg: ChatMessage): ResponsesInputItem[] {
   return [];
 }
 
-/** Tool output is a string unless the result carried images — then the codex-rs content-array form. */
+/** The codex-rs content-array form: a string unless the result carried images. */
 function toolOutput(result: ToolResult): string | ResponsesContentPart[] {
   const images = result.images ?? [];
   if (images.length === 0) return result.content ?? "";
