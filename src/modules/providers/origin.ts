@@ -1,3 +1,4 @@
+import { PRESETS } from "./presets";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("provider-origin");
@@ -26,28 +27,58 @@ const log = createLogger("provider-origin");
 const RULE_ID = 1;
 
 /**
- * Provider hosts we are entitled to call (the presets' own). Only these get an
- * Origin-free request — a custom endpoint the user typed in keeps its Origin,
- * so the rule can never be a privacy leak to somewhere we were never going to
+ * `chrome.tabs.TAB_ID_NONE` as a literal. A request that belongs to no tab is
+ * one our service worker made — see the condition below for why that matters.
+ * Spelled out rather than read off `chrome.tabs`, which isn't stubbed in the
+ * contexts that only need the rule's shape.
+ */
+const TAB_ID_NONE = -1;
+
+/**
+ * Sign-in hosts, which are not any preset's `baseUrl`: a vendor issues tokens
+ * somewhere other than where it serves inference. Same entitlement question as
+ * the preset hosts — these are ours to call because a preset signs in through
+ * them.
+ */
+const SIGN_IN_HOSTS = [
+  "claude.ai",
+  "auth.openai.com",
+  "auth.kimi.ai",
+  "auth.x.ai",
+  "auth.meta.com",
+  "api.meta.ai",
+  "github.com",
+];
+
+/**
+ * Provider hosts we are entitled to call — every preset's own, plus the
+ * sign-in hosts above. Derived, not hand-listed: a preset whose host was
+ * forgotten here would sign in fine and then fail its first real call with a
+ * CORS 401, which reads as a broken account rather than a missing line in a
+ * constant. Local endpoints (Ollama) drop out — nothing to strip, and a
+ * bare `localhost` is not a domain this rule can name.
+ *
+ * A custom endpoint the user typed in is deliberately NOT here, so the rule
+ * can never be a way to hide who we are from a host we were never going to
  * talk to anyway.
  */
-const PROVIDER_HOSTS = [
-  "api.anthropic.com",
-  "api.openai.com",
-  "chatgpt.com",
-  "api.kimi.ai",
-  "api.z.ai",
-  "token-plan.ap-southeast-1.maas.aliyuncs.com",
-  "api.deepseek.com",
-  "generativelanguage.googleapis.com",
-  "openrouter.ai",
-  "api.groq.com",
-  "api.mistral.ai",
-  "api.x.ai",
-];
+export function providerHosts(): string[] {
+  const hosts = new Set(SIGN_IN_HOSTS);
+  for (const preset of PRESETS) {
+    try {
+      const { hostname } = new URL(preset.baseUrl);
+      if (hostname.includes(".")) hosts.add(hostname);
+    } catch {
+      // A preset with an unparseable baseUrl is a wiring bug the form would
+      // catch first; it must not take the whole rule down with it.
+    }
+  }
+  return [...hosts];
+}
 
 /** Install once per service-worker boot; Chrome dedupes the same rule id. */
 export function initProviderOriginStrip(): void {
+  const hosts = providerHosts();
   void chrome.declarativeNetRequest
     .updateSessionRules({
       removeRuleIds: [RULE_ID],
@@ -63,12 +94,20 @@ export function initProviderOriginStrip(): void {
             ],
           },
           condition: {
-            requestDomains: PROVIDER_HOSTS,
+            requestDomains: hosts,
             resourceTypes: ["xmlhttprequest"],
+            // OUR fetches only. A rule matched on host alone also strips the
+            // Origin off requests the user's own tabs make to these hosts —
+            // and Origin is half of how a site checks a request came from
+            // itself, so browsing github.com with the extension installed
+            // would be handing pages a broken CSRF defence. Requests from the
+            // service worker belong to no tab, which is exactly the set we
+            // want and the one thing a page request can never look like.
+            tabIds: [TAB_ID_NONE],
           },
         },
       ],
     })
-    .then(() => log.info("provider origin strip armed", { hosts: PROVIDER_HOSTS.length }))
+    .then(() => log.info("provider origin strip armed", { hosts: hosts.length }))
     .catch((e: unknown) => log.error("provider origin strip failed:", e));
 }

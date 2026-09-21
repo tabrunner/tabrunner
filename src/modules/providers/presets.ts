@@ -44,9 +44,12 @@ export type IconKey =
   | "gemini"
   | "groq"
   | "openrouter"
+  | "opencode"
   | "ollama"
   | "mistral"
-  | "xai";
+  | "xai"
+  | "github"
+  | "meta";
 
 /**
  * Built-in presets. Users can also add custom OpenAI-compatible endpoints.
@@ -203,6 +206,38 @@ export const PRESETS: ProviderPreset[] = [
     apiKeyUrl: "https://openrouter.ai/settings/keys",
     color: "#334155",
     icon: "openrouter",
+  },
+  {
+    // A gateway, like OpenRouter: one key, many vendors' models — and the only
+    // endpoint here that serves a standing shelf of $0 models. The picker's
+    // live listing is the real catalog; these are the fallback, led by the
+    // free model that suits a browser agent best (tool calls AND vision, which
+    // most of the free tier lacks).
+    //
+    // Free means $0 per token, NOT no card: an OpenCode account wants billing
+    // details before it issues a key at all. `apiKeyUrl` goes where that is
+    // set up.
+    id: "opencode",
+    name: "OpenCode Zen",
+    shape: "openai",
+    baseUrl: "https://opencode.ai/zen/v1",
+    models: ["minimax-m3-free", "grok-code", "glm-5-free", "claude-sonnet-5", "gpt-5.4"],
+    apiKeyUrl: "https://opencode.ai/auth",
+    color: "#171717",
+    icon: "opencode",
+  },
+  {
+    // The same key as `opencode`, on OpenCode's cheaper catalog — a different
+    // endpoint and a different shelf, not a different way to pay, so it keeps
+    // its own row rather than a `paired` qualifier.
+    id: "opencode-go",
+    name: "OpenCode Go",
+    shape: "openai",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    models: ["ox-alpha-free", "qwen3.8-max", "kimi-k2.6", "glm-5.3"],
+    apiKeyUrl: "https://opencode.ai/auth",
+    color: "#404040",
+    icon: "opencode",
   },
   {
     id: "groq",
