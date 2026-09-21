@@ -13,6 +13,7 @@ import {
   refreshCredential as refreshXai,
   withAccount as xaiCredential,
 } from "./xai-oauth";
+import { refreshCredential as refreshOpenRouter, signInWithOpenRouter } from "./openrouter-oauth";
 
 /** What the user must do on the vendor's page to finish signing in. */
 export interface SignInPrompt {
@@ -77,5 +78,12 @@ export const OAUTH_FLOWS: Record<string, OAuthFlow> = {
   "xai-plan": {
     signIn: deviceSignIn(XAI_DEVICE, (body) => xaiCredential(body)),
     refresh: refreshXai,
+  },
+  // Not a subscription row — OpenRouter's sign-in mints an ordinary API key on
+  // the user's own account. It sits on the keyed preset as a second way to get
+  // that key, which is why `openrouter` has no `auth: "oauth"`.
+  openrouter: {
+    signIn: (signal, onPrompt) => signInWithOpenRouter(signal, (url) => onPrompt({ url })),
+    refresh: refreshOpenRouter,
   },
 };

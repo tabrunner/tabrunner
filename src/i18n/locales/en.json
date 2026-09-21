@@ -441,6 +441,8 @@
     "signInRetry": "Start over",
     "signInStart": "Sign in with {{provider}}",
     "signInHint": "Uses your {{provider}} subscription — no API key needed.",
+    "signInMintsKey": "Creates an API key on your {{provider}} account — nothing to copy and paste.",
+    "or": "or",
     "signInOpened": "We opened {{host}} in a new tab. Approve the sign-in there to finish.",
     "signInBlocked": "If the tab didn't open, use this link:",
     "signInCodeLabel": "Enter this code on {{host}}:",

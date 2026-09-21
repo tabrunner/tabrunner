@@ -441,6 +441,8 @@
     "signInRetry": "Recomeçar",
     "signInStart": "Entrar com {{provider}}",
     "signInHint": "Usa sua assinatura {{provider}} — sem chave de API.",
+    "signInMintsKey": "Cria uma chave de API na sua conta {{provider}} — sem copiar e colar.",
+    "or": "ou",
     "signInOpened": "Abrimos o {{host}} em uma nova aba. Aprove o login lá para concluir.",
     "signInBlocked": "Se a aba não abrir, use este link:",
     "signInCodeLabel": "Digite este código no {{host}}:",

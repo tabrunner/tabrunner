@@ -122,12 +122,12 @@ describe("captureRedirect", () => {
   };
 
   /** Start the flow and let tabs.create resolve — until then it has no tab id. */
-  const start = async () => {
+  const start = async (over: { state?: string } = { state: "st" }) => {
     const stub = stubTabs();
     const pending = captureRedirect({
       authorizeUrl: "https://vendor.example/authorize",
       redirectUri: "http://localhost:1455/callback",
-      state: "st",
+      ...over,
       signal: new AbortController().signal,
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -154,6 +154,25 @@ describe("captureRedirect", () => {
     await expect(pending).resolves.toBe("abc");
     // A rejecting remove (tab died first) must not break a completed sign-in.
     expect(remove).toHaveBeenCalledWith(TAB_ID);
+  });
+
+  it("refuses a callback carrying the wrong state", async () => {
+    const { listeners, pending } = await start();
+
+    listeners.updated?.(TAB_ID, { url: "http://localhost:1455/callback?state=other&code=abc" });
+
+    await expect(pending).rejects.toMatchObject({ reason: "denied" });
+  });
+
+  it("takes a stateless callback when no state was issued", async () => {
+    // OpenRouter's authorize endpoint accepts no state to round-trip. The tab
+    // id still binds the answer to the request we made, and PKCE still binds
+    // the code to a verifier that never left this worker.
+    const { listeners, pending } = await start({});
+
+    listeners.updated?.(TAB_ID, { url: "http://localhost:1455/callback?code=abc" });
+
+    await expect(pending).resolves.toBe("abc");
   });
 });
 

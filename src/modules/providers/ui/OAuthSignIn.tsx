@@ -26,9 +26,13 @@ type Phase =
   | { step: "error"; message: string };
 
 /**
- * Subscription sign-in for any OAuth provider. TabRunner opens the vendor's
- * approval page, captures the answer, and saves the credential the moment it
- * arrives — approving that page is the whole flow.
+ * Sign-in card for any provider with a flow in OAUTH_FLOWS. TabRunner opens the
+ * vendor's approval page, captures the answer, and saves the credential the
+ * moment it arrives — approving that page is the whole flow.
+ *
+ * Usually that credential is a subscription token, which is what the default
+ * copy says. OpenRouter is the exception: its sign-in ends in an ordinary API
+ * key, so that row passes its own `hint`.
  *
  * Every ending is actionable: success confirms the account it connected,
  * expiry and refusal both offer a fresh start, and the approval link stays
@@ -38,6 +42,7 @@ export function OAuthSignIn({
   preset,
   signedIn,
   onSignedIn,
+  hint,
 }: {
   /** The preset being connected — names the copy, and marks the connected card. */
   preset: ProviderPreset;
@@ -45,6 +50,12 @@ export function OAuthSignIn({
   signedIn?: OAuthCredential;
   /** Persists the credential; a rejection is shown as the sign-in's failure. */
   onSignedIn: (credential: OAuthCredential) => Promise<void>;
+  /**
+   * Replaces the line under the button. The default says the sign-in spends a
+   * subscription, which is true of every `auth: "oauth"` row and false of a
+   * keyed row that can merely mint its key this way (OpenRouter).
+   */
+  hint?: string;
 }) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ step: "idle" });
@@ -60,7 +71,7 @@ export function OAuthSignIn({
 
   const start = useCallback(async () => {
     const flow = OAUTH_FLOWS[presetId];
-    if (!flow) return; // Unreachable: only `auth: "oauth"` presets render this card.
+    if (!flow) return; // Unreachable: only `auth`/`signIn` presets render this card.
     abort.current?.abort();
     const controller = new AbortController();
     abort.current = controller;
@@ -253,7 +264,7 @@ export function OAuthSignIn({
       </Button>
       {!signedIn && (
         <span className="text-xs text-neutral-500 dark:text-neutral-400">
-          {t("providerForm.signInHint", { provider })}
+          {hint ?? t("providerForm.signInHint", { provider })}
         </span>
       )}
     </div>

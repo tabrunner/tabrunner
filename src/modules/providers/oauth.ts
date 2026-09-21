@@ -68,7 +68,16 @@ function toBase64Url(bytes: Uint8Array): string {
 export function captureRedirect(opts: {
   authorizeUrl: string;
   redirectUri: string;
-  state: string;
+  /**
+   * The CSRF value we issued, when the vendor round-trips one. Omitted for a
+   * vendor that takes no `state` at all (OpenRouter) — and safe to omit here
+   * in a way it would not be on a server, because this callback is not a
+   * public endpoint: the answer is only read off the ONE tab we opened, whose
+   * id we hold, and PKCE still binds the code to a verifier that never left
+   * this worker. A forged code would have to arrive inside our own tab and
+   * would still fail the exchange.
+   */
+  state?: string;
   signal: AbortSignal;
 }): Promise<string> {
   const { origin: callbackOrigin, pathname: callbackPath } = new URL(opts.redirectUri);
@@ -114,8 +123,11 @@ export function captureRedirect(opts: {
       const url = new URL(changeInfo.url);
       if (url.pathname !== callbackPath) return;
 
-      // CSRF guard: the callback must carry the state we issued.
-      if (url.searchParams.get("state") !== state || url.searchParams.get("error")) {
+      // CSRF guard: when we issued a state, the callback must carry it back.
+      if (
+        (state !== undefined && url.searchParams.get("state") !== state) ||
+        url.searchParams.get("error")
+      ) {
         finish(() => reject(new SignInError("denied")));
         return;
       }

@@ -25,6 +25,15 @@ export interface ProviderPreset {
    */
   auth?: "oauth";
   /**
+   * Set on a KEYED row whose vendor can also mint that key through a sign-in.
+   * The form then offers both, and the user picks. Distinct from `auth` on
+   * purpose: `auth` says the provider is paid for a different way and so earns
+   * its own row, while this says the very same key can be fetched without a
+   * trip to the console. OpenRouter is the only one — its sign-in ends in an
+   * ordinary API key on the same account, billed from the same credits.
+   */
+  signIn?: true;
+  /**
    * Set on both rows of a product sold two ways. `name` stays the bare product
    * ("Claude", "Anthropic"); `providerDisplayName` appends which way, so a user
    * holding both a plan and a key always knows which quota a run spends. A
@@ -218,6 +227,10 @@ export const PRESETS: ProviderPreset[] = [
     baseUrl: "https://openrouter.ai/api/v1",
     models: [],
     apiKeyUrl: "https://openrouter.ai/settings/keys",
+    // Signing in mints a key on the same account, billed from the same
+    // credits — a shortcut past the console, not a second way to pay, so it
+    // stays one row. See openrouter-oauth.ts.
+    signIn: true,
     color: "#334155",
     icon: "openrouter",
   },

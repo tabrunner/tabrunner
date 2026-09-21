@@ -98,6 +98,16 @@ export function ProviderForm({
     setBaseUrl("");
   };
 
+  /**
+   * Write the row a sign-in produced, then let the "connected" card have its
+   * moment before the dialog closes over it. Shared by both sign-in paths —
+   * the subscription rows, and the keyed row that can mint its own key.
+   */
+  const finishSignIn = async (credential: OAuthCredential) => {
+    const id = await save(credential);
+    setTimeout(() => onSaved?.(id), SIGN_IN_DONE_MS);
+  };
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -243,28 +253,43 @@ export function ProviderForm({
       )}
 
       {isOAuth ? (
-        <OAuthSignIn
-          preset={preset}
-          signedIn={auth}
-          onSignedIn={async (credential) => {
-            const id = await save(credential);
-            // The "connected" card gets its moment before the dialog closes over it.
-            setTimeout(() => onSaved?.(id), SIGN_IN_DONE_MS);
-          }}
-        />
+        <OAuthSignIn preset={preset} signedIn={auth} onSignedIn={finishSignIn} />
       ) : (
-        <PasswordField
-          label={t("providerForm.apiKey")}
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={
-            existing
-              ? t("providerForm.apiKeyPlaceholderSaved")
-              : t("providerForm.apiKeyPlaceholder")
-          }
-          autoComplete="off"
-          hint={keyHint}
-        />
+        <>
+          {/* A keyed row whose vendor can also mint the key for you. Both
+              routes end on the same key and the same bill, so neither is the
+              "real" one — they are offered side by side, with the rule between
+              them saying they are alternatives rather than steps. */}
+          {preset?.signIn && (
+            <>
+              <OAuthSignIn
+                preset={preset}
+                signedIn={auth}
+                hint={t("providerForm.signInMintsKey", { provider: preset.name })}
+                onSignedIn={finishSignIn}
+              />
+              <div className="flex items-center gap-2" aria-hidden>
+                <span className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
+                <span className="text-xs text-neutral-400 dark:text-neutral-500">
+                  {t("providerForm.or")}
+                </span>
+                <span className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
+              </div>
+            </>
+          )}
+          <PasswordField
+            label={t("providerForm.apiKey")}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder={
+              existing
+                ? t("providerForm.apiKeyPlaceholderSaved")
+                : t("providerForm.apiKeyPlaceholder")
+            }
+            autoComplete="off"
+            hint={keyHint}
+          />
+        </>
       )}
 
       <p className="text-xs text-neutral-500 dark:text-neutral-400">
