@@ -85,15 +85,43 @@ The load-bearing details of talking to each provider shape. Read this when a tas
   where a rewrite invalidates the entire cached prefix behind it. `pruneImages` keeps
   shaving on purpose: its boundary is a couple of turns back, so a rewrite there costs a
   couple of turns, not the run.
-- **The ChatGPT subscription provider is a `responses` shape** (`responses.ts`), streaming
-  the Codex backend's `POST {base}/responses` — it exposes no chat-completions surface.
-  Auth is a Bearer access token PLUS the `ChatGPT-Account-Id` header (extracted from the
-  JWT at sign-in as `OAuthCredential.chatgptAccountId`; re-extracted on refresh, so it
-  never goes stale). Reasoning (`reasoning_summary_text`/`reasoning_text` deltas) is
-  displayed but NEVER replayed — the backend requires it blanked. Tool results with
-  screenshots use the codex-rs content-array form (`output: [{input_text, input_image}]`);
-  text-only results stay a plain string. `reasoningEffort` maps to `reasoning: {effort}`
-  (`none` omits the knob — codex models have no off switch).
+- **Two providers are a `responses` shape** (`responses.ts`), streaming
+  `POST {base}/responses`: the ChatGPT subscription backend, which exposes no
+  chat-completions surface, and Meta Muse. Auth is a Bearer token either way; ChatGPT adds
+  the `ChatGPT-Account-Id` header (extracted from the JWT at sign-in as
+  `OAuthCredential.chatgptAccountId`; re-extracted on refresh, so it never goes stale) and
+  nobody else carries one. Reasoning (`reasoning_summary_text`/`reasoning_text` deltas) is
+  displayed but NEVER replayed — the ChatGPT backend requires it blanked, and the published
+  shape makes reasoning items optional, so omitting them is correct at both ends.
+  `reasoningEffort` maps to `reasoning: {effort}` (`none` omits the knob — codex models have
+  no off switch).
+  **Tool-result images are the one genuine fork.** codex-rs takes them inside the item
+  (`output: [{input_text, input_image}]`); the published shape says `output` is a string.
+  The spec is the default — images ride in a trailing `user` message, exactly as the
+  OpenAI-shape adapter does — and `ProviderPreset.inlineToolImages` opts the ChatGPT row
+  into the codex form. Getting that backwards 400s every turn carrying a screenshot, which
+  for a browser agent is most turns.
+- **A credential can pin its own endpoint and its own headers.** Two things no preset can
+  state up front, both added for GitHub Copilot and both generic:
+  `OAuthCredential.baseUrl` is the host a token is good for when the vendor picks one per
+  account (Copilot names it in the minted token and refuses that token anywhere else);
+  `ensureProviderCredential` applies it alongside the bearer, so no adapter learns the base
+  URL can move. `ProviderPreset.headers(turn)` builds the vendor's extra request headers
+  per call — Copilot wants an editor fingerprint, and it bills one premium request per
+  user-initiated turn while letting the run's own follow-ups ride free, so `X-Initiator` is
+  inferred from the last message (`tool_results` ⇒ `agent`). Omitting it would bill a
+  thirty-step task as thirty turns out of the user's 300 a month. `User-Agent` is
+  deliberately absent: a browser refuses to set it, and the gate reads the `Editor-*` pair.
+  Because the picker reads the stored config straight out of storage, its listing now goes
+  through `listStoredModels`, which renews first — Copilot's token lasts 25 minutes, and a
+  dead one silently falls back to the preset's cold-start models.
+- **Two sign-ins end in something that is not an OAuth pair.** GitHub Copilot and Meta Muse
+  both run a device flow to a token the inference API does not accept, then trade it: GitHub
+  at `copilot_internal/v2/token` for a ~25-minute Copilot token, Meta at
+  `api.meta.ai/muse-code/key` for a ~24-hour Model API key. Trading it again IS the refresh,
+  so the first token sits in `refreshToken` and the traded one in `accessToken`. Neither
+  first token is itself renewable, so a 401/403 from the trade means the session is over —
+  which is exactly what the credential seam already does with those statuses.
 - **Stream retry** happens in place (agent loop) with full-jitter backoff, only while
   nothing has been emitted yet — the UI never sees replayed tokens. A server's
   `retry-after` (≤ 60s) outranks the backoff guess; a longer one (a subscription 5h/weekly
