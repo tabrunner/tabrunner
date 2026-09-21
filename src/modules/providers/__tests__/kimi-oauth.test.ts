@@ -1,13 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import {
-  accountFromToken,
-  pollForToken,
-  refreshCredential,
-  requestDeviceCode,
-} from "../kimi-oauth";
-import type { DevicePrompt } from "../kimi-oauth";
-import { SignInError } from "../types";
+import { accountFromToken, refreshCredential, withAccount } from "../kimi-oauth";
 
+// The device-code protocol Kimi signs in with is shared, and tested in
+// device-code.test.ts. What's left here is Kimi's own half: renewal, and which
+// claim names the account.
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
 const json = (body: unknown, status = 200) =>
@@ -19,117 +15,28 @@ function jwt(claims: Record<string, unknown>): string {
   return `header.${payload}.signature`;
 }
 
-function prompt(over: Partial<DevicePrompt> = {}): DevicePrompt {
-  return {
-    userCode: "UYNP-2B6J",
-    verificationUrl: "https://www.kimi.ai/code/authorize_device?user_code=UYNP-2B6J",
-    deviceCode: "device-abc",
-    intervalMs: 0, // no real waiting in tests
-    expiresAt: Date.now() + 60_000,
-    ...over,
-  };
-}
-
 afterEach(() => vi.restoreAllMocks());
 
-describe("requestDeviceCode", () => {
-  it("returns the code, the pre-filled url, and the poll cadence", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      json({
-        device_code: "device-abc",
-        user_code: "UYNP-2B6J",
-        verification_uri: "https://www.kimi.ai/code/authorize_device",
-        verification_uri_complete: "https://www.kimi.ai/code/authorize_device?user_code=UYNP-2B6J",
-        expires_in: 1800,
-        interval: 5,
-      }),
-    );
-
-    const result = await requestDeviceCode();
-    expect(result.userCode).toBe("UYNP-2B6J");
-    expect(result.verificationUrl).toContain("user_code=UYNP-2B6J");
-    expect(result.intervalMs).toBe(5000);
-    expect(result.expiresAt).toBeGreaterThan(Date.now());
-  });
-
-  it("surfaces a malformed response instead of a half-built prompt", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ device_code: "only-this" }));
-    await expect(requestDeviceCode()).rejects.toThrow();
-  });
-});
-
-describe("pollForToken", () => {
-  it("waits through authorization_pending and returns the credential", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(json({ error: "authorization_pending" }, 400))
-      .mockResolvedValueOnce(json({ error: "authorization_pending" }, 400))
-      .mockResolvedValueOnce(
-        json({ access_token: "at-1", refresh_token: "rt-1", expires_in: 3600 }),
-      );
-
-    const credential = await pollForToken(prompt(), new AbortController().signal);
-    expect(credential.accessToken).toBe("at-1");
-    expect(credential.refreshToken).toBe("rt-1");
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-  });
-
-  it("bakes the refresh skew into expiresAt so readers need no margin", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      json({ access_token: "at", refresh_token: "rt", expires_in: 3600 }),
-    );
+describe("withAccount", () => {
+  it("bakes the refresh skew into expiresAt so readers need no margin", () => {
     const before = Date.now();
-    const credential = await pollForToken(prompt(), new AbortController().signal);
+    const credential = withAccount({
+      access_token: "at",
+      refresh_token: "rt",
+      expires_in: 3600,
+    });
     // 1h lifetime, 5min skew → ~55min out, never the raw hour.
     expect(credential.expiresAt).toBeGreaterThan(before + 54 * 60_000);
     expect(credential.expiresAt).toBeLessThan(before + 56 * 60_000);
   });
 
-  it("backs off on slow_down, honouring a larger server interval", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(json({ error: "slow_down", interval: 30 }, 400))
-      .mockResolvedValueOnce(json({ access_token: "at", refresh_token: "rt", expires_in: 60 }));
-
-    // The second poll must wait the server's 30s, so with fake timers the
-    // promise stays pending until we advance past it.
-    vi.useFakeTimers();
-    try {
-      const pending = pollForToken(prompt(), new AbortController().signal);
-      await vi.advanceTimersByTimeAsync(29_000);
-      await vi.advanceTimersByTimeAsync(2_000);
-      await expect(pending).resolves.toMatchObject({ accessToken: "at" });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("reports denial and expiry as distinct outcomes — they need different words", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ error: "access_denied" }, 400));
-    await expect(pollForToken(prompt(), new AbortController().signal)).rejects.toMatchObject({
-      reason: "denied",
+  it("names the account off the token", () => {
+    const credential = withAccount({
+      access_token: jwt({ email: "gus@example.com" }),
+      refresh_token: "rt",
+      expires_in: 60,
     });
-
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ error: "expired_token" }, 400));
-    await expect(pollForToken(prompt(), new AbortController().signal)).rejects.toMatchObject({
-      reason: "expired",
-    });
-  });
-
-  it("gives up once the code's own lifetime has passed", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(json({ error: "authorization_pending" }, 400));
-    const expired = prompt({ expiresAt: Date.now() - 1 });
-    await expect(pollForToken(expired, new AbortController().signal)).rejects.toMatchObject({
-      reason: "expired",
-    });
-  });
-
-  it("stops immediately when the dialog closes", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(json({ error: "authorization_pending" }, 400));
-    const controller = new AbortController();
-    controller.abort();
-    const error = await pollForToken(prompt(), controller.signal).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(SignInError);
-    expect((error as SignInError).reason).toBe("cancelled");
+    expect(credential.account).toBe("gus@example.com");
   });
 });
 

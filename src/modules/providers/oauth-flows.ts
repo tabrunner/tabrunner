@@ -1,7 +1,13 @@
 import type { OAuthCredential } from "./types";
+import type { DeviceEndpoint } from "./device-code";
+import { pollDeviceToken, requestDeviceCode } from "./device-code";
 import { refreshCredential as refreshClaude, signInWithClaude } from "./claude-oauth";
 import { refreshCredential as refreshChatGPT, signInWithChatGPT } from "./chatgpt-oauth";
-import { pollForToken, refreshCredential as refreshKimi, requestDeviceCode } from "./kimi-oauth";
+import {
+  KIMI_DEVICE,
+  refreshCredential as refreshKimi,
+  withAccount as kimiCredential,
+} from "./kimi-oauth";
 
 /** What the user must do on the vendor's page to finish signing in. */
 export interface SignInPrompt {
@@ -18,6 +24,27 @@ export interface OAuthFlow {
     onPrompt: (prompt: SignInPrompt) => void,
   ) => Promise<OAuthCredential>;
   refresh: (credential: OAuthCredential) => Promise<OAuthCredential>;
+}
+
+/**
+ * A device-code sign-in, start to finish: ask for the code, show it, open the
+ * approval page, poll until the user approves. The protocol is in
+ * device-code.ts; `toCredential` is the only vendor-specific half, and it earns
+ * being a hook — GitHub and Meta both have another hop after the poll before
+ * there is anything a request can carry.
+ */
+function deviceSignIn(
+  endpoint: DeviceEndpoint,
+  toCredential: (body: Record<string, unknown>) => OAuthCredential | Promise<OAuthCredential>,
+): OAuthFlow["signIn"] {
+  return async (signal, onPrompt) => {
+    const prompt = await requestDeviceCode(endpoint);
+    onPrompt({ url: prompt.verificationUrl, userCode: prompt.userCode });
+    // The approval page, opened for them. If the browser blocks it, the code
+    // stays on screen as the fallback — that's why it's shown while we wait.
+    void chrome.tabs.create({ url: prompt.verificationUrl });
+    return toCredential(await pollDeviceToken(endpoint, prompt, signal));
+  };
 }
 
 /**
@@ -39,14 +66,7 @@ export const OAUTH_FLOWS: Record<string, OAuthFlow> = {
     refresh: refreshChatGPT,
   },
   "kimi-plan": {
-    signIn: async (signal, onPrompt) => {
-      const prompt = await requestDeviceCode();
-      onPrompt({ url: prompt.verificationUrl, userCode: prompt.userCode });
-      // Pre-filled approval page. If the browser blocks it, the code stays on
-      // screen as the fallback — that's why it's shown while we wait.
-      void chrome.tabs.create({ url: prompt.verificationUrl });
-      return pollForToken(prompt, signal);
-    },
+    signIn: deviceSignIn(KIMI_DEVICE, (body) => kimiCredential(body)),
     refresh: refreshKimi,
   },
 };
