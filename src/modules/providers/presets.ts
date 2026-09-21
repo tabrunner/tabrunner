@@ -117,6 +117,20 @@ export const PRESETS: ProviderPreset[] = [
     icon: "kimi",
   },
   {
+    // The same endpoint as `xai`, reached with a SuperGrok or X Premium
+    // sign-in instead of a key. Named for what people actually buy: the
+    // subscription is sold as Grok, the key console is sold as xAI.
+    id: "xai-plan",
+    name: "Grok",
+    shape: "openai",
+    baseUrl: "https://api.x.ai/v1",
+    models: ["grok-4.6", "grok-4.5"],
+    auth: "oauth",
+    paired: true,
+    color: "#000000",
+    icon: "xai",
+  },
+  {
     id: "anthropic",
     name: "Anthropic",
     shape: "anthropic",
@@ -264,8 +278,9 @@ export const PRESETS: ProviderPreset[] = [
     name: "xAI",
     shape: "openai",
     baseUrl: "https://api.x.ai/v1",
-    models: ["grok-4", "grok-4-fast"],
+    models: ["grok-4.6", "grok-4.5"],
     apiKeyUrl: "https://console.x.ai/",
+    paired: true,
     color: "#000000",
     icon: "xai",
   },

@@ -8,6 +8,11 @@ import {
   refreshCredential as refreshKimi,
   withAccount as kimiCredential,
 } from "./kimi-oauth";
+import {
+  XAI_DEVICE,
+  refreshCredential as refreshXai,
+  withAccount as xaiCredential,
+} from "./xai-oauth";
 
 /** What the user must do on the vendor's page to finish signing in. */
 export interface SignInPrompt {
@@ -68,5 +73,9 @@ export const OAUTH_FLOWS: Record<string, OAuthFlow> = {
   "kimi-plan": {
     signIn: deviceSignIn(KIMI_DEVICE, (body) => kimiCredential(body)),
     refresh: refreshKimi,
+  },
+  "xai-plan": {
+    signIn: deviceSignIn(XAI_DEVICE, (body) => xaiCredential(body)),
+    refresh: refreshXai,
   },
 };
