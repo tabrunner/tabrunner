@@ -1,4 +1,5 @@
 import type { ProviderShape } from "./types";
+import { copilotHeaders } from "./github-oauth";
 import { i18n } from "@/i18n";
 
 /** Preset provider — just data, no code. Adding a provider starts here. */
@@ -41,6 +42,14 @@ export interface ProviderPreset {
    * that already says it, like the picker's own section headers.
    */
   paired?: true;
+  /**
+   * Extra request headers this vendor's gate demands, built per request.
+   * GitHub Copilot is the only one: it wants an editor fingerprint, and it
+   * bills on `turn` — "user" for a turn the person started, "agent" for the
+   * run's own follow-ups after tool results. A builder rather than a constant
+   * because both of those are things the preset cannot know by itself.
+   */
+  headers?: (turn: "user" | "agent") => Record<string, string>;
 }
 
 export type IconKey =
@@ -138,6 +147,20 @@ export const PRESETS: ProviderPreset[] = [
     paired: true,
     color: "#000000",
     icon: "xai",
+  },
+  {
+    // Copilot, reached with the GitHub subscription. Two hops to a credential
+    // and a base URL the account's own plan names — see github-oauth.ts. The
+    // model list is live (`GET /models`), so these are only the cold start.
+    id: "github-copilot",
+    name: "GitHub Copilot",
+    shape: "openai",
+    baseUrl: "https://api.individual.githubcopilot.com",
+    models: ["gpt-6-astra", "claude-opus-5", "claude-sonnet-5", "gemini-3.8-flash", "grok-4.6"],
+    auth: "oauth",
+    headers: copilotHeaders,
+    color: "#24292F",
+    icon: "github",
   },
   {
     id: "anthropic",

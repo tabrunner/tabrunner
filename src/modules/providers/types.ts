@@ -52,6 +52,14 @@ export interface OAuthCredential {
    * new token omits it), so the header can never go stale.
    */
   chatgptAccountId?: string;
+  /**
+   * The endpoint this credential is good for, when the vendor pins one per
+   * account instead of serving everyone from the preset's host. GitHub Copilot
+   * does: a token names the host of the plan that issued it, and the same
+   * token is refused anywhere else. Applied by the credential seam, so no
+   * adapter learns the base URL can move.
+   */
+  baseUrl?: string;
 }
 
 /** Why a sign-in ended without a credential — each wording is a different fix. */

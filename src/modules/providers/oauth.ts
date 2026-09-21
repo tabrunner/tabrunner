@@ -16,7 +16,7 @@ const log = createLogger("oauth");
  * Refresh this long before the server's stated expiry. Baked into the stored
  * `expiresAt` so every reader gets the margin for free.
  */
-const REFRESH_SKEW_MS = 5 * 60 * 1000;
+export const REFRESH_SKEW_MS = 5 * 60 * 1000;
 /** An authorization code is only good for a few minutes — stop waiting past that. */
 const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
 

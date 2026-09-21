@@ -1,6 +1,6 @@
 import type { ChatProvider, ChatMessage, ToolDef, Delta, ResolvedProviderConfig } from "./types";
 import { apiUrl, parseToolArgs } from "@providerkit/core";
-import { logCacheUsage, streamSse } from "./http";
+import { logCacheUsage, providerHeaders, streamSse } from "./http";
 
 /**
  * OpenAI-shape adapter — works with any OpenAI-compatible endpoint.
@@ -14,7 +14,10 @@ export function createOpenAIProvider(config: ResolvedProviderConfig): ChatProvid
 
       const stream = streamSse({
         url: apiUrl(config.baseUrl, "/chat/completions"),
-        headers: { Authorization: `Bearer ${config.apiKey}` },
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          ...providerHeaders(config.id, messages),
+        },
         body: JSON.stringify(buildOpenAIBody(config, messages, tools)),
         provider: config,
         signal,

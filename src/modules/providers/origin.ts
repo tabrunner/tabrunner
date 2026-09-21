@@ -35,12 +35,13 @@ const RULE_ID = 1;
 const TAB_ID_NONE = -1;
 
 /**
- * Sign-in hosts, which are not any preset's `baseUrl`: a vendor issues tokens
- * somewhere other than where it serves inference. Same entitlement question as
- * the preset hosts — these are ours to call because a preset signs in through
- * them.
+ * Hosts no preset's `baseUrl` names: where vendors issue tokens, and where a
+ * vendor serves inference from a host it picks per account. Same entitlement
+ * question as the preset hosts — these are ours to call because a preset signs
+ * in through them. A domain here covers its subdomains, which is what makes
+ * one `githubcopilot.com` entry enough for every Copilot plan's own proxy.
  */
-const SIGN_IN_HOSTS = [
+const EXTRA_HOSTS = [
   "claude.ai",
   "auth.openai.com",
   "auth.kimi.ai",
@@ -48,11 +49,12 @@ const SIGN_IN_HOSTS = [
   "auth.meta.com",
   "api.meta.ai",
   "github.com",
+  "githubcopilot.com",
 ];
 
 /**
  * Provider hosts we are entitled to call — every preset's own, plus the
- * sign-in hosts above. Derived, not hand-listed: a preset whose host was
+ * hosts above. Derived, not hand-listed: a preset whose host was
  * forgotten here would sign in fine and then fail its first real call with a
  * CORS 401, which reads as a broken account rather than a missing line in a
  * constant. Local endpoints (Ollama) drop out — nothing to strip, and a
@@ -63,7 +65,7 @@ const SIGN_IN_HOSTS = [
  * talk to anyway.
  */
 export function providerHosts(): string[] {
-  const hosts = new Set(SIGN_IN_HOSTS);
+  const hosts = new Set(EXTRA_HOSTS);
   for (const preset of PRESETS) {
     try {
       const { hostname } = new URL(preset.baseUrl);

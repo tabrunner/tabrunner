@@ -13,6 +13,11 @@ import {
   refreshCredential as refreshXai,
   withAccount as xaiCredential,
 } from "./xai-oauth";
+import {
+  GITHUB_DEVICE,
+  refreshCredential as refreshCopilot,
+  withAccount as copilotCredential,
+} from "./github-oauth";
 import { refreshCredential as refreshOpenRouter, signInWithOpenRouter } from "./openrouter-oauth";
 
 /** What the user must do on the vendor's page to finish signing in. */
@@ -78,6 +83,10 @@ export const OAUTH_FLOWS: Record<string, OAuthFlow> = {
   "xai-plan": {
     signIn: deviceSignIn(XAI_DEVICE, (body) => xaiCredential(body)),
     refresh: refreshXai,
+  },
+  "github-copilot": {
+    signIn: deviceSignIn(GITHUB_DEVICE, (body) => copilotCredential(body)),
+    refresh: refreshCopilot,
   },
   // Not a subscription row — OpenRouter's sign-in mints an ordinary API key on
   // the user's own account. It sits on the keyed preset as a second way to get

@@ -2,20 +2,39 @@ import type { ModelInfo, ProviderConfig, ResolvedProviderConfig } from "./types"
 import { ProviderError } from "./types";
 import { PRESETS } from "./presets";
 import { apiUrl, classifyHttp } from "@providerkit/core";
-import { anthropicHeaders, anthropicOAuthHeaders } from "./http";
+import { anthropicHeaders, anthropicOAuthHeaders, providerHeaders } from "./http";
+import { ensureProviderCredential } from "./credential";
 import { i18n } from "@/i18n";
 
 /** What a model listing is keyed on — the connection, never the per-task choices. */
-export type ModelsTarget = Pick<ProviderConfig, "shape" | "baseUrl" | "apiKey" | "auth">;
+export type ModelsTarget = Pick<ProviderConfig, "id" | "shape" | "baseUrl" | "apiKey" | "auth">;
 
 /** The target for a stored config — an OAuth provider lists with its access token as bearer. */
 export function modelsTarget(p: ProviderConfig): ModelsTarget {
   return {
+    id: p.id,
     shape: p.shape,
-    baseUrl: p.baseUrl,
+    // The host the credential is pinned to when the vendor picked one per
+    // account (GitHub Copilot), else the preset's own.
+    baseUrl: p.auth?.baseUrl ?? p.baseUrl,
     apiKey: p.auth?.accessToken ?? p.apiKey,
     ...(p.auth ? { auth: p.auth } : {}),
   };
+}
+
+/**
+ * List a stored provider's models, renewing its credential first.
+ *
+ * The picker reads the config straight out of storage, so its access token is
+ * only as fresh as the last run left it — and GitHub Copilot's lasts 25
+ * minutes. Listing with a dead one falls back to the preset's cold-start
+ * models, which is the picker quietly hiding most of the account's catalog.
+ */
+export async function listStoredModels(
+  p: ProviderConfig,
+  signal?: AbortSignal,
+): Promise<ModelInfo[]> {
+  return listModels(modelsTarget(await ensureProviderCredential(p)), signal);
 }
 
 /**
@@ -52,7 +71,9 @@ export function knownModels(p: ProviderConfig): ModelInfo[] {
  * presets are only the fallback when an endpoint doesn't (QwenCloud 404s).
  */
 export async function listModels(
-  config: Pick<ProviderConfig, "shape" | "baseUrl" | "apiKey" | "auth">,
+  // `id` is optional because the add form checks a key it has not named yet —
+  // and a provider with no id has no preset, so no extra headers either.
+  config: Pick<ProviderConfig, "shape" | "baseUrl" | "apiKey" | "auth"> & { id?: string },
   signal?: AbortSignal,
 ): Promise<ModelInfo[]> {
   // The ChatGPT backend (responses shape) exposes no model-list route — the
@@ -66,7 +87,7 @@ export async function listModels(
       ? config.auth
         ? anthropicOAuthHeaders(config.apiKey)
         : anthropicHeaders(config.apiKey)
-      : { Authorization: `Bearer ${config.apiKey}` };
+      : { Authorization: `Bearer ${config.apiKey}`, ...providerHeaders(config.id ?? "") };
 
   const res = await fetch(url, { headers, ...(signal ? { signal } : {}) });
   if (!res.ok) {

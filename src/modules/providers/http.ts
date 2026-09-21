@@ -1,4 +1,4 @@
-import type { ProviderConfig } from "./types";
+import type { ChatMessage, ProviderConfig } from "./types";
 import { ProviderError } from "./types";
 import {
   classifyHttp,
@@ -10,7 +10,7 @@ import {
   type RateLimitReset,
 } from "@providerkit/core";
 import { formatResetRelative } from "./rate-limit";
-import { providerDisplayName } from "./presets";
+import { PRESETS, providerDisplayName } from "./presets";
 import { createLogger, truncate } from "@/lib/logger";
 import { i18n } from "@/i18n";
 
@@ -152,6 +152,23 @@ function hostOf(url: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * A provider's own request headers, on top of the credential. Only GitHub
+ * Copilot declares any — its gate wants an editor fingerprint, and it bills
+ * differently depending on who started the turn, so the preset gets told which
+ * this is. Everyone else gets an empty object and sends nothing extra.
+ *
+ * "Who started the turn" is read off the last message: the run's own follow-ups
+ * come back carrying tool results, a person's turn ends on theirs. A listing
+ * has no messages and is a person clicking the picker, so it counts as theirs.
+ */
+export function providerHeaders(id: string, messages?: ChatMessage[]): Record<string, string> {
+  const build = PRESETS.find((preset) => preset.id === id)?.headers;
+  if (!build) return {};
+  const last = messages?.[messages.length - 1];
+  return build(!last || last.role === "user" ? "user" : "agent");
 }
 
 /**

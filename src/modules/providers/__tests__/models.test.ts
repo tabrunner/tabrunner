@@ -231,3 +231,45 @@ describe("resolveProviderModel", () => {
     await expect(resolveProviderModel(custom)).rejects.toThrow(/Pick a model in Settings/);
   });
 });
+
+describe("modelsTarget", () => {
+  it("lists from the host the credential is pinned to, not the preset's", async () => {
+    // GitHub Copilot serves each plan from its own host; the preset only knows
+    // the individual one, so a business seat would list against a host its
+    // token is refused at.
+    const { modelsTarget } = await import("../models");
+    const target = modelsTarget({
+      ...openaiConfig,
+      id: "github-copilot",
+      baseUrl: "https://api.individual.githubcopilot.com",
+      auth: {
+        accessToken: "tok",
+        refreshToken: "gho",
+        expiresAt: Date.now() + 60_000,
+        baseUrl: "https://api.business.githubcopilot.com",
+      },
+    });
+    expect(target.baseUrl).toBe("https://api.business.githubcopilot.com");
+    expect(target.apiKey).toBe("tok");
+  });
+});
+
+describe("listModels headers", () => {
+  it("sends GitHub Copilot's editor fingerprint — its /models route demands it", async () => {
+    const mock = stubFetch(200, { data: [{ id: "gpt-6-astra" }] });
+
+    await listModels({ ...openaiConfig, id: "github-copilot" });
+    const headers = mock.mock.calls[0]![1]?.headers as Record<string, string>;
+    expect(headers["Copilot-Integration-Id"]).toBe("vscode-chat");
+    // A listing is a person opening the picker, not the run following itself up.
+    expect(headers["X-Initiator"]).toBe("user");
+  });
+
+  it("sends nothing extra for a provider whose preset declares no headers", async () => {
+    const mock = stubFetch(200, { data: [] });
+
+    await listModels(openaiConfig);
+    const headers = mock.mock.calls[0]![1]?.headers as Record<string, string>;
+    expect(Object.keys(headers)).toEqual(["Authorization"]);
+  });
+});

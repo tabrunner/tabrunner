@@ -1,4 +1,4 @@
-import type { ProviderConfig } from "./types";
+import type { OAuthCredential, ProviderConfig } from "./types";
 import { ProviderError } from "./types";
 import { isTransportFailure } from "@providerkit/core";
 import { networkError } from "./http";
@@ -19,13 +19,14 @@ const refreshing = new Map<string, Promise<ProviderConfig>>();
 
 /**
  * A config ready to send: for key-based providers, itself; for OAuth ones, a
- * copy whose `apiKey` is a fresh access token. Everything downstream —
- * adapters, model listing — keeps reading `apiKey` and never learns the
- * difference.
+ * copy whose `apiKey` is a fresh access token — and whose `baseUrl` is the one
+ * that token is good for, when the vendor pins one per account. Everything
+ * downstream — adapters, model listing — keeps reading `apiKey` and `baseUrl`
+ * and never learns the difference.
  */
 export async function ensureProviderCredential(config: ProviderConfig): Promise<ProviderConfig> {
   if (!config.auth) return config;
-  if (Date.now() < config.auth.expiresAt) return withBearer(config, config.auth.accessToken);
+  if (Date.now() < config.auth.expiresAt) return resolved(config, config.auth);
 
   const inFlight = refreshing.get(config.id);
   if (inFlight) return inFlight;
@@ -46,7 +47,7 @@ export async function ensureProviderCredential(config: ProviderConfig): Promise<
       // Persist before use: the old refresh token is spent, so losing the new
       // pair here would strand the user at a forced sign-in.
       await saveProvider({ ...config, auth: refreshed });
-      return withBearer({ ...config, auth: refreshed }, refreshed.accessToken);
+      return resolved({ ...config, auth: refreshed }, refreshed);
     } catch (e) {
       const status = e instanceof ProviderError ? e.status : 0;
       log.warn("refresh failed:", e instanceof Error ? e.message : String(e));
@@ -78,7 +79,8 @@ export async function ensureProviderCredential(config: ProviderConfig): Promise<
   return task;
 }
 
-const withBearer = (config: ProviderConfig, accessToken: string): ProviderConfig => ({
+const resolved = (config: ProviderConfig, auth: OAuthCredential): ProviderConfig => ({
   ...config,
-  apiKey: accessToken,
+  apiKey: auth.accessToken,
+  ...(auth.baseUrl ? { baseUrl: auth.baseUrl } : {}),
 });

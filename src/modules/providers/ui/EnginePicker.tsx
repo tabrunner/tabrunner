@@ -9,13 +9,12 @@ import { AddProviderDialog } from "./AddProviderDialog";
 import { UsageSection } from "./UsageSection";
 import {
   knownModels,
-  listModels,
+  listStoredModels,
   modelsTarget,
   pickLatestModel,
   readModelsCache,
   writeModelsCache,
 } from "../models";
-import type { ModelsTarget } from "../models";
 import { PRESETS, providerDisplayName } from "../presets";
 import { supportsUsage } from "../usage";
 import { EFFORT_LABEL_KEYS, isEffort, REASONING_EFFORTS } from "../types";
@@ -69,15 +68,16 @@ interface ModelsResult {
   error: string | null;
 }
 
-/** Fetches the endpoint's live model list; identity-keyed on the target. */
-function useModels(target: ModelsTarget | null) {
+/** Fetches the endpoint's live model list; identity-keyed on the connection. */
+function useModels(provider: ProviderConfig | null) {
+  const target = provider ? modelsTarget(provider) : null;
   const key = target ? JSON.stringify(target) : null;
   const [fetched, setFetched] = useState<ModelsResult | null>(null);
 
   useEffect(() => {
-    if (!key || !target || readModelsCache(target)) return;
+    if (!key || !target || !provider || readModelsCache(target)) return;
     let cancelled = false;
-    listModels(target)
+    listStoredModels(provider)
       .then((models) => {
         writeModelsCache(target, models);
         if (!cancelled) setFetched({ key, models, error: null });
@@ -333,7 +333,7 @@ export function EnginePicker({
    */
   const alt = useRef(false);
   const [addOpen, setAddOpen] = useState(false);
-  const listing = useModels(active ? modelsTarget(active) : null);
+  const listing = useModels(active ?? null);
 
   // With zero providers the side panel shows Onboarding instead.
   if (!active) return null;
