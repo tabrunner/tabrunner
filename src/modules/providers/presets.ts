@@ -43,11 +43,13 @@ export interface ProviderPreset {
    */
   paired?: true;
   /**
-   * Extra request headers this vendor's gate demands, built per request.
-   * GitHub Copilot is the only one: it wants an editor fingerprint, and it
-   * bills on `turn` — "user" for a turn the person started, "agent" for the
-   * run's own follow-ups after tool results. A builder rather than a constant
-   * because both of those are things the preset cannot know by itself.
+   * Extra request headers for the run, built per request. GitHub Copilot
+   * wants an editor fingerprint, and it bills on `turn` — "user" for a turn
+   * the person started, "agent" for the run's own follow-ups after tool
+   * results. OpenRouter wants app attribution for its rankings
+   * (`HTTP-Referer` + `X-Title`), which never varies by turn. A builder
+   * rather than a constant because Copilot's half is something the preset
+   * cannot know by itself.
    */
   headers?: (turn: "user" | "agent") => Record<string, string>;
   /**
@@ -276,6 +278,12 @@ export const PRESETS: ProviderPreset[] = [
     // credits — a shortcut past the console, not a second way to pay, so it
     // stays one row. See openrouter-oauth.ts.
     signIn: true,
+    // App attribution for OpenRouter's rankings — public, not secret. Rides
+    // every chat turn and the model listing alike.
+    headers: () => ({
+      "HTTP-Referer": "https://tabrunner.app",
+      "X-Title": "TabRunner",
+    }),
     color: "#334155",
     icon: "openrouter",
   },

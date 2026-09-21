@@ -159,4 +159,14 @@ describe("providerHeaders", () => {
   it("leaves every other provider's request alone", () => {
     expect(providerHeaders("openai", [user])).toEqual({});
   });
+
+  it("identifies the app on OpenRouter requests, on any turn", () => {
+    const turns: (ChatMessage[] | undefined)[] = [[user], [user, results], undefined];
+    for (const messages of turns) {
+      expect(providerHeaders("openrouter", messages)).toEqual({
+        "HTTP-Referer": "https://tabrunner.app",
+        "X-Title": "TabRunner",
+      });
+    }
+  });
 });
