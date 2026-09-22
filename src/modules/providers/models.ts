@@ -1,6 +1,7 @@
 import type { ModelInfo, ProviderConfig, ResolvedProviderConfig } from "./types";
 import { ProviderError } from "./types";
 import { PRESETS } from "./presets";
+import type { ProviderPreset } from "./presets";
 import { apiUrl, classifyHttp } from "@providerkit/core";
 import { anthropicHeaders, anthropicOAuthHeaders, providerHeaders } from "./http";
 import { ensureProviderCredential } from "./credential";
@@ -98,30 +99,44 @@ export async function listModels(
     );
   }
 
-  const entries = parseModelEntries(await res.json());
+  const entries = parseModelEntries(await res.json(), config.id);
   return config.shape === "openai" ? entries.filter((m) => !isNonChatModel(m.id)) : entries;
+}
+
+/**
+ * Spend a credential once: list with it, and report both halves — whether the
+ * endpoint refuses it, and what it serves. The add form checks the key before
+ * storing it AND warms the picker's cache with the same listing, so the panel
+ * opens on the live shelf instead of the preset fallback; without the
+ * hand-off the check's fetch is thrown away and the picker pays for a second
+ * one (or shows stale presets when that one fails).
+ *
+ * Only an outright rejection counts as "no". An endpoint with no list route
+ * (QwenCloud 404s), an offline machine, or a timed-out check prove nothing
+ * about the key — those still add, with no models to warm.
+ */
+export async function checkCredential(
+  config: Pick<ProviderConfig, "shape" | "baseUrl" | "apiKey" | "auth"> & { id?: string },
+  signal?: AbortSignal,
+): Promise<{ rejected: boolean; models: ModelInfo[] }> {
+  try {
+    return { rejected: false, models: await listModels(config, signal) };
+  } catch (e) {
+    if (!(e instanceof ProviderError)) return { rejected: false, models: [] };
+    return { rejected: classifyHttp(e.status, e.message) === "auth", models: [] };
+  }
 }
 
 /**
  * Does the endpoint refuse this credential? Checked when a provider is added,
  * with the cheapest authenticated call there is, so a mistyped or wrong-vendor
  * key fails in the form instead of halfway through the user's first task.
- *
- * Only an outright rejection counts as "no". An endpoint with no list route
- * (QwenCloud 404s), an offline machine, or a timed-out check prove nothing
- * about the key — those still add.
  */
 export async function isKeyRejected(
-  config: Pick<ProviderConfig, "shape" | "baseUrl" | "apiKey" | "auth">,
+  config: Pick<ProviderConfig, "shape" | "baseUrl" | "apiKey" | "auth"> & { id?: string },
   signal?: AbortSignal,
 ): Promise<boolean> {
-  try {
-    await listModels(config, signal);
-    return false;
-  } catch (e) {
-    if (!(e instanceof ProviderError)) return false;
-    return classifyHttp(e.status, e.message) === "auth";
-  }
+  return (await checkCredential(config, signal)).rejected;
 }
 
 /**
@@ -143,6 +158,11 @@ export function pickLatestModel(models: ModelInfo[]): ModelInfo | undefined {
  * Resolve the config's effective model: the user's persisted choice, else the
  * newest the endpoint serves, else the preset's first entry. Throws a clear
  * error when none of the three works — never sends an empty model upstream.
+ *
+ * Gateway presets (OpenCode Zen/Go) serve different models on different wire
+ * endpoints, so the resolution also carries the model's own shape and base —
+ * see routeModel. The stored config keeps the preset's shape; only the
+ * run-time resolution is rerouted.
  */
 export async function resolveProviderModel(
   config: ProviderConfig,
@@ -152,37 +172,105 @@ export async function resolveProviderModel(
   const preset = PRESETS.find((p) => p.id === config.id);
   const supportsImages = preset?.supportsImages ?? true;
 
-  if (config.model) return { ...config, model: config.model, supportsImages };
+  const model = await resolveModelId(config, preset);
+  return { ...config, model, supportsImages, ...routeModel(preset, config.baseUrl, model) };
+}
+
+/** The model id, before routing: persisted choice, else newest listed, else preset fallback. */
+async function resolveModelId(
+  config: ProviderConfig,
+  preset: ProviderPreset | undefined,
+): Promise<string> {
+  if (config.model) return config.model;
 
   try {
     const latest = pickLatestModel(await listModels(config));
-    if (latest) return { ...config, model: latest.id, supportsImages };
+    if (latest) return latest.id;
   } catch {
     // Endpoint has no list route (or is unreachable) — fall through to preset.
   }
 
   const presetFallback = preset?.models[0];
-  if (presetFallback) return { ...config, model: presetFallback, supportsImages };
+  if (presetFallback) return presetFallback;
 
   throw new ProviderError(i18n.t("errors.noModel", { name: config.name }), 0);
 }
 
-function parseModelEntries(body: unknown): ModelInfo[] {
+/**
+ * The wire endpoint a gateway model actually lives on. Both Zen rows share
+ * one base (`…/zen/v1`) for completions and Responses; the Anthropic Messages
+ * endpoint sits one level up (`…/zen/v1/messages`), so a routed model sheds
+ * the `/v1` suffix the preset carries and the adapter re-appends its own
+ * `/v1/messages`. Unlisted models stay on the preset's shape and base —
+ * today's behaviour, never a regression.
+ */
+function routeModel(
+  preset: ProviderPreset | undefined,
+  baseUrl: string,
+  model: string,
+): Pick<ResolvedProviderConfig, "shape" | "baseUrl"> | undefined {
+  if (!preset?.modelRoutes) return undefined;
+  if (preset.modelRoutes.responses?.includes(model)) return { shape: "responses", baseUrl };
+  if (preset.modelRoutes.anthropic?.includes(model)) {
+    return { shape: "anthropic", baseUrl: baseUrl.replace(/\/v1\/?$/, "") };
+  }
+  return undefined;
+}
+
+function parseModelEntries(body: unknown, providerId?: string): ModelInfo[] {
   const data = (body as { data?: unknown } | null)?.data;
   if (!Array.isArray(data)) throw new ProviderError(i18n.t("errors.noModelData"), 0);
-  const out: ModelInfo[] = [];
+  const raws: Record<string, unknown>[] = [];
   for (const entry of data) {
     const record = (entry ?? {}) as Record<string, unknown>;
     const id = record.id;
     if (typeof id !== "string" || !id) continue;
-    out.push({
+    raws.push(record);
+  }
+  // GitHub Copilot lists every model the API knows, not every model the
+  // account may serve — picking a disabled one answers `model_not_supported`
+  // at run time. Same filter pi applies on the same endpoint: only
+  // picker-enabled models whose policy isn't disabled, falling back to
+  // policy-enabled ones when no picker flag is set at all (some Individual
+  // accounts report false for every flag despite explicit enabled policies).
+  // Models without tool-call support are dropped either way — an agent that
+  // cannot call tools is not a runnable engine.
+  const kept =
+    providerId === "github-copilot" ? filterCopilotEntries(raws) : raws;
+  return kept.map((record) => {
+    const id = record.id as string;
+    return {
       id,
       name: parseName(record, id),
       created: parseCreated(record),
       contextLength: parseContextLength(record),
-    });
-  }
-  return out;
+    };
+  });
+}
+
+/**
+ * Which Copilot `/models` entries the account can actually run. Mirrors pi's
+ * `parseGitHubCopilotModelCatalog` on the same response shape.
+ */
+function filterCopilotEntries(raws: Record<string, unknown>[]): Record<string, unknown>[] {
+  const usable = raws.filter((record) => {
+    const supports = (
+      (record.capabilities as Record<string, unknown> | undefined)?.supports as
+        | Record<string, unknown>
+        | undefined
+    )?.tool_calls;
+    return supports !== false;
+  });
+  const picked = usable.filter(
+    (record) =>
+      record.model_picker_enabled === true &&
+      (record.policy as Record<string, unknown> | undefined)?.state !== "disabled",
+  );
+  if (picked.length > 0) return picked;
+  const enabled = usable.filter(
+    (record) => (record.policy as Record<string, unknown> | undefined)?.state === "enabled",
+  );
+  return enabled.length > 0 ? enabled : usable;
 }
 
 /** Anthropic lists `display_name`, OpenRouter-style endpoints list `name`; plain OpenAI has neither. */

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useProvidersStore } from "./store";
@@ -73,6 +73,11 @@ function useModels(provider: ProviderConfig | null) {
   const target = provider ? modelsTarget(provider) : null;
   const key = target ? JSON.stringify(target) : null;
   const [fetched, setFetched] = useState<ModelsResult | null>(null);
+  // A failed listing retries on demand (the picker re-arms it on open) — an
+  // error is never cached, but without a trigger the stale preset fallback
+  // sits until the provider is switched away and back.
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((a) => a + 1), []);
 
   useEffect(() => {
     if (!key || !target || !provider || readModelsCache(target)) return;
@@ -92,7 +97,7 @@ function useModels(provider: ProviderConfig | null) {
     };
     // target identity is captured by key
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, attempt]);
 
   // Cache hits resolve during render (switching back to a provider never waits
   // on a fetch it already paid for); errors are never cached, so a failed
@@ -108,6 +113,7 @@ function useModels(provider: ProviderConfig | null) {
     models: current?.models ?? [],
     loading: key !== null && current === null,
     error: current?.error ?? null,
+    retry,
   };
 }
 
@@ -247,6 +253,10 @@ function ModelList({
   }
 
   const { shown, hidden, matched } = narrowModels(listed, filter);
+  // The live listing failed and these rows are the preset's saved shelf,
+  // which may be older than the endpoint — said outright, so a stale list
+  // never passes for the live one. Reopening the picker retries.
+  const usingFallback = models.length === 0 && (preset?.models.length ?? 0) > 0;
 
   return (
     <>
@@ -261,55 +271,67 @@ function ModelList({
           placeholder={t("enginePicker.filterPlaceholder", { n: listed.length })}
         />
       )}
-
-      {/* Auto leads and shows what it will actually run, tagged so it stays
-          distinguishable from having pinned that same model by hand. It is the
-          mode, not a match, so filtering never hides it. */}
-      {autoTarget && (
-        <Row
-          selected={provider.model === undefined}
-          onClick={() => onPick(undefined)}
-          title={autoTarget.id}
-        >
-          <span className="shrink-0 rounded bg-neutral-100 px-1 py-px text-[10px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
-            {t("modelPicker.auto")}
-          </span>
-          <span className="min-w-0 truncate">{autoTarget.name ?? autoTarget.id}</span>
-        </Row>
-      )}
-
-      {shown.map((m) => (
-        <Row
-          key={m.id}
-          selected={provider.model === m.id}
-          onClick={() => onPick(m.id)}
-          title={m.id}
-        >
-          <span className="min-w-0 truncate">{m.name ?? m.id}</span>
-        </Row>
-      ))}
-
-      {/* Both dead ends get a way forward, never a blank gap. */}
-      {matched === 0 && (
-        <p className="px-2 py-1 text-xs text-neutral-500 dark:text-neutral-400">
-          {t("enginePicker.noMatch", { query: filter.trim() })}
-        </p>
-      )}
-      {hidden > 0 && (
+      {usingFallback && error && (
         <p className="px-2 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-          {t("enginePicker.moreModels", { n: hidden })}
+          {t("enginePicker.listFallback")}
         </p>
       )}
 
-      {/* A persisted id the endpoint no longer lists stays selectable. */}
-      {provider.model && !listed.some((m) => m.id === provider.model) && (
-        <Row selected onClick={() => onPick(provider.model)} title={t("modelPicker.notListed")}>
-          <span className="min-w-0 truncate">{provider.model}</span>
-          <span className="ml-auto shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400">
-            {t("modelPicker.notListed")}
-          </span>
-        </Row>
-      )}
+      {/* The rows scroll inside their own band — about ten rows — so the
+          effort row, usage section, and add-provider footer below stay on
+          screen without scrolling, no matter how long the catalog is (Zen
+          serves 70+, OpenRouter 300+). The popover's own max-h stays as the
+          outer guard for small viewports. */}
+      <div className="-mx-1 max-h-64 overflow-y-auto px-1">
+        {/* Auto leads and shows what it will actually run, tagged so it stays
+            distinguishable from having pinned that same model by hand. It is the
+            mode, not a match, so filtering never hides it. */}
+        {autoTarget && (
+          <Row
+            selected={provider.model === undefined}
+            onClick={() => onPick(undefined)}
+            title={autoTarget.id}
+          >
+            <span className="shrink-0 rounded bg-neutral-100 px-1 py-px text-[10px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+              {t("modelPicker.auto")}
+            </span>
+            <span className="min-w-0 truncate">{autoTarget.name ?? autoTarget.id}</span>
+          </Row>
+        )}
+
+        {shown.map((m) => (
+          <Row
+            key={m.id}
+            selected={provider.model === m.id}
+            onClick={() => onPick(m.id)}
+            title={m.id}
+          >
+            <span className="min-w-0 truncate">{m.name ?? m.id}</span>
+          </Row>
+        ))}
+
+        {/* Both dead ends get a way forward, never a blank gap. */}
+        {matched === 0 && (
+          <p className="px-2 py-1 text-xs text-neutral-500 dark:text-neutral-400">
+            {t("enginePicker.noMatch", { query: filter.trim() })}
+          </p>
+        )}
+        {hidden > 0 && (
+          <p className="px-2 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+            {t("enginePicker.moreModels", { n: hidden })}
+          </p>
+        )}
+
+        {/* A persisted id the endpoint no longer lists stays selectable. */}
+        {provider.model && !listed.some((m) => m.id === provider.model) && (
+          <Row selected onClick={() => onPick(provider.model)} title={t("modelPicker.notListed")}>
+            <span className="min-w-0 truncate">{provider.model}</span>
+            <span className="ml-auto shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400">
+              {t("modelPicker.notListed")}
+            </span>
+          </Row>
+        )}
+      </div>
     </>
   );
 }
@@ -334,6 +356,19 @@ export function EnginePicker({
   const alt = useRef(false);
   const [addOpen, setAddOpen] = useState(false);
   const listing = useModels(active ?? null);
+
+  // A failed listing re-arms every time the picker opens — the failure may
+  // have been a pasted key the endpoint hadn't propagated yet, and without
+  // this the preset fallback sits until the provider is switched away and
+  // back. Opens are user-initiated, so a retry here is never a background
+  // poll; an in-flight fetch is left alone.
+  useEffect(() => {
+    if (open && listing.error && !listing.loading) listing.retry();
+    // Field deps on purpose: the whole `listing` object is new every render
+    // and would re-arm the retry in a loop; error/loading/retry are the only
+    // signals that matter here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, listing.error, listing.loading, listing.retry]);
 
   // With zero providers the side panel shows Onboarding instead.
   if (!active) return null;

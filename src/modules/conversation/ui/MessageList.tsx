@@ -16,6 +16,7 @@ import { newIssueUrl } from "@/lib/report";
 import { showReasoning } from "@/lib/prefs";
 import { AddProviderDialog } from "@/modules/providers/ui";
 import type { ProviderConfig } from "@/modules/providers/types";
+import { dataPolicyConsentUrl } from "@/modules/providers/http";
 import { Button, buttonClasses } from "@/components/Button";
 import { CometPose } from "@/components/CometPose";
 import {
@@ -74,6 +75,11 @@ const CTA_KEYS = {
  */
 function errorHint(message: string, signedIn: boolean): { key: HintKey; cta?: CtaKey } | null {
   const m = message.toLowerCase();
+  // The data-policy gate carries its own fix (the consent anchor below) — and
+  // its workspace URL can contain digit runs ("…/wrk_01403…") that would trip
+  // the status-code regexes further down and misdiagnose a gated model as a
+  // bad key or a rate limit.
+  if (/datapolicyerror/.test(m)) return null;
   // Quota first: a 403/429 body that talks about billing is not a bad key, and
   // telling the user to re-enter a working key would send them the wrong way.
   if (/usage limit|quota|out of credit|insufficient (balance|credit|funds)|billing/.test(m))
@@ -942,10 +948,13 @@ const MessageBubble = memo(function MessageBubble({
       ) : null;
     case "error": {
       const signedIn = Boolean(activeProvider?.auth);
+      // The data-policy gate is its own ending: the consent page is the fix,
+      // so the generic hint and credential CTAs stay out of the way.
+      const consentUrl = dataPolicyConsentUrl(msg.content);
       // A provider-classified error carries its kind: its lead line is the
       // whole guidance, so the generic hint is skipped and the raw English
       // tail stays behind Details. Unclassified errors keep the regex hint.
-      const hint = msg.kind ? null : errorHint(msg.content, signedIn);
+      const hint = msg.kind || consentUrl ? null : errorHint(msg.content, signedIn);
       const cta = msg.kind ? kindCta(msg.kind, signedIn) : hint?.cta;
       const { summary, lead, detail } = splitErrorDetail(msg.content);
       return (
@@ -976,6 +985,19 @@ const MessageBubble = memo(function MessageBubble({
                 {t("chat.retry")}
               </Button>
             )}
+            {/* The data-policy fix lives outside the extension: open the
+                workspace consent page, accept, then Retry. A real anchor
+                wearing the button's classes, like the report link below. */}
+            {consentUrl && (
+              <a
+                href={consentUrl}
+                target="_blank"
+                rel="noreferrer"
+                className={`inline-block ${buttonClasses("ghost", "sm")} ${ERROR_ACTION_CLASSES}`}
+              >
+                {t("chat.cta.consentPage")}
+              </a>
+            )}
             {/* Compaction is not a credential problem — it needs no dialog,
                 just the one action, so it never reaches AddProviderDialog. */}
             {cta === "compact" && (
@@ -1001,7 +1023,7 @@ const MessageBubble = memo(function MessageBubble({
                 }
               />
             )}
-            {reportable(msg, hint?.key) && (
+            {reportable(msg, hint?.key) && !consentUrl && (
               // A real anchor, wearing the button's classes: this action leaves
               // the extension, and Base UI's Button would stamp `type="button"`
               // onto the <a>. The summary leads so it becomes the issue title;

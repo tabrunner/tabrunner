@@ -111,6 +111,12 @@ export interface ConversationEngine {
 export interface ResolvedProviderConfig extends ProviderConfig {
   model: string;
   /**
+   * The conversation this run answers in. Only sent where a preset asks for
+   * it (`sessionHeader`) — OpenCode's gateway wants its per-conversation
+   * routing header on Zen turns. Run-scoped, never stored.
+   */
+  sessionId?: string;
+  /**
    * Whether the resolved model can receive images. Absent = capable: the flag
    * is only ever false for a known text-only family (DeepSeek preset). No
    * provider ships per-model vision in its listing, so the preset is the source.
@@ -267,7 +273,9 @@ const MAX_RETRY_WAIT_MS = 60_000;
 /**
  * 429 and 5xx are transient — retry in place. Other 4xx request errors are not.
  * A classified permanent failure never retries even when its status looks
- * transient: OpenAI files "insufficient_quota" under 429. A 429 whose
+ * transient: OpenAI files "insufficient_quota" under 429 — except a quota
+ * error WITH a short server-directed wait, which is a throttle with its own
+ * recovery time, not an empty balance. A 429 whose
  * retry-after exceeds MAX_RETRY_WAIT_MS isn't transient either.
  *
  * A `network` failure is retryable by definition: nothing about the request was
@@ -289,7 +297,16 @@ const MAX_RETRY_WAIT_MS = 60_000;
  */
 export function isRetryable(e: unknown): boolean {
   if (e instanceof ProviderError) {
-    if (e.kind && NON_RETRYABLE_KINDS.includes(e.kind)) return false;
+    if (e.kind && NON_RETRYABLE_KINDS.includes(e.kind)) {
+      // The one exception: a quota error carrying a SHORT server-directed
+      // wait is a per-minute throttle, not an empty balance — Google's model
+      // quotas answer 429 with a 3-second RetryInfo, and waiting it out
+      // succeeds. A truly exhausted balance carries no wait (or a long one)
+      // and still fails fast below.
+      const shortWait =
+        e.retryAfterMs !== undefined && e.retryAfterMs <= MAX_RETRY_WAIT_MS;
+      if (!(e.kind === "quota" && shortWait)) return false;
+    }
     if (e.retryAfterMs !== undefined && e.retryAfterMs > MAX_RETRY_WAIT_MS) return false;
     return (
       e.kind === "auth" ||

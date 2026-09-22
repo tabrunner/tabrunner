@@ -60,6 +60,34 @@ export interface ProviderPreset {
    * one — see responses.ts.
    */
   inlineToolImages?: true;
+  /**
+   * OpenCode's gateway wants its per-conversation routing header on every chat
+   * turn (`x-opencode-session`, the conversation id) — the same header pi's
+   * opencode providers send. Without it the free tier answers
+   * `FreeTierError: can only be used from within OpenCode`. Both Zen rows,
+   * which share the one backend and the one key.
+   *
+   * What we deliberately DON'T mirror from opencode/pi: `User-Agent:
+   * opencode/<version>` (a browser extension cannot set it — Chrome owns that
+   * header on fetch), and `x-opencode-request` / `x-opencode-client` /
+   * `x-opencode-project` (opencode's own user/project identities, which a
+   * pasted key doesn't carry). The session header is the one the free-tier
+   * gate reads.
+   */
+  sessionHeader?: true;
+  /**
+   * Models on this endpoint that don't speak the preset's own shape. OpenCode's
+   * gateway serves each model family on its own wire endpoint — GPT/Grok/
+   * Muse-Spark on Responses, Claude/Qwen on Anthropic Messages, the rest
+   * (DeepSeek/GLM/Kimi/MiniMax/the free shelf) on chat completions — and a
+   * model called on the wrong endpoint answers 500, not a helpful 404. The
+   * tables come from OpenCode's own Zen/Go docs; anything unlisted stays on
+   * the preset's shape, which is today's behaviour, never a regression.
+   */
+  modelRoutes?: {
+    responses?: string[];
+    anthropic?: string[];
+  };
 }
 
 export type IconKey =
@@ -175,12 +203,16 @@ export const PRESETS: ProviderPreset[] = [
   {
     // Copilot, reached with the GitHub subscription. Two hops to a credential
     // and a base URL the account's own plan names — see github-oauth.ts. The
-    // model list is live (`GET /models`), so these are only the cold start.
+    // model list is live (`GET /models`), filtered to what the account can
+    // actually serve (see models.ts) — so these are only the cold start, and
+    // every one must be servable over chat completions: the GPT models that
+    // only answer on the Responses API are reachable by free text, never
+    // advertised here.
     id: "github-copilot",
     name: "GitHub Copilot",
     shape: "openai",
     baseUrl: "https://api.individual.githubcopilot.com",
-    models: ["gpt-6-astra", "claude-opus-5", "claude-sonnet-5", "gemini-3.8-flash", "grok-4.6"],
+    models: ["gpt-5.5", "gpt-5.4-mini", "gpt-5.3-codex", "claude-sonnet-5", "claude-opus-4.8"],
     auth: "oauth",
     headers: copilotHeaders,
     color: "#24292F",
@@ -227,7 +259,9 @@ export const PRESETS: ProviderPreset[] = [
     name: "Z.ai Coding",
     shape: "anthropic",
     baseUrl: "https://api.z.ai/api/anthropic",
-    models: ["glm-5.2", "glm-4.7"],
+    // GLM-5.3 is the current flagship, 5.3-flash its cheaper native-multimodal
+    // sibling (both fully available on the coding plan); 5.2 stays as fallback.
+    models: ["glm-5.3", "glm-5.3-flash", "glm-5.2"],
     apiKeyUrl: "https://z.ai/manage-apikey/apikey-list",
     color: "#3B5BFD",
     icon: "zai",
@@ -262,7 +296,10 @@ export const PRESETS: ProviderPreset[] = [
     name: "Gemini",
     shape: "openai",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-    models: ["gemini-2.5-pro", "gemini-2.5-flash"],
+    // The 2.x shelf is being retired (2.5-flash-lite already 404s, naming
+    // 3.5-flash-lite as its replacement) — the fallback leads with the 3.x
+    // ids Google and OpenCode's own docs both name now.
+    models: ["gemini-3.5-flash", "gemini-3.5-flash-lite"],
     apiKeyUrl: "https://aistudio.google.com/apikey",
     color: "#1E88E5",
     icon: "gemini",
@@ -292,7 +329,9 @@ export const PRESETS: ProviderPreset[] = [
     // endpoint here that serves a standing shelf of $0 models. The picker's
     // live listing is the real catalog; these are the fallback, led by the
     // free model that suits a browser agent best (tool calls AND vision, which
-    // most of the free tier lacks).
+    // most of the free tier lacks). The free shelf rotates — these are the ids
+    // OpenCode's own Zen docs name right now, so a cold open never offers a
+    // model the endpoint already retired (a dead free id answers 500).
     //
     // Free means $0 per token, NOT no card: an OpenCode account wants billing
     // details before it issues a key at all. `apiKeyUrl` goes where that is
@@ -302,27 +341,87 @@ export const PRESETS: ProviderPreset[] = [
     shape: "openai",
     baseUrl: "https://opencode.ai/zen/v1",
     models: [
-      "muse-spark-1.3-contributor-free",
-      "minimax-m3-free",
-      "grok-code",
-      "glm-5-free",
+      "mimo-v2.5-free",
+      "deepseek-v4-flash-free",
+      "big-pickle",
+      "glm-5.2",
       "claude-sonnet-5",
       "gpt-5.4",
     ],
     apiKeyUrl: "https://opencode.ai/auth",
+    sessionHeader: true,
+    // Per OpenCode's Zen docs: GPT/Grok/Muse-Spark live on /responses,
+    // Claude/Qwen on /messages. (Gemini lives on its own Google endpoint,
+    // which this extension has no adapter for — those ids stay on chat
+    // completions and fail loudly rather than silently.)
+    modelRoutes: {
+      responses: [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gpt-5.5",
+        "gpt-5.5-pro",
+        "gpt-5.4",
+        "gpt-5.4-pro",
+        "gpt-5.4-mini",
+        "gpt-5.4-nano",
+        "gpt-5.3-codex",
+        "gpt-5.3-codex-spark",
+        "gpt-5.2",
+        "gpt-5.2-codex",
+        "gpt-5.1",
+        "gpt-5.1-codex",
+        "gpt-5.1-codex-max",
+        "gpt-5.1-codex-mini",
+        "gpt-5",
+        "gpt-5-codex",
+        "gpt-5-nano",
+        "grok-4.6",
+        "grok-4.5",
+        "grok-build-0.1",
+        "muse-spark-1.2",
+      ],
+      anthropic: [
+        "claude-fable-5",
+        "claude-opus-5",
+        "claude-opus-4-8",
+        "claude-opus-4-7",
+        "claude-opus-4-6",
+        "claude-opus-4-5",
+        "claude-sonnet-5",
+        "claude-sonnet-4-6",
+        "claude-sonnet-4-5",
+        "claude-haiku-4-5",
+        "qwen3.7-max",
+        "qwen3.7-plus",
+        "qwen3.6-plus",
+        "qwen3.5-plus",
+      ],
+    },
     color: "#171717",
     icon: "opencode",
   },
   {
     // The same key as `opencode`, on OpenCode's cheaper catalog — a different
     // endpoint and a different shelf, not a different way to pay, so it keeps
-    // its own row rather than a `paired` qualifier.
+    // its own row rather than a `paired` qualifier. No free tier here; the ids
+    // are OpenCode's own Go docs. `ox-alpha` was GLM-5.3-flash's anonymous
+    // test name and is retired — it 404s, so it is not listed.
     id: "opencode-go",
     name: "OpenCode Go",
     shape: "openai",
     baseUrl: "https://opencode.ai/zen/go/v1",
-    models: ["ox-alpha-free", "qwen3.8-max", "kimi-k2.6", "glm-5.3"],
+    models: ["glm-5.3", "kimi-k2.6", "qwen3.8-max", "mimo-v2.5"],
     apiKeyUrl: "https://opencode.ai/auth",
+    sessionHeader: true,
+    // Per OpenCode's Go docs, with pi's correction: pi reroutes minimax-m2.7
+    // and qwen3.5/3.6-plus to chat completions (their Go endpoints want Bearer
+    // on /chat/completions despite what models.dev claims), so only the ids
+    // below ride /messages and /responses.
+    modelRoutes: {
+      responses: ["grok-4.5", "gpt-5.6-luna"],
+      anthropic: ["minimax-m3", "minimax-m2.5", "qwen3.8-max", "qwen3.7-max", "qwen3.7-plus"],
+    },
     color: "#404040",
     icon: "opencode",
   },

@@ -1,6 +1,6 @@
 import type { ChatProvider, ChatMessage, ToolDef, Delta, ResolvedProviderConfig } from "./types";
 import { apiUrl, parseToolArgs } from "@providerkit/core";
-import { logCacheUsage, providerHeaders, streamSse } from "./http";
+import { logCacheUsage, promptCacheKey, providerHeaders, sessionHeaders, streamSse } from "./http";
 
 /**
  * OpenAI-shape adapter — works with any OpenAI-compatible endpoint.
@@ -17,6 +17,7 @@ export function createOpenAIProvider(config: ResolvedProviderConfig): ChatProvid
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
           ...providerHeaders(config.id, messages),
+          ...sessionHeaders(config.id, config.sessionId),
         },
         body: JSON.stringify(buildOpenAIBody(config, messages, tools)),
         provider: config,
@@ -122,6 +123,12 @@ export function buildOpenAIBody(
     stream: true,
     stream_options: { include_usage: true },
   };
+
+  // The gateway's server-side prompt cache, keyed per conversation — what pi
+  // sends as `prompt_cache_key` on the same endpoint. Only the presets that
+  // ask for the session header ever carry one.
+  const cacheKey = promptCacheKey(config.id, config.sessionId);
+  if (cacheKey) body.prompt_cache_key = cacheKey;
 
   if (tools.length > 0) {
     body.tools = tools.map(toOpenAITool);

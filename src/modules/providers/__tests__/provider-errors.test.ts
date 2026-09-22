@@ -179,4 +179,15 @@ describe("isTransportFailure", () => {
     expect(isRetryable(new TypeError("Failed to fetch"))).toBe(true);
     expect(isRetryable(new TypeError("undefined is not iterable"))).toBe(false);
   });
+
+  it("retries a quota error only when the server names a short wait", () => {
+    // A per-minute throttle with a 3-second RetryInfo recovers by waiting;
+    // an exhausted balance (no wait, or a window-scale one) still fails fast.
+    expect(isRetryable(new ProviderError("quota", 429, "quota", 3000))).toBe(true);
+    expect(isRetryable(new ProviderError("quota", 429, "quota"))).toBe(false);
+    expect(isRetryable(new ProviderError("quota", 429, "quota", 2 * 3_600_000))).toBe(false);
+    // The other permanent kinds never retry, wait or not.
+    expect(isRetryable(new ProviderError("model", 404, "model", 3000))).toBe(false);
+    expect(isRetryable(new ProviderError("plan", 403, "entitlement", 3000))).toBe(false);
+  });
 });

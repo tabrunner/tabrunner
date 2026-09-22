@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { isKeyRejected, listModels, pickLatestModel, resolveProviderModel } from "../models";
+import { checkCredential, isKeyRejected, listModels, pickLatestModel, resolveProviderModel } from "../models";
 import { PRESETS } from "../presets";
 import { ProviderError } from "../types";
 import type { ProviderConfig } from "../types";
@@ -135,6 +135,20 @@ describe("isKeyRejected", () => {
   });
 });
 
+describe("checkCredential", () => {
+  it("hands the listing back with the verdict, so the add form can warm the cache", async () => {
+    stubFetch(200, { data: [{ id: "glm-5.3" }, { id: "glm-5.3-flash" }] });
+    const checked = await checkCredential(anthropicConfig);
+    expect(checked.rejected).toBe(false);
+    expect(checked.models.map((m) => m.id)).toEqual(["glm-5.3", "glm-5.3-flash"]);
+  });
+
+  it("reports a rejection with no models to warm", async () => {
+    stubFetch(401, { error: { message: "invalid x-api-key" } });
+    expect(await checkCredential(anthropicConfig)).toEqual({ rejected: true, models: [] });
+  });
+});
+
 describe("pickLatestModel", () => {
   it("picks the newest by created", () => {
     expect(
@@ -181,8 +195,7 @@ describe("auto naming agrees with the run's fallback", () => {
   });
 });
 
-describe("resolveProviderModel", () => {
-  it("returns the persisted model without fetching", async () => {
+describe("resolveProviderModel", () => {  it("returns the persisted model without fetching", async () => {
     const mock = stubFetch(200, { data: [] });
     const resolved = await resolveProviderModel({ ...anthropicConfig, model: "k3[1m]" });
     expect(resolved.model).toBe("k3[1m]");
@@ -254,8 +267,7 @@ describe("modelsTarget", () => {
   });
 });
 
-describe("listModels headers", () => {
-  it("sends GitHub Copilot's editor fingerprint — its /models route demands it", async () => {
+describe("listModels headers", () => {  it("sends GitHub Copilot's editor fingerprint — its /models route demands it", async () => {
     const mock = stubFetch(200, { data: [{ id: "gpt-6-astra" }] });
 
     await listModels({ ...openaiConfig, id: "github-copilot" });
@@ -271,5 +283,97 @@ describe("listModels headers", () => {
     await listModels(openaiConfig);
     const headers = mock.mock.calls[0]![1]?.headers as Record<string, string>;
     expect(Object.keys(headers)).toEqual(["Authorization"]);
+  });
+});
+
+describe("copilot listing filter", () => {
+  const copilot = {
+    ...openaiConfig,
+    id: "github-copilot",
+    baseUrl: "https://api.individual.githubcopilot.com",
+  };
+
+  it("keeps picker-enabled models and drops disabled or tool-less ones", async () => {
+    stubFetch(200, {
+      data: [
+        { id: "gpt-5.5", model_picker_enabled: true, policy: { state: "enabled" } },
+        // Picking this one answers `model_not_supported` at run time.
+        { id: "gpt-5.4", model_picker_enabled: true, policy: { state: "disabled" } },
+        // An agent that cannot call tools is not a runnable engine.
+        {
+          id: "text-model",
+          model_picker_enabled: true,
+          policy: { state: "enabled" },
+          capabilities: { supports: { tool_calls: false } },
+        },
+        // Never offered in the picker — not servable by this account.
+        { id: "hidden-model", model_picker_enabled: false, policy: { state: "enabled" } },
+      ],
+    });
+    expect((await listModels(copilot)).map((m) => m.id)).toEqual(["gpt-5.5"]);
+  });
+
+  it("falls back to policy-enabled models when no picker flag is set at all", async () => {
+    // Some Individual accounts report false for every picker flag despite
+    // explicit enabled policies — an empty list would hide the whole catalog.
+    stubFetch(200, {
+      data: [
+        { id: "gpt-5.5", model_picker_enabled: false, policy: { state: "enabled" } },
+        { id: "gpt-5.4", model_picker_enabled: false, policy: { state: "disabled" } },
+      ],
+    });
+    expect((await listModels(copilot)).map((m) => m.id)).toEqual(["gpt-5.5"]);
+  });
+
+  it("leaves other providers' listings untouched", async () => {
+    stubFetch(200, {
+      data: [{ id: "gpt-5", model_picker_enabled: false, policy: { state: "disabled" } }],
+    });
+    expect((await listModels(openaiConfig)).map((m) => m.id)).toEqual(["gpt-5"]);
+  });
+});
+
+describe("gateway model routing", () => {
+  const zen: ProviderConfig = {
+    id: "opencode",
+    name: "OpenCode Zen",
+    shape: "openai",
+    baseUrl: "https://opencode.ai/zen/v1",
+    apiKey: "sk-test",
+    createdAt: 0,
+  };
+  const go: ProviderConfig = { ...zen, id: "opencode-go", baseUrl: "https://opencode.ai/zen/go/v1" };
+
+  it("routes Zen Claude models to Anthropic Messages one level up", async () => {
+    const resolved = await resolveProviderModel({ ...zen, model: "claude-sonnet-5" });
+    expect(resolved.shape).toBe("anthropic");
+    expect(resolved.baseUrl).toBe("https://opencode.ai/zen");
+  });
+
+  it("routes Zen GPT models to Responses on the same base", async () => {
+    const resolved = await resolveProviderModel({ ...zen, model: "gpt-5.4" });
+    expect(resolved.shape).toBe("responses");
+    expect(resolved.baseUrl).toBe("https://opencode.ai/zen/v1");
+  });
+
+  it("leaves Zen chat-completions models on the preset's shape", async () => {
+    const resolved = await resolveProviderModel({ ...zen, model: "mimo-v2.5-free" });
+    expect(resolved.shape).toBe("openai");
+    expect(resolved.baseUrl).toBe("https://opencode.ai/zen/v1");
+  });
+
+  it("routes Go Qwen Max to Anthropic Messages and keeps GLM on completions", async () => {
+    const qwen = await resolveProviderModel({ ...go, model: "qwen3.8-max" });
+    expect(qwen.shape).toBe("anthropic");
+    expect(qwen.baseUrl).toBe("https://opencode.ai/zen/go");
+    const glm = await resolveProviderModel({ ...go, model: "glm-5.3" });
+    expect(glm.shape).toBe("openai");
+    expect(glm.baseUrl).toBe("https://opencode.ai/zen/go/v1");
+  });
+
+  it("never reroutes a non-gateway provider", async () => {
+    const resolved = await resolveProviderModel({ ...openaiConfig, model: "gpt-5" });
+    expect(resolved.shape).toBe("openai");
+    expect(resolved.baseUrl).toBe("https://api.openai.com/v1");
   });
 });

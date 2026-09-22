@@ -502,6 +502,7 @@
     "filterPlaceholder": "Filtrar {{n}} modelos…",
     "noMatch": "Nenhum modelo corresponde a “{{query}}” — limpe o filtro para ver a lista completa.",
     "moreModels": "Mais {{n}} — refine o filtro para alcançá-los.",
+    "listFallback": "A lista ao vivo não carregou — mostrando a lista salva, que pode estar desatualizada. Reabra o seletor para tentar de novo.",
     "thisChatOnly": "Segure {{mod}} para mudar só esta conversa"
   },
   "usage": {
@@ -575,7 +576,8 @@
       "signIn": "Entrar novamente →",
       "checkUrl": "Verificar URL base →",
       "addProvider": "Adicionar um provedor →",
-      "compact": "Compactar e tentar de novo →"
+      "compact": "Compactar e tentar de novo →",
+      "consentPage": "Abrir página de consentimento →"
     },
     "details": "Detalhes",
     "screenshotAlt": "Captura da página feita pelo agente",
@@ -981,6 +983,7 @@
     "kindQuota": "Seu uso em {{provider}} acabou — aguarde o limite reiniciar ou recarregue na sua conta {{provider}}",
     "kindAuth": "{{provider}} rejeitou a chave de API — confira ou substitua a chave nas configurações do provedor",
     "kindAuthSignedIn": "{{provider}} não aceitou o login — entre novamente nas configurações do provedor",
+    "dataPolicy": "{{provider}} não pode rodar este modelo até você aceitar a política de dados — ele treina com dados das suas execuções. Abra {{url}}, aceite e tente de novo",
     "kindModel": "{{provider}} não reconhece este modelo — ele pode ter sido renomeado ou removido; escolha outro",
     "kindRate": "{{provider}} está limitando as requisições — tente de novo em instantes",
     "kindRateRetry": "{{provider}} está limitando as requisições — tente de novo {{reset}}",

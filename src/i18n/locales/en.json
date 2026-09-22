@@ -502,6 +502,7 @@
     "filterPlaceholder": "Filter {{n}} models…",
     "noMatch": "No model matches “{{query}}” — clear the filter to see the full list.",
     "moreModels": "{{n}} more — narrow the filter to reach them.",
+    "listFallback": "Live list didn't load — showing the saved shelf, which may be older. Reopen this picker to retry.",
     "thisChatOnly": "Hold {{mod}} to change only this chat"
   },
   "usage": {
@@ -575,7 +576,8 @@
       "signIn": "Sign in again →",
       "checkUrl": "Check base URL →",
       "addProvider": "Add a provider →",
-      "compact": "Compact and retry →"
+      "compact": "Compact and retry →",
+      "consentPage": "Open consent page →"
     },
     "details": "Details",
     "screenshotAlt": "Screenshot of the page the agent captured",
@@ -981,6 +983,7 @@
     "kindQuota": "{{provider}} is out of usage — wait for the limit to reset, or top up on your {{provider}} account",
     "kindAuth": "{{provider}} rejected the API key — check it or replace it in the provider settings",
     "kindAuthSignedIn": "{{provider}} didn't accept the sign-in — sign in again in the provider settings",
+    "dataPolicy": "{{provider}} can't run this model until you accept its data policy — it trains on data from your runs. Open {{url}}, accept, then retry",
     "kindModel": "{{provider}} doesn't recognize this model — it may have been renamed or removed; pick another one",
     "kindRate": "{{provider}} is rate-limiting requests — try again in a moment",
     "kindRateRetry": "{{provider}} is rate-limiting requests — try again {{reset}}",

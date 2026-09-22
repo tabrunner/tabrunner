@@ -1,6 +1,12 @@
 import type { ChatProvider, ChatMessage, Delta, ResolvedProviderConfig, ToolDef } from "./types";
 import { apiUrl, parseToolArgs } from "@providerkit/core";
-import { anthropicHeaders, anthropicOAuthHeaders, logCacheUsage, streamSse } from "./http";
+import {
+  anthropicHeaders,
+  anthropicOAuthHeaders,
+  logCacheUsage,
+  sessionHeaders,
+  streamSse,
+} from "./http";
 
 /**
  * Claude Code identities the subscription token as theirs, so OAuth traffic
@@ -23,10 +29,15 @@ export function createAnthropicProvider(config: ResolvedProviderConfig): ChatPro
       const stream = streamSse({
         url: apiUrl(config.baseUrl, "/v1/messages"),
         // A signed-in subscription provider sends the access token as a Bearer
-        // and talks OAuth-token mode; a key provider sends x-api-key.
-        headers: config.auth
-          ? anthropicOAuthHeaders(config.apiKey)
-          : anthropicHeaders(config.apiKey),
+        // and talks OAuth-token mode; a key provider sends x-api-key. Gateway
+        // rows routed here (OpenCode Zen/Go Claude models) also carry the
+        // per-conversation session header — same rule as the other adapters.
+        headers: {
+          ...(config.auth
+            ? anthropicOAuthHeaders(config.apiKey)
+            : anthropicHeaders(config.apiKey)),
+          ...sessionHeaders(config.id, config.sessionId),
+        },
         body: JSON.stringify(buildAnthropicBody(config, messages, tools)),
         provider: config,
         signal,

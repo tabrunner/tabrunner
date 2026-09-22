@@ -386,7 +386,7 @@ export class Bridge {
       if (!config) throw new Error(i18n.t("chat.hint.noProvider"));
       const resolved = await resolveProviderModel(await ensureProviderCredential(config));
       const result = await compactConversation(
-        createProvider(resolved),
+        createProvider({ ...resolved, sessionId: conversationId }),
         conversationId,
         // One short call the client is holding a request open for.
         new AbortController().signal,

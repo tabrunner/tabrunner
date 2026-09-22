@@ -58,6 +58,23 @@ const WINDOW_KEYS = {
 } as const satisfies Record<NonNullable<RateLimitReset["window"]>, string>;
 
 /**
+ * OpenCode's data-policy gate: some gateway models train on run data and
+ * refuse until the account accepts at the workspace URL the error carries.
+ * It is NOT a bad key — the classified auth wording would send the user to
+ * replace a working credential — so it gets its own lead line naming the
+ * actual fix, and no kind: nothing to retry, compact, or re-key. The consent
+ * anchor in the chat reads this same helper, so the button and the copy can
+ * never disagree about which URL to open.
+ */
+export function dataPolicyConsentUrl(text: string): string | undefined {
+  if (!/DataPolicyError/i.test(text)) return undefined;
+  const raw = /https:\/\/[^\s"'{}]+/.exec(text)?.[0];
+  if (!raw) return undefined;
+  // Trailing prose punctuation is not part of the link.
+  return raw.replace(/[).,.]+$/, "");
+}
+
+/**
  * The rate-limit lead line. "Try again in a moment" is only honest for a
  * per-minute throttle — when the response names a subscription window (Claude
  * OAuth 5-hour/weekly via headers, ChatGPT via the body) or any reset time,
@@ -97,7 +114,31 @@ function providerErrorMessage(
   now: number,
 ): { message: string; kind?: ErrorKind } {
   const label = providerDisplayName(provider);
-  const kind = classifyHttp(status, text);
+  // The data-policy gate is checked before classification: its body would
+  // otherwise classify as auth ("rejected the key"), which misdiagnoses a
+  // working credential and offers re-keying as the fix.
+  const consentUrl = dataPolicyConsentUrl(text);
+  if (consentUrl) {
+    return {
+      message: `${i18n.t("errors.dataPolicy", { provider: label, url: consentUrl })}: ${text}`,
+    };
+  }
+  // Two phrasings the shared classifier doesn't name yet (see provider-errors
+  // boundary tests for what it does): Google's key rejection reads as a
+  // generic invalid, but the fix is the key — and a model without multiturn
+  // reads the same way, but the fix is another model, which is what `model`
+  // offers (no dialog: the picker is already on screen).
+  let kind = classifyHttp(status, text);
+  if (/pass a valid API key|API key (not valid|is invalid|is required|is missing)/i.test(text)) {
+    kind = "auth";
+  } else if (/multiturn chat is not enabled/i.test(text)) {
+    kind = "model";
+  } else if (/\[1311\]|暂未开放/.test(text)) {
+    // Z.ai's plan gate ("[1311][当前订阅套餐暂未开放…权限]" — the current plan
+    // hasn't been granted this model): a valid key on a tier without the
+    // model, so the fix is the plan (or another model), never the key.
+    kind = "entitlement";
+  }
   const key = ERROR_KIND_KEYS[kind];
   if (key) {
     const line =
@@ -172,6 +213,31 @@ export function providerHeaders(id: string, messages?: ChatMessage[]): Record<st
 }
 
 /**
+ * OpenCode's per-conversation routing header (`x-opencode-session`), sent on
+ * chat turns for the presets that ask for it — both Zen rows. It is what
+ * marks the call as coming from inside a client session: without it the free
+ * tier answers `FreeTierError`. The value is the conversation id, the same
+ * granularity pi sends its own session id at. Absent when the preset doesn't
+ * ask or the run carries no conversation (a probe outside any chat).
+ */
+export function sessionHeaders(id: string, sessionId?: string): Record<string, string> {
+  const wants = PRESETS.find((preset) => preset.id === id)?.sessionHeader;
+  if (!wants || !sessionId) return {};
+  return { "x-opencode-session": sessionId };
+}
+
+/**
+ * The conversation key for the gateway's server-side prompt cache — pi and
+ * the opencode CLI both send it (`prompt_cache_key` / `promptCacheKey`) so
+ * consecutive turns in one conversation share the cached prefix. Same gate
+ * as the header above: only the presets that ask, only with a conversation.
+ */
+export function promptCacheKey(id: string, sessionId?: string): string | undefined {
+  const wants = PRESETS.find((preset) => preset.id === id)?.sessionHeader;
+  return wants && sessionId ? sessionId : undefined;
+}
+
+/**
  * Anthropic dual-auth, shared by /v1/messages and /v1/models: Anthropic reads
  * x-api-key, coding-plan proxies (Kimi, Z.ai, QwenCloud) read Authorization:
  * Bearer — send both, each server picks its own.
@@ -237,6 +303,47 @@ export function logCacheUsage(total: number, read: number, written = 0): void {
 }
 
 /**
+ * Google's wait, which the shared body parser can't see: quota errors arrive
+ * array-wrapped (`[{error: …}]`, so `body.error` is undefined) with the delay
+ * in a `google.rpc.RetryInfo` detail (`"3s"`) and/or prose ("Please retry in
+ * 3.3s"). Returns ms, or undefined when the body names no wait. Exported for
+ * tests — the only caller is the reset merge below.
+ */
+export function googleRetryAfterMs(text: string): number | undefined {
+  try {
+    const roots: unknown = JSON.parse(text);
+    const items = Array.isArray(roots) ? roots : [roots];
+    for (const item of items) {
+      const error = (item as { error?: unknown } | null)?.error as
+        | { details?: unknown }
+        | undefined;
+      if (!error || !Array.isArray(error.details)) continue;
+      for (const detail of error.details) {
+        const delay = (detail as { retryDelay?: unknown })?.retryDelay;
+        if (typeof delay === "string") {
+          const ms = goSecondsToMs(delay);
+          if (ms !== undefined) return ms;
+        }
+      }
+    }
+  } catch {
+    // Not JSON — the prose match below still applies.
+  }
+  const prose = /please retry in (\d+(?:\.\d+)?)\s*s/i.exec(text)?.[1];
+  if (prose === undefined) return undefined;
+  const ms = Math.round(Number(prose) * 1000);
+  return Number.isFinite(ms) ? ms : undefined;
+}
+
+/** Go-style whole-or-fractional seconds (`"3s"`, `"1.5s"`) to ms. */
+function goSecondsToMs(text: string): number | undefined {
+  const seconds = /^(\d+(?:\.\d+)?)s$/.exec(text.trim())?.[1];
+  if (seconds === undefined) return undefined;
+  const ms = Math.round(Number(seconds) * 1000);
+  return Number.isFinite(ms) ? ms : undefined;
+}
+
+/**
  * POST an SSE request and yield each `data:` payload.
  *
  * What stays here is the ENVELOPE, and only because it cannot be shared: the
@@ -281,15 +388,21 @@ export async function* streamSse(opts: {
     const text = await res.text().catch(() => "");
     const now = Date.now();
     // Headers are authoritative (Anthropic names the window); the body fills
-    // gaps (ChatGPT's codex backend carries the reset only in the 429 body).
+    // gaps (ChatGPT's codex backend carries the reset only in the 429 body,
+    // Google only in RetryInfo — see googleRetryAfterMs).
     const fromHeaders = parseRateLimitReset(res.headers, now);
     const fromBody = parseUsageLimitBody(text, now);
+    const fromGoogle = googleRetryAfterMs(text);
     const reset: RateLimitReset = {
-      ...(fromHeaders.resetAtMs !== undefined || fromBody.resetAtMs !== undefined
-        ? { resetAtMs: fromHeaders.resetAtMs ?? fromBody.resetAtMs }
+      ...(fromHeaders.resetAtMs !== undefined ||
+      fromBody.resetAtMs !== undefined ||
+      fromGoogle !== undefined
+        ? { resetAtMs: fromHeaders.resetAtMs ?? fromBody.resetAtMs ?? now + (fromGoogle ?? 0) }
         : {}),
-      ...(fromHeaders.retryAfterMs !== undefined || fromBody.retryAfterMs !== undefined
-        ? { retryAfterMs: fromHeaders.retryAfterMs ?? fromBody.retryAfterMs }
+      ...(fromHeaders.retryAfterMs !== undefined ||
+      fromBody.retryAfterMs !== undefined ||
+      fromGoogle !== undefined
+        ? { retryAfterMs: fromHeaders.retryAfterMs ?? fromGoogle ?? fromBody.retryAfterMs }
         : {}),
       ...(fromHeaders.window || fromBody.window
         ? { window: fromHeaders.window ?? fromBody.window }

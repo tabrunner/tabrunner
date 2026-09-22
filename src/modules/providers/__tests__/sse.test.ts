@@ -232,6 +232,208 @@ describe("OpenAI provider SSE parsing", () => {
     expect(isRetryable(error)).toBe(false);
     vi.restoreAllMocks();
   });
+
+  it("sends the session header on Zen turns carrying a conversation", async () => {
+    const config: ResolvedProviderConfig = {
+      ...makeConfig("openai", "https://opencode.ai/zen/v1"),
+      id: "opencode",
+      sessionId: "conv-1",
+    };
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(sseStream(["data: [DONE]"]), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+    for await (const d of createOpenAIProvider(config).stream([], [], new AbortController().signal)) {
+      void d;
+    }
+    const headers = spy.mock.calls[0]![1]?.headers as Record<string, string>;
+    expect(headers["x-opencode-session"]).toBe("conv-1");
+    vi.restoreAllMocks();
+  });
+
+  it("words the data-policy gate as consent, never as a rejected key", async () => {
+    const config: ResolvedProviderConfig = {
+      ...makeConfig("openai", "https://opencode.ai/zen/go/v1"),
+      id: "opencode-go",
+    };
+    const provider = createOpenAIProvider(config);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        '{"type":"error","error":{"type":"DataPolicyError","message":"consentimento explícito: https://opencode.ai/workspace/wrk_abc/go"}}',
+        { status: 403 },
+      ),
+    );
+
+    const error = await (async () => {
+      try {
+        for await (const delta of provider.stream([], [], new AbortController().signal)) {
+          void delta;
+        }
+      } catch (e) {
+        return e;
+      }
+      throw new Error("expected the stream to throw");
+    })();
+
+    const err = error as ProviderError;
+    expect(err).toBeInstanceOf(ProviderError);
+    // The fix is opening the consent page, not replacing a working key.
+    expect(err.message).toContain("data policy");
+    expect(err.message).toContain("https://opencode.ai/workspace/wrk_abc/go");
+    expect(err.message).not.toContain("rejected the API key");
+    expect(err.kind).toBeUndefined();
+    vi.restoreAllMocks();
+  });
+
+  it("words Z.ai's plan gate as entitlement, never as a rejected key", async () => {
+    const config: ResolvedProviderConfig = {
+      ...makeConfig("openai", "https://api.z.ai/api/anthropic"),
+      id: "zai",
+    };
+    const provider = createOpenAIProvider(config);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        '{"type":"error","error":{"type":"api_error","code":"1311","message":"[1311][当前订阅套餐暂未开放GLM-5.3-FlashX权限][20260922193547f2080868bec24d38]"}}',
+        { status: 403 },
+      ),
+    );
+
+    const error = await (async () => {
+      try {
+        for await (const delta of provider.stream([], [], new AbortController().signal)) {
+          void delta;
+        }
+      } catch (e) {
+        return e;
+      }
+      throw new Error("expected the stream to throw");
+    })();
+
+    const err = error as ProviderError;
+    expect(err.kind).toBe("entitlement");
+    expect(err.message).toContain("your plan doesn't include");
+    expect(err.message).not.toContain("rejected the API key");
+    vi.restoreAllMocks();
+  });
+
+  it("names Google's key rejection as auth and carves its wait out of RetryInfo", async () => {
+    const config = makeConfig("openai", "https://generativelanguage.googleapis.com/v1beta/openai");
+    const provider = createOpenAIProvider(config);
+
+    const keySpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response('[{"error":{"code":400,"message":"Please pass a valid API key"}}]', {
+        status: 400,
+      }),
+    );
+    const keyError = await (async () => {
+      try {
+        for await (const delta of provider.stream([], [], new AbortController().signal)) {
+          void delta;
+        }
+      } catch (e) {
+        return e;
+      }
+      throw new Error("expected the stream to throw");
+    })();
+    expect(keySpy).toHaveBeenCalled();
+    expect((keyError as ProviderError).kind).toBe("auth");
+    expect((keyError as Error).message).toContain("rejected the API key");
+    vi.restoreAllMocks();
+
+    const quotaSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          {
+            error: {
+              code: 429,
+              message: "You exceeded your current quota. Please retry in 3.3s.",
+              status: "RESOURCE_EXHAUSTED",
+              details: [{ retryDelay: "3s" }],
+            },
+          },
+        ]),
+        { status: 429 },
+      ),
+    );
+    const quotaError = await (async () => {
+      try {
+        for await (const delta of provider.stream([], [], new AbortController().signal)) {
+          void delta;
+        }
+      } catch (e) {
+        return e;
+      }
+      throw new Error("expected the stream to throw");
+    })();
+    expect(quotaSpy).toHaveBeenCalled();
+    expect((quotaError as ProviderError).kind).toBe("quota");
+    // The 3-second wait survives on the error, so the loop can sleep it out
+    // instead of failing a throttled turn outright.
+    expect((quotaError as ProviderError).retryAfterMs).toBe(3000);
+    expect(isRetryable(quotaError)).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  it("words a multiturn-less model as a model problem, not a malformed request", async () => {
+    const config = makeConfig("openai", "https://generativelanguage.googleapis.com/v1beta/openai");
+    const provider = createOpenAIProvider(config);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        '[{"error":{"code":400,"message":"Multiturn chat is not enabled for models/antigravity-preview-latest"}}]',
+        { status: 400 },
+      ),
+    );
+    const error = await (async () => {
+      try {
+        for await (const delta of provider.stream([], [], new AbortController().signal)) {
+          void delta;
+        }
+      } catch (e) {
+        return e;
+      }
+      throw new Error("expected the stream to throw");
+    })();
+    expect((error as ProviderError).kind).toBe("model");
+    vi.restoreAllMocks();
+  });
+
+  it("omits the session header without a conversation or off Zen", async () => {
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(sseStream(["data: [DONE]"]), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+    const noSession: ResolvedProviderConfig = {
+      ...makeConfig("openai", "https://opencode.ai/zen/v1"),
+      id: "opencode",
+    };
+    for await (const d of createOpenAIProvider(noSession).stream(
+      [],
+      [],
+      new AbortController().signal,
+    )) {
+      void d;
+    }
+    const plain = makeConfig("openai", "https://api.openai.com/v1");
+    for await (const d of createOpenAIProvider({ ...plain, sessionId: "conv-1" }).stream(
+      [],
+      [],
+      new AbortController().signal,
+    )) {
+      void d;
+    }
+    for (const call of spy.mock.calls) {
+      const headers = call[1]?.headers as Record<string, string>;
+      expect(headers["x-opencode-session"]).toBeUndefined();
+    }
+    vi.restoreAllMocks();
+  });
 });
 
 describe("Anthropic provider SSE parsing", () => {

@@ -8,14 +8,15 @@ import type {
 } from "./types";
 import { ProviderError } from "./types";
 import { apiUrl, parseToolArgs } from "@providerkit/core";
-import { logCacheUsage, streamSse } from "./http";
+import { logCacheUsage, sessionHeaders, streamSse } from "./http";
 import { PRESETS } from "./presets";
 
 /**
  * Responses-shape adapter — `POST {base}/responses`, for endpoints that serve
- * the Responses wire format. Two do: the ChatGPT subscription backend
+ * the Responses wire format. Three do: the ChatGPT subscription backend
  * (chatgpt.com/backend-api/codex), which exposes no chat-completions surface
- * at all, and Meta's Model API.
+ * at all, Meta's Model API, and the OpenCode gateway's GPT/Grok/Muse-Spark
+ * shelf (routed per model — see `modelRoutes` on the preset).
  *
  * Auth is whatever the credential seam swapped into `apiKey` — a subscription
  * token for ChatGPT, a minted key for Meta. The ChatGPT backend also requires
@@ -33,7 +34,12 @@ import { PRESETS } from "./presets";
 export function createResponsesProvider(config: ResolvedProviderConfig): ChatProvider {
   return {
     async *stream(messages, tools, signal): AsyncIterable<Delta> {
-      const headers: Record<string, string> = { Authorization: `Bearer ${config.apiKey}` };
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${config.apiKey}`,
+        // Gateway rows routed here (OpenCode Zen/Go GPT models) carry the
+        // per-conversation session header — without it the free tier refuses.
+        ...sessionHeaders(config.id, config.sessionId),
+      };
       // The account id is REQUIRED by the backend; a missing one surfaces as a
       // clean 401 the user can recover from by re-signing-in.
       if (config.auth?.chatgptAccountId) {

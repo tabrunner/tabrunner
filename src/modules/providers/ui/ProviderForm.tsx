@@ -5,7 +5,7 @@ import { useProvidersStore } from "./store";
 import { ProviderIcon } from "./ProviderIcon";
 import { OAuthSignIn, SIGN_IN_DONE_MS } from "./OAuthSignIn";
 import { PRESETS, providerName } from "../presets";
-import { isKeyRejected } from "../models";
+import { checkCredential, writeModelsCache } from "../models";
 import { splitErrorDetail } from "@/modules/conversation/error-detail";
 import type { OAuthCredential, ProviderConfig, ProviderShape } from "../types";
 import { Select } from "@/components/Select";
@@ -118,7 +118,7 @@ export function ProviderForm({
 
     const resolvedName = preset ? preset.name : name.trim();
     const resolvedUrl = preset ? preset.baseUrl : baseUrl.trim();
-    const key = apiKey.trim();
+    const key = apiKey.trim() || (existing?.apiKey ?? "");
 
     if (!preset && !resolvedName) {
       fail(t("providerForm.nameRequired"));
@@ -144,23 +144,32 @@ export function ProviderForm({
     try {
       // A key the endpoint refuses would otherwise only surface mid-task, so
       // it's spent here instead — one listing call, and only a flat rejection
-      // stops the save.
+      // stops the save. A successful listing also warms the picker's cache, so
+      // the panel opens on the live shelf instead of the preset fallback.
       setBusy("checking");
-      const rejected = await isKeyRejected(
+      const checked = await checkCredential(
         {
+          ...(preset?.id ? { id: preset.id } : {}),
           shape: preset ? preset.shape : shape,
           baseUrl: resolvedUrl,
-          apiKey: key || (existing?.apiKey ?? ""),
+          apiKey: key,
         },
         AbortSignal.timeout(KEY_CHECK_TIMEOUT_MS),
       );
-      if (rejected) {
+      if (checked.rejected) {
         // Bare name: the sentence is about a key, so "(API key)" would say it twice.
         fail(t("providerForm.keyRejected", { name: resolvedName }));
         return;
       }
       setBusy("saving");
-      onSaved?.(await save());
+      const id = await save();
+      if (checked.models.length > 0) {
+        // Same target shape the picker lists with (see modelsTarget), so the
+        // warmed entry is found, not orphaned. Custom rows learn their id at
+        // save time, which is why this lands after, not before.
+        writeModelsCache({ id, shape: preset ? preset.shape : shape, baseUrl: resolvedUrl, apiKey: key }, checked.models);
+      }
+      onSaved?.(id);
     } catch (err) {
       fail(err instanceof Error ? err.message : String(err));
     } finally {

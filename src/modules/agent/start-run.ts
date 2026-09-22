@@ -214,6 +214,10 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     let resolvedProvider: ResolvedProviderConfig | undefined;
     try {
       resolvedProvider = await resolveProviderModel(await ensureProviderCredential(providerConfig));
+      // Names the conversation for gateways that route (or gate) per session —
+      // OpenCode's Zen rows send it as `x-opencode-session`. Set here, at the
+      // one place that knows which conversation the run answers in.
+      resolvedProvider = { ...resolvedProvider, sessionId: conversationId };
       provider = createProvider(resolvedProvider);
       // Name the engine before anything else can end the run: the writer stamps
       // it on the run's summary, so the settled band (and a reopened panel) can

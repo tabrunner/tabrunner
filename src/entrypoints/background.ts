@@ -436,7 +436,7 @@ export default defineBackground(() => {
             if (!config) throw new Error(i18n.t("chat.hint.noProvider"));
             const resolved = await resolveProviderModel(await ensureProviderCredential(config));
             const result = await compactConversation(
-              createProvider(resolved),
+              createProvider({ ...resolved, sessionId: conversationId }),
               conversationId,
               controller.signal,
             );
