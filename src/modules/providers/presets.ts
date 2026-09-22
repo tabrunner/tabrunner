@@ -328,10 +328,10 @@ export const PRESETS: ProviderPreset[] = [
     // A gateway, like OpenRouter: one key, many vendors' models — and the only
     // endpoint here that serves a standing shelf of $0 models. The picker's
     // live listing is the real catalog; these are the fallback, led by the
-    // free model that suits a browser agent best (tool calls AND vision, which
-    // most of the free tier lacks). The free shelf rotates — these are the ids
-    // OpenCode's own Zen docs name right now, so a cold open never offers a
-    // model the endpoint already retired (a dead free id answers 500).
+    // contributor-tier Spark (free, agentic, and the shelf's steadiest free
+    // id). The free shelf rotates — these are the ids OpenCode's own Zen docs
+    // name right now, so a cold open never offers a model the endpoint already
+    // retired (a dead free id answers 500).
     //
     // Free means $0 per token, NOT no card: an OpenCode account wants billing
     // details before it issues a key at all. `apiKeyUrl` goes where that is
@@ -341,10 +341,10 @@ export const PRESETS: ProviderPreset[] = [
     shape: "openai",
     baseUrl: "https://opencode.ai/zen/v1",
     models: [
+      "muse-spark-1.3-contributor-free",
       "mimo-v2.5-free",
-      "deepseek-v4-flash-free",
-      "big-pickle",
-      "glm-5.2",
+      "mimo-v2.6-flash-free",
+      "glm-5.3",
       "claude-sonnet-5",
       "gpt-5.4",
     ],
@@ -356,6 +356,7 @@ export const PRESETS: ProviderPreset[] = [
     // completions and fail loudly rather than silently.)
     modelRoutes: {
       responses: [
+        "gpt-6-astra",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
@@ -376,13 +377,17 @@ export const PRESETS: ProviderPreset[] = [
         "gpt-5",
         "gpt-5-codex",
         "gpt-5-nano",
+        "grok-4.7",
         "grok-4.6",
         "grok-4.5",
         "grok-build-0.1",
+        "muse-spark-1.3",
         "muse-spark-1.2",
+        "muse-spark-1.3-contributor-free",
       ],
       anthropic: [
         "claude-fable-5",
+        "claude-fable-5-1",
         "claude-opus-5",
         "claude-opus-4-8",
         "claude-opus-4-7",
@@ -392,6 +397,7 @@ export const PRESETS: ProviderPreset[] = [
         "claude-sonnet-4-6",
         "claude-sonnet-4-5",
         "claude-haiku-4-5",
+        "qwen3.8-flash",
         "qwen3.7-max",
         "qwen3.7-plus",
         "qwen3.6-plus",
@@ -419,7 +425,12 @@ export const PRESETS: ProviderPreset[] = [
     // on /chat/completions despite what models.dev claims), so only the ids
     // below ride /messages and /responses.
     modelRoutes: {
-      responses: ["grok-4.5", "gpt-5.6-luna"],
+      responses: [
+        "grok-4.5",
+        "gpt-5.6-luna",
+        "muse-spark-1.3-contributor",
+        "muse-spark-1.2-contributor",
+      ],
       anthropic: ["minimax-m3", "minimax-m2.5", "qwen3.8-max", "qwen3.7-max", "qwen3.7-plus"],
     },
     color: "#404040",

@@ -354,6 +354,11 @@ describe("gateway model routing", () => {
     const resolved = await resolveProviderModel({ ...zen, model: "gpt-5.4" });
     expect(resolved.shape).toBe("responses");
     expect(resolved.baseUrl).toBe("https://opencode.ai/zen/v1");
+    // The contributor-free Spark lives on /responses too — on chat
+    // completions it answers a bare 500, which is the failure that proved it.
+    const spark = await resolveProviderModel({ ...zen, model: "muse-spark-1.3-contributor-free" });
+    expect(spark.shape).toBe("responses");
+    expect(spark.baseUrl).toBe("https://opencode.ai/zen/v1");
   });
 
   it("leaves Zen chat-completions models on the preset's shape", async () => {

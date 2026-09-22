@@ -56,12 +56,21 @@ describe("provider names", () => {
   it("never advertises a retired Zen id as fallback", () => {
     // A dead free id answers 500 at run time; the live listing is authoritative
     // but a cold open still offers these. `ox-alpha` was GLM-5.3-flash's
-    // anonymous test name, and no free Muse Spark ever existed on Zen.
+    // anonymous test name and is retired — and the contributor-free Spark is
+    // spelled exactly so (it exists: Zen's free shelf, /responses).
     const ids = PRESETS.filter((p) => p.id === "opencode" || p.id === "opencode-go").flatMap(
       (p) => p.models,
     );
     expect(ids).not.toContain("ox-alpha-free");
     expect(ids.some((id) => id.includes("comunity"))).toBe(false);
-    expect(ids).not.toContain("muse-spark-1.3-contributor-free");
+    expect(ids).toContain("muse-spark-1.3-contributor-free");
+  });
+
+  it("routes the contributor Spark to Responses like the rest of its family", () => {
+    // This id 500s on chat completions — the whole point of the routing table.
+    const zen = PRESETS.find((p) => p.id === "opencode");
+    expect(zen?.modelRoutes?.responses).toContain("muse-spark-1.3-contributor-free");
+    const go = PRESETS.find((p) => p.id === "opencode-go");
+    expect(go?.modelRoutes?.responses).toContain("muse-spark-1.3-contributor");
   });
 });
