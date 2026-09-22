@@ -581,6 +581,12 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
   // One context-overflow recovery per run — a fold that still doesn't fit will
   // not fit on the next attempt either, and retrying would only burn calls.
   let recoveredFromOverflow = false;
+  // Consecutive turns with neither text nor a tool call — a model gone mute
+  // (thoughts the adapter can't surface, a shim dropping signatures). Each
+  // such turn still bills a full prompt, so three in a row ends the run
+  // instead of spending the whole step budget on silence.
+  let consecutiveEmpty = 0;
+  const MAX_EMPTY_TURNS = 3;
 
   for (let step = 0; step < MAX_STEPS; step++) {
     if (signal.aborted) {
@@ -686,6 +692,21 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
       ...(turn.reasoning ? { reasoning: turn.reasoning } : {}),
       toolCalls: turn.toolCalls.length > 0 ? turn.toolCalls : undefined,
     });
+
+    if (turn.text.trim() === "" && turn.toolCalls.length === 0) {
+      consecutiveEmpty += 1;
+      if (consecutiveEmpty >= MAX_EMPTY_TURNS) {
+        // Mute three turns running: stop before the silence spends the
+        // budget. Unclassified on purpose — the provider changed something
+        // (or the adapter misses a dialect), and that report is the way
+        // forward; Retry stays offered for the transient case.
+        log.warn(`model went quiet ${MAX_EMPTY_TURNS} turns in a row — ending the run`);
+        callbacks.onError?.(i18n.t("errors.emptyTurns", { count: MAX_EMPTY_TURNS }));
+        return messages;
+      }
+    } else {
+      consecutiveEmpty = 0;
+    }
 
     if (turn.toolCalls.length === 0) {
       // Model responded with text only — nudge it back to tools. The ask_user
@@ -1062,7 +1083,12 @@ function handleDelta(delta: Delta, callbacks: LoopCallbacks, toolCalls: ToolCall
       callbacks.onReasoning?.(delta.text);
       return null;
     case "tool_use":
-      toolCalls.push({ id: delta.id, name: delta.name, args: delta.args });
+      toolCalls.push({
+        id: delta.id,
+        name: delta.name,
+        args: delta.args,
+        ...(delta.thoughtSignature ? { thoughtSignature: delta.thoughtSignature } : {}),
+      });
       return null;
     case "done":
     case "usage":

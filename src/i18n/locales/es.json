@@ -978,6 +978,7 @@
     "modelListError": "No se pudo cargar la lista de modelos — el endpoint respondió {{status}}. {{detail}}",
     "noModel": "No hay modelo definido para {{name}} y el endpoint no lista ninguno. Elige un modelo en Configuración.",
     "noModelData": "El endpoint respondió, pero no con una lista de modelos. Escribe tú un id de modelo, o déjalo vacío para elegir automáticamente al ejecutar.",
+    "emptyTurns": "Sin texto y sin llamada a herramienta durante {{count}} turnos seguidos — la ejecución se detuvo antes de gastar más tokens. Reintenta o elige otro modelo.",
     "apiError": "{{provider}} respondió {{status}} — {{detail}}",
     "kindEntitlement": "{{provider}} aceptó la clave, pero tu plan no incluye esta API — mejora el plan en tu cuenta de {{provider}}",
     "kindQuota": "Se agotó tu uso en {{provider}} — espera a que se reinicie el límite, o recarga saldo en tu cuenta de {{provider}}",

@@ -471,3 +471,55 @@ describe("runAgentLoop truncated text-only turn", () => {
     expect(nudge).not.toContain("short");
   });
 });
+
+describe("runAgentLoop mute-model guard", () => {
+  it("ends the run after three turns with no text and no tool call", async () => {
+    let calls = 0;
+    const errors: string[] = [];
+    const provider: ChatProvider = {
+      async *stream() {
+        calls += 1;
+        yield { type: "done" };
+      },
+    };
+    await runAgentLoop({
+      provider,
+      driver,
+      task: "Say hello",
+      signal: new AbortController().signal,
+      callbacks: { onError: (message) => errors.push(message) },
+    });
+
+    // Three silent turns, not five hundred billed ones.
+    expect(calls).toBe(3);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("3 turns in a row");
+  });
+
+  it("resets the count when a turn produces output", async () => {
+    let calls = 0;
+    const errors: string[] = [];
+    const provider: ChatProvider = {
+      async *stream() {
+        calls += 1;
+        // Two silent turns, then a text turn, then two more silent ones, then
+        // `done` — never three mute in a row, so no error fires.
+        if (calls === 3) yield { type: "text", text: "still here" };
+        if (calls === 6) {
+          yield { type: "tool_use", id: "c6", name: "done", args: { summary: "ok" } };
+        }
+        yield { type: "done" };
+      },
+    };
+    await runAgentLoop({
+      provider,
+      driver,
+      task: "Say hello",
+      signal: new AbortController().signal,
+      callbacks: { onError: (message) => errors.push(message) },
+    });
+
+    expect(errors).toEqual([]);
+    expect(calls).toBe(6);
+  });
+});

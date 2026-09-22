@@ -1,7 +1,7 @@
 import { isTransportFailure, type ErrorKind } from "@providerkit/core";
 
 /** Provider shape — determines wire format for API calls. */
-export type ProviderShape = "openai" | "anthropic" | "responses";
+export type ProviderShape = "openai" | "anthropic" | "responses" | "gemini";
 
 /**
  * Reasoning effort — how hard the model thinks before acting.
@@ -174,6 +174,13 @@ export interface ToolCall {
   id: string;
   name: string;
   args: Record<string, unknown>;
+  /**
+   * Gemini's opaque reasoning token. It must ride back on the next turn
+   * verbatim or the model loses its chain of thought across a tool round
+   * (and ends turns with a thought-only STOP — textless, call-less). Only
+   * the Gemini adapter reads it; every other adapter ignores it.
+   */
+  thoughtSignature?: string;
 }
 
 /** Tool definition in provider-agnostic format. */
@@ -240,7 +247,13 @@ export type Delta =
    *  displays it live; the loop also commits it on the assistant turn for providers that
    *  demand it echoed (see ChatMessage.reasoning). */
   | { type: "reasoning"; text: string }
-  | { type: "tool_use"; id: string; name: string; args: Record<string, unknown> }
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      args: Record<string, unknown>;
+      thoughtSignature?: string;
+    }
   | ({ type: "usage" } & UsageTick)
   | { type: "finish"; reason: "stop" | "length" | "tool_use" | "unknown" }
   | { type: "done" };
@@ -303,8 +316,7 @@ export function isRetryable(e: unknown): boolean {
       // quotas answer 429 with a 3-second RetryInfo, and waiting it out
       // succeeds. A truly exhausted balance carries no wait (or a long one)
       // and still fails fast below.
-      const shortWait =
-        e.retryAfterMs !== undefined && e.retryAfterMs <= MAX_RETRY_WAIT_MS;
+      const shortWait = e.retryAfterMs !== undefined && e.retryAfterMs <= MAX_RETRY_WAIT_MS;
       if (!(e.kind === "quota" && shortWait)) return false;
     }
     if (e.retryAfterMs !== undefined && e.retryAfterMs > MAX_RETRY_WAIT_MS) return false;

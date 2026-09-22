@@ -167,7 +167,10 @@ export function ProviderForm({
         // Same target shape the picker lists with (see modelsTarget), so the
         // warmed entry is found, not orphaned. Custom rows learn their id at
         // save time, which is why this lands after, not before.
-        writeModelsCache({ id, shape: preset ? preset.shape : shape, baseUrl: resolvedUrl, apiKey: key }, checked.models);
+        writeModelsCache(
+          { id, shape: preset ? preset.shape : shape, baseUrl: resolvedUrl, apiKey: key },
+          checked.models,
+        );
       }
       onSaved?.(id);
     } catch (err) {

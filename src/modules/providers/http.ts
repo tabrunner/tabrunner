@@ -315,8 +315,7 @@ export function googleRetryAfterMs(text: string): number | undefined {
     const items = Array.isArray(roots) ? roots : [roots];
     for (const item of items) {
       const error = (item as { error?: unknown } | null)?.error as
-        | { details?: unknown }
-        | undefined;
+        { details?: unknown } | undefined;
       if (!error || !Array.isArray(error.details)) continue;
       for (const detail of error.details) {
         const delay = (detail as { retryDelay?: unknown })?.retryDelay;
@@ -341,6 +340,63 @@ function goSecondsToMs(text: string): number | undefined {
   if (seconds === undefined) return undefined;
   const ms = Math.round(Number(seconds) * 1000);
   return Number.isFinite(ms) ? ms : undefined;
+}
+
+/**
+ * One envelope for every provider failure, whichever adapter caught it: the
+ * reset merge (headers authoritative, bodies filling gaps), the classified
+ * lead line, the log split (expected states warn, unknown shapes error onto
+ * chrome://extensions' Errors page), and the thrown ProviderError. streamSse
+ * is the main caller; bridged core adapters (Gemini) normalize through here
+ * too, so their errors read exactly like every other provider's.
+ */
+export function envelopeProviderError(
+  provider: ProviderIdentity,
+  status: number,
+  text: string,
+  opts: { detail?: string; headers?: Headers; url?: string } = {},
+): ProviderError {
+  const now = Date.now();
+  // Headers are authoritative (Anthropic names the window); the body fills
+  // gaps (ChatGPT's codex backend carries the reset only in the 429 body,
+  // Google only in RetryInfo — see googleRetryAfterMs).
+  const fromHeaders = opts.headers ? parseRateLimitReset(opts.headers, now) : {};
+  const fromBody = parseUsageLimitBody(text, now);
+  const fromGoogle = googleRetryAfterMs(text);
+  const reset: RateLimitReset = {
+    ...(fromHeaders.resetAtMs !== undefined ||
+    fromBody.resetAtMs !== undefined ||
+    fromGoogle !== undefined
+      ? { resetAtMs: fromHeaders.resetAtMs ?? fromBody.resetAtMs ?? now + (fromGoogle ?? 0) }
+      : {}),
+    ...(fromHeaders.retryAfterMs !== undefined ||
+    fromBody.retryAfterMs !== undefined ||
+    fromGoogle !== undefined
+      ? { retryAfterMs: fromHeaders.retryAfterMs ?? fromGoogle ?? fromBody.retryAfterMs }
+      : {}),
+    ...(fromHeaders.window || fromBody.window
+      ? { window: fromHeaders.window ?? fromBody.window }
+      : {}),
+  };
+  const { message, kind } = providerErrorMessage(
+    provider,
+    status,
+    text,
+    opts.detail ?? "",
+    reset,
+    now,
+  );
+  // A classified failure (rate limit, quota, auth…) is an expected provider state
+  // the chat already surfaces with its fix — warn keeps it off chrome://extensions'
+  // Errors page, which console.error feeds. Only an unclassified shape belongs
+  // there: it's the signal that a provider changed something we don't know yet.
+  const where = opts.url ?? "request";
+  if (kind) {
+    log.warn(`HTTP ${status} from ${where}: ${truncate(text)}`);
+  } else {
+    log.error(`HTTP ${status} from ${where}: ${truncate(text)}`);
+  }
+  return new ProviderError(message, status, kind, reset.retryAfterMs);
 }
 
 /**
@@ -386,46 +442,11 @@ export async function* streamSse(opts: {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    const now = Date.now();
-    // Headers are authoritative (Anthropic names the window); the body fills
-    // gaps (ChatGPT's codex backend carries the reset only in the 429 body,
-    // Google only in RetryInfo — see googleRetryAfterMs).
-    const fromHeaders = parseRateLimitReset(res.headers, now);
-    const fromBody = parseUsageLimitBody(text, now);
-    const fromGoogle = googleRetryAfterMs(text);
-    const reset: RateLimitReset = {
-      ...(fromHeaders.resetAtMs !== undefined ||
-      fromBody.resetAtMs !== undefined ||
-      fromGoogle !== undefined
-        ? { resetAtMs: fromHeaders.resetAtMs ?? fromBody.resetAtMs ?? now + (fromGoogle ?? 0) }
-        : {}),
-      ...(fromHeaders.retryAfterMs !== undefined ||
-      fromBody.retryAfterMs !== undefined ||
-      fromGoogle !== undefined
-        ? { retryAfterMs: fromHeaders.retryAfterMs ?? fromGoogle ?? fromBody.retryAfterMs }
-        : {}),
-      ...(fromHeaders.window || fromBody.window
-        ? { window: fromHeaders.window ?? fromBody.window }
-        : {}),
-    };
-    const { message, kind } = providerErrorMessage(
-      provider,
-      res.status,
-      text,
-      res.statusText,
-      reset,
-      now,
-    );
-    // A classified failure (rate limit, quota, auth…) is an expected provider state
-    // the chat already surfaces with its fix — warn keeps it off chrome://extensions'
-    // Errors page, which console.error feeds. Only an unclassified shape belongs
-    // there: it's the signal that a provider changed something we don't know yet.
-    if (kind) {
-      log.warn(`HTTP ${res.status} from ${url}: ${truncate(text)}`);
-    } else {
-      log.error(`HTTP ${res.status} from ${url}: ${truncate(text)}`);
-    }
-    throw new ProviderError(message, res.status, kind, reset.retryAfterMs);
+    throw envelopeProviderError(provider, res.status, text, {
+      detail: res.statusText,
+      headers: res.headers,
+      url,
+    });
   }
 
   if (!res.body) throw new Error(i18n.t("errors.noResponseBody"));

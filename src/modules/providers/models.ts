@@ -80,6 +80,9 @@ export async function listModels(
   // The ChatGPT backend (responses shape) exposes no model-list route — the
   // preset's static models are the authoritative list.
   if (config.shape === "responses") return [];
+  // Native Gemini lists at GET {base}/models with the key in a header, and
+  // answers a different shape ({models:[{name:"models/x"}]}) — parsed below.
+  if (config.shape === "gemini") return listGeminiModels(config, signal);
   const url = apiUrl(config.baseUrl, config.shape === "anthropic" ? "/v1/models" : "/models");
   // Signed-in providers list with their access token (OAuth-token mode); key
   // providers with x-api-key. Callers pass an ensureProviderCredential'd config.
@@ -101,6 +104,52 @@ export async function listModels(
 
   const entries = parseModelEntries(await res.json(), config.id);
   return config.shape === "openai" ? entries.filter((m) => !isNonChatModel(m.id)) : entries;
+}
+
+/**
+ * Native Gemini model listing. Same contract as listModels (throws
+ * ProviderError with status on refusal, so the add form reads rejections the
+ * same way), but the endpoint speaks its own dialect: key in
+ * `x-goog-api-key`, ids prefixed `models/`, display names separate. The
+ * non-chat filter still applies — the catalog mixes embeddings, TTS, image
+ * and live models into the same list.
+ */
+async function listGeminiModels(
+  config: Pick<ProviderConfig, "shape" | "baseUrl" | "apiKey" | "auth"> & { id?: string },
+  signal?: AbortSignal,
+): Promise<ModelInfo[]> {
+  const url = apiUrl(config.baseUrl, "/models");
+  const res = await fetch(url, {
+    headers: { "x-goog-api-key": config.apiKey, ...providerHeaders(config.id ?? "") },
+    ...(signal ? { signal } : {}),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new ProviderError(
+      i18n.t("errors.modelListError", { status: res.status, detail: text || res.statusText }),
+      res.status,
+    );
+  }
+  const body = (await res.json()) as { models?: unknown };
+  if (!Array.isArray(body.models)) throw new ProviderError(i18n.t("errors.noModelData"), 0);
+  const out: ModelInfo[] = [];
+  for (const entry of body.models) {
+    const record = (entry ?? {}) as Record<string, unknown>;
+    const name = record.name;
+    if (typeof name !== "string" || !name) continue;
+    // `models/gemini-3.5-flash` → `gemini-3.5-flash`: the REST path wants the
+    // bare id, and so does everything downstream (see bareModelId).
+    const id = name.replace(/^models\//, "");
+    if (!id) continue;
+    const display = record.displayName;
+    out.push({
+      id,
+      ...(typeof display === "string" && display.trim() && display !== id
+        ? { name: display.trim() }
+        : {}),
+    });
+  }
+  return out.filter((m) => !isNonChatModel(m.id));
 }
 
 /**
@@ -235,8 +284,7 @@ function parseModelEntries(body: unknown, providerId?: string): ModelInfo[] {
   // accounts report false for every flag despite explicit enabled policies).
   // Models without tool-call support are dropped either way — an agent that
   // cannot call tools is not a runnable engine.
-  const kept =
-    providerId === "github-copilot" ? filterCopilotEntries(raws) : raws;
+  const kept = providerId === "github-copilot" ? filterCopilotEntries(raws) : raws;
   return kept.map((record) => {
     const id = record.id as string;
     return {
@@ -256,8 +304,7 @@ function filterCopilotEntries(raws: Record<string, unknown>[]): Record<string, u
   const usable = raws.filter((record) => {
     const supports = (
       (record.capabilities as Record<string, unknown> | undefined)?.supports as
-        | Record<string, unknown>
-        | undefined
+        Record<string, unknown> | undefined
     )?.tool_calls;
     return supports !== false;
   });

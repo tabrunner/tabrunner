@@ -978,6 +978,7 @@
     "modelListError": "Couldn't load the model list — the endpoint answered {{status}}. {{detail}}",
     "noModel": "No model set for {{name}} and the endpoint doesn't list any. Pick a model in Settings.",
     "noModelData": "The endpoint answered, but not with a model list. Type a model id yourself, or leave it empty to auto-pick at run time.",
+    "emptyTurns": "No text and no tool call {{count}} turns in a row — the run was stopped before it could burn more tokens. Retry, or pick another model.",
     "apiError": "{{provider}} answered {{status}} — {{detail}}",
     "kindEntitlement": "{{provider}} accepted the key, but your plan doesn't include this API — upgrade the plan on your {{provider}} account",
     "kindQuota": "{{provider}} is out of usage — wait for the limit to reset, or top up on your {{provider}} account",

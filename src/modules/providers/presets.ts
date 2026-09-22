@@ -294,8 +294,12 @@ export const PRESETS: ProviderPreset[] = [
   {
     id: "gemini",
     name: "Gemini",
-    shape: "openai",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    // Native Generative Language REST, NOT the OpenAI-compatible shim: only
+    // the native endpoint carries thought signatures, and dropping them
+    // spins the run on textless, call-less turns (see gemini.ts). pi and the
+    // opencode CLI both go native for the same reason.
+    shape: "gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     // The 2.x shelf is being retired (2.5-flash-lite already 404s, naming
     // 3.5-flash-lite as its replacement) — the fallback leads with the 3.x
     // ids Google and OpenCode's own docs both name now.
