@@ -48,7 +48,8 @@ interface Bundle {
   name: string;
   canonical: string;
   locales: Record<string, LocaleSource>;
-  /** Globs (relative to repo root) of source files that reference keys. */
+  /** Globs (relative to repo root) of source files that reference keys. Empty
+   *  means parity only. */
   code: string[];
 }
 
@@ -62,6 +63,19 @@ const BUNDLES: Bundle[] = [
       es: { file: "src/i18n/locales/es.json" },
     },
     code: ["src/**/*.{ts,tsx}"],
+  },
+  {
+    // Chrome's own catalogs: the manifest's __MSG_*__ and the side panel's boot
+    // cover (read before the app's catalogs load). Parity only — their keys are
+    // referenced as chrome.i18n.getMessage / __MSG_ strings, not t() calls.
+    name: "extension (_locales)",
+    canonical: "en",
+    locales: {
+      en: { file: "public/_locales/en/messages.json" },
+      pt_BR: { file: "public/_locales/pt_BR/messages.json" },
+      es: { file: "public/_locales/es/messages.json" },
+    },
+    code: [],
   },
 ];
 
@@ -282,6 +296,8 @@ async function checkBundle(bundle: Bundle): Promise<number> {
   }
   if (parityGaps === 0) console.log("    ✔ all locales aligned");
   failures += parityGaps;
+  // A parity-only bundle: its keys are read in a way no t() scan can see.
+  if (bundle.code.length === 0) return failures;
 
   // 2. Code → catalog.
   const scan: ScanResult = {

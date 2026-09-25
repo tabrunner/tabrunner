@@ -12,6 +12,8 @@
          shows the OS shade for those few ms — the app repaints over it.
          The mark waits 150ms before fading in, so a warm load never flashes it,
          and breathes while it's up so a slow one reads as starting, not hung.
+         Past 4s it says so in words, past 15s it offers a way out, and a load
+         that fails says that and stops breathing — shell.ts owns the timeline.
 
          It lives OUTSIDE #root, opaque, and the app removes it (App.tsx) only
          once there is something true to show. Inside #root it was torn down by
@@ -94,11 +96,109 @@
           animation: boot-breathe 300ms ease-out 0.15s forwards;
         }
       }
+      /* Glow means live: a load that failed is not working on anything, so the
+         mark stops breathing and rests at the value it breathes from. */
+      #boot[data-state="failed"] img {
+        animation: none;
+        opacity: 0.35;
+      }
+
+      /* The words, hung below the mark so it never moves when they arrive. No
+         Tailwind yet — the app's CSS loads with the app — so these are the
+         theme.css tokens by value: neutral-500/700 light, neutral-400/200 dark,
+         the primary Button in brand-500 on brand-950. */
+      .boot-mark {
+        position: relative;
+        display: grid;
+      }
+      .boot-words {
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 260px;
+        margin-top: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        text-align: center;
+        font:
+          13px/1.45 ui-sans-serif,
+          system-ui,
+          sans-serif;
+        color: #5d6d92;
+        opacity: 0;
+        transition: opacity 200ms ease-out;
+      }
+      #boot[data-state] .boot-words {
+        opacity: 1;
+      }
+      .boot-words p {
+        margin: 0;
+        text-wrap: balance;
+      }
+      .boot-words p:empty {
+        display: none;
+      }
+      #boot:is([data-state="stuck"], [data-state="failed"]) #boot-message {
+        color: #25325c;
+        font-weight: 500;
+      }
+      #boot-retry {
+        margin-top: 12px;
+        padding: 8px 12px;
+        border: 0;
+        border-radius: 8px;
+        background: #10b981;
+        color: #022c22;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      #boot-retry:hover {
+        background: #059669;
+      }
+      #boot-retry:focus-visible {
+        outline: 2px solid #10b981;
+        outline-offset: 2px;
+      }
+      @media (prefers-color-scheme: dark) {
+        .boot-words {
+          color: #8797ba;
+        }
+        #boot:is([data-state="stuck"], [data-state="failed"]) #boot-message {
+          color: #d5deef;
+        }
+      }
+      html.dark .boot-words {
+        color: #8797ba;
+      }
+      html.dark #boot:is([data-state="stuck"], [data-state="failed"]) #boot-message {
+        color: #d5deef;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-words {
+          transition: none;
+        }
+      }
     </style>
   </head>
   <body>
     <div id="root"></div>
-    <div id="boot"><img src="/icon.svg" alt="" /></div>
+    <div id="boot">
+      <div class="boot-mark">
+        <img src="/icon.svg" alt="" />
+        <div class="boot-words">
+          <div role="status">
+            <p id="boot-message"></p>
+            <p id="boot-hint"></p>
+          </div>
+          <button id="boot-retry" type="button" hidden></button>
+        </div>
+      </div>
+    </div>
     <!-- The shell, not the app: the panel stays hidden until this page's first
          load finishes, so the app loads after it (see shell.ts). -->
     <script type="module" src="./shell.ts"></script>
