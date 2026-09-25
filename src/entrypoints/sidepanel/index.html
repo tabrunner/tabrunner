@@ -99,6 +99,8 @@
   <body>
     <div id="root"></div>
     <div id="boot"><img src="/icon.svg" alt="" /></div>
-    <script type="module" src="./main.tsx"></script>
+    <!-- The shell, not the app: the panel stays hidden until this page's first
+         load finishes, so the app loads after it (see shell.ts). -->
+    <script type="module" src="./shell.ts"></script>
   </body>
 </html>
