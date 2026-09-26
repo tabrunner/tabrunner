@@ -152,7 +152,8 @@ export function generateSnapshot(opts: SnapshotOptions): SnapshotResult {
     const alt = el.getAttribute("alt");
     if (alt?.trim()) return alt.trim();
     if (el.id) {
-      const lb = document.querySelector(`label[for="${el.id}"]`) as HTMLElement | null;
+      // The id is page data — unescaped, one quote in it throws and loses the whole snapshot.
+      const lb = document.querySelector(`label[for="${CSS.escape(el.id)}"]`) as HTMLElement | null;
       if (lb) {
         const t = directText(lb);
         if (t) return t;

@@ -63,6 +63,17 @@ describe("generateSnapshot", () => {
     expect(result.pageContent).toContain('"Username"');
   });
 
+  it("survives an id that is not a valid selector", () => {
+    // Wikipedia citation ids carry quotes (cite_ref-…_"14-bis"_…); an
+    // unescaped label[for] lookup threw and took the whole snapshot down.
+    setupDOM(`
+      <label for='cite"14-bis"'>Note</label>
+      <input id='cite"14-bis"' type="text" />
+    `);
+    const result = generateSnapshot({} as SnapshotOptions);
+    expect(result.pageContent).toContain('textbox "Note"');
+  });
+
   it("resolves name from aria-labelledby", () => {
     setupDOM(`
       <span id="lbl">Card number</span>
