@@ -18,7 +18,7 @@ vi.mock("wxt/utils/storage", () => ({
 // Observe which tab the driver snapshots — the re-target is the whole point of switch_tab.
 vi.mock("../snapshot", () => ({
   captureSnapshot: vi.fn(async (tabId: number) => ({ pageContent: `snap:${tabId}` })),
-  resolveRefRect: vi.fn(),
+  resolveRefPoint: vi.fn(),
 }));
 
 interface TabRecord {

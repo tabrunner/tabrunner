@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { generateSnapshot } from "../snapshot-script";
+import { generateSnapshot, refClickPoint } from "../snapshot-script";
 import type { SnapshotOptions } from "../snapshot-script";
 
 function setupDOM(html: string) {
   document.documentElement.innerHTML = `<body>${html}</body>`;
   // Reset ref state
-  (window as unknown as { __tabrunnerRefs: undefined }).__tabrunnerRefs = undefined;
-  (window as unknown as { __tabrunnerReverse: undefined }).__tabrunnerReverse = undefined;
-  (window as unknown as { __tabrunnerCounter: undefined }).__tabrunnerCounter = undefined;
+  window.__tabrunnerRefs = undefined;
+  window.__tabrunnerReverse = undefined;
+  window.__tabrunnerCounter = undefined;
 }
 
 describe("generateSnapshot", () => {
@@ -98,6 +98,33 @@ describe("generateSnapshot", () => {
     const result = generateSnapshot({} as SnapshotOptions);
     expect(result.pageContent).not.toContain("Hidden");
     expect(result.pageContent).toContain("Visible");
+  });
+
+  it("keeps checkboxes, radios and selects a site restyled over opacity:0", () => {
+    // The custom-control pattern (TodoMVC's .toggle): the real input sits
+    // invisible over a painted box and still takes the click.
+    setupDOM(`
+      <ul><li><input class="toggle" type="checkbox" style="opacity:0" /><label>Pay rent</label></li></ul>
+      <label><input type="radio" name="size" style="opacity:0" /> Large</label>
+      <select style="opacity:0"><option>Blue</option></select>
+    `);
+    const result = generateSnapshot({} as SnapshotOptions);
+    expect(result.pageContent).toMatch(/checkbox \[ref=e\d+\]/);
+    expect(result.pageContent).toMatch(/radio \[ref=e\d+\]/);
+    expect(result.pageContent).toMatch(/combobox "Blue" \[ref=e\d+\]/);
+  });
+
+  it("still hides opacity:0 containers and text fields", () => {
+    // A faded-out menu hides everything in it; an invisible text field is
+    // usually a bot trap, and filling it gets the run flagged.
+    setupDOM(`
+      <div style="opacity:0"><button>Ghost</button><input type="checkbox" /></div>
+      <input type="text" placeholder="Leave empty" style="opacity:0" />
+    `);
+    const result = generateSnapshot({} as SnapshotOptions);
+    expect(result.pageContent).not.toContain("Ghost");
+    expect(result.pageContent).not.toContain("checkbox");
+    expect(result.pageContent).not.toContain("Leave empty");
   });
 
   it("filters aria-hidden elements", () => {
@@ -219,5 +246,55 @@ describe("generateSnapshot", () => {
       document.querySelector("button")!.textContent = "Renamed";
       expect(generateSnapshot({} as SnapshotOptions).newRefs).toBe(0);
     });
+  });
+});
+
+describe("refClickPoint", () => {
+  // JSDOM has no layout: stub the boxes and the hit test each case needs.
+  const box = (x: number, y: number, width: number, height: number) => () =>
+    ({ x, y, width, height }) as DOMRect;
+
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = () => {};
+  });
+
+  function setup(html: string) {
+    setupDOM(html);
+    generateSnapshot({} as SnapshotOptions);
+    return document.body.firstElementChild as HTMLElement;
+  }
+
+  it("clicks the middle of the control when that point lands on it", () => {
+    const toggle = setup(
+      `<input id="t" type="checkbox" style="opacity:0" /><label for="t">Pay rent</label>`,
+    );
+    toggle.getBoundingClientRect = box(10, 10, 40, 40);
+    document.elementFromPoint = () => toggle;
+    expect(refClickPoint("e1")).toEqual({ x: 30, y: 30 });
+  });
+
+  it("clicks the label when the whole-pixel point steps off a 1px control", () => {
+    // TodoMVC's toggle-all, measured in Chrome: its center rounds to (362, 238),
+    // one pixel past the box, so a click there toggled nothing.
+    const toggle = setup(
+      `<input id="all" type="checkbox" style="opacity:0" /><label for="all">Mark all as complete</label>`,
+    );
+    toggle.getBoundingClientRect = box(361, 237.1875, 1, 1);
+    document.querySelector("label")!.getBoundingClientRect = box(340, 200, 60, 34);
+    document.elementFromPoint = (x, y) =>
+      x >= 361 && x < 362 && y >= 237.1875 && y < 238.1875 ? toggle : document.body;
+    expect(refClickPoint("e1")).toEqual({ x: 370, y: 217 });
+  });
+
+  it("keeps the element's own point when there is no label to fall back to", () => {
+    const link = setup(`<a href="/next">Next</a>`);
+    link.getBoundingClientRect = box(5, 5, 50, 20);
+    document.elementFromPoint = () => document.body;
+    expect(refClickPoint("e1")).toEqual({ x: 30, y: 15 });
+  });
+
+  it("returns null for a ref the page no longer holds", () => {
+    setup(`<button>Go</button>`);
+    expect(refClickPoint("e99")).toBeNull();
   });
 });

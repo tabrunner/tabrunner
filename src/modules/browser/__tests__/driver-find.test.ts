@@ -24,7 +24,7 @@ vi.mock("../snapshot", () => ({
     pageContent: snapshotLines.join("\n"),
     url: "https://shop.example/orders",
   })),
-  resolveRefRect: vi.fn(),
+  resolveRefPoint: vi.fn(),
 }));
 
 // openTab goes through switchTab → focusTab → waitForLoad; all real chrome

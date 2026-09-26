@@ -1,4 +1,4 @@
-import { generateSnapshot } from "./snapshot-script";
+import { generateSnapshot, refClickPoint } from "./snapshot-script";
 import type { SnapshotOptions, SnapshotResult } from "./snapshot-script";
 import { runInPage } from "./inject";
 import type { TabId } from "@/shared/types";
@@ -19,26 +19,14 @@ export async function captureSnapshot(
 }
 
 /**
- * Resolves a ref (e.g. "e12") to its bounding rect center via executeScript.
- * Used by cdp-driver for click-by-ref.
+ * Resolves a ref (e.g. "e12") to the viewport point a click on it should land
+ * on, via executeScript. Used by the driver for click-by-ref.
  */
-export async function resolveRefRect(
+export async function resolveRefPoint(
   tabId: TabId,
   ref: string,
-): Promise<{ x: number; y: number; width: number; height: number }> {
-  const result = await runInPage(
-    tabId,
-    (refId: string) => {
-      const w = window as unknown as { __tabrunnerRefs?: Map<string, WeakRef<HTMLElement>> };
-      const entry = w.__tabrunnerRefs?.get(refId);
-      const el = entry?.deref();
-      if (!el) return null;
-      el.scrollIntoView({ block: "center", inline: "center" });
-      const r = el.getBoundingClientRect();
-      return { x: r.x, y: r.y, width: r.width, height: r.height };
-    },
-    [ref],
-  );
+): Promise<{ x: number; y: number }> {
+  const result = await runInPage(tabId, refClickPoint, [ref]);
 
   if (!result) {
     throw new Error(i18n.t("errors.refNotFound", { ref }));

@@ -1,4 +1,4 @@
-import { captureSnapshot, resolveRefRect } from "./snapshot";
+import { captureSnapshot, resolveRefPoint } from "./snapshot";
 import type { SnapshotOptions, SnapshotResult } from "./snapshot";
 import { capturePageText } from "./page-text";
 import type { PageTextResult } from "./page-text";
@@ -177,14 +177,12 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
 
     async click(ref) {
       await ensureAttached(current);
-      const rect = await resolveRefRect(current, ref);
-      const cx = Math.round(rect.x + rect.width / 2);
-      const cy = Math.round(rect.y + rect.height / 2);
+      const { x, y } = await resolveRefPoint(current, ref);
       // The click is a coordinate, so whatever sits at it wins — including our
       // own marks. They go click-through for the dispatch: a badge that ate the
       // agent's click would both lose the step and open a panel nobody asked for.
-      await withMarksClickThrough(current, () => clickAt(cx, cy));
-      return { x: cx, y: cy };
+      await withMarksClickThrough(current, () => clickAt(x, y));
+      return { x, y };
     },
 
     async type(text) {

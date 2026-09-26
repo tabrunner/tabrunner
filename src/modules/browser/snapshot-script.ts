@@ -5,10 +5,19 @@
  * Clean-room implementation of the accessibility-tree approach.
  * Output format: `[ref=e12] button "Submit"` or `heading "Welcome"`
  *
- * Two exports:
- * - `generateSnapshot`: the self-contained function (safe for executeScript)
+ * Exports:
+ * - `generateSnapshot`, `refClickPoint`: self-contained functions (safe for executeScript)
  * - Types only (SnapshotOptions, SnapshotResult)
  */
+
+declare global {
+  /** The ref registry the snapshot walk keeps on the page, across calls. */
+  interface Window {
+    __tabrunnerRefs?: Map<string, WeakRef<HTMLElement>>;
+    __tabrunnerReverse?: WeakMap<HTMLElement, string>;
+    __tabrunnerCounter?: number;
+  }
+}
 
 export interface SnapshotOptions {
   filter?: "all" | "interactive";
@@ -179,9 +188,21 @@ export function generateSnapshot(opts: SnapshotOptions): SnapshotResult {
     return "";
   }
 
+  /**
+   * Custom checkboxes, radios and selects hide the real control under
+   * opacity:0 and paint their own; the invisible control still takes the
+   * click. Text fields get no pass: an invisible one is usually a bot trap.
+   */
+  function isRestyledControl(el: HTMLElement): boolean {
+    if (el.tagName === "SELECT") return true;
+    const type = el.tagName === "INPUT" ? (el as HTMLInputElement).type : "";
+    return type === "checkbox" || type === "radio";
+  }
+
   function isVisible(el: HTMLElement): boolean {
     const s = getComputedStyle(el);
-    if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") return false;
+    if (s.display === "none" || s.visibility === "hidden") return false;
+    if (s.opacity === "0" && !isRestyledControl(el)) return false;
     // ponytail: offsetWidth/Height are always 0 in JSDOM (no layout engine).
     // In real browsers, genuinely zero-size elements are likely hidden.
     // We skip the dimension check to avoid false negatives in tests; CSS checks
@@ -221,11 +242,7 @@ export function generateSnapshot(opts: SnapshotOptions): SnapshotResult {
   }
 
   // Ref management on window — persists across calls
-  const w = window as unknown as {
-    __tabrunnerRefs?: Map<string, WeakRef<HTMLElement>>;
-    __tabrunnerReverse?: WeakMap<HTMLElement, string>;
-    __tabrunnerCounter?: number;
-  };
+  const w = window;
   // Interactive elements this walk had never seen before. A page that stayed
   // put mints nothing, so the count doubles as the change signal the agent
   // loop reads between a turn's actions.
@@ -353,4 +370,33 @@ export function generateSnapshot(opts: SnapshotOptions): SnapshotResult {
     title: document.title,
     newRefs,
   };
+}
+
+/**
+ * The point a click on `refId` should land on, scrolled into view — null when
+ * the ref is gone. Whole pixels, because that is what the driver dispatches,
+ * and the hit test checks that exact point: a restyled checkbox can be a 1px
+ * ghost the rounding steps off (TodoMVC's "Mark all as complete"). When the
+ * point hits neither the control nor one of its labels, the label is the
+ * real target.
+ *
+ * MUST be fully self-contained, like generateSnapshot.
+ */
+export function refClickPoint(refId: string): { x: number; y: number } | null {
+  const el = window.__tabrunnerRefs?.get(refId)?.deref();
+  if (!el) return null;
+  const center = (target: Element) => {
+    target.scrollIntoView({ block: "center", inline: "center" });
+    const r = target.getBoundingClientRect();
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+  };
+  const point = center(el);
+  const labels = [...((el as HTMLInputElement).labels ?? [])];
+  const hit = document.elementFromPoint(point.x, point.y);
+  if (hit && (el.contains(hit) || labels.some((l) => l.contains(hit)))) return point;
+  const label = labels.find((l) => {
+    const b = l.getBoundingClientRect();
+    return b.width > 0 && b.height > 0;
+  });
+  return label ? center(label) : point;
 }

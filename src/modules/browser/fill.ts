@@ -22,8 +22,7 @@ export type FillResult =
  * executeScript serializes via toString() and runs in page context.
  */
 export function fillByRef(refId: string, text: string): FillResult {
-  const w = window as unknown as { __tabrunnerRefs?: Map<string, WeakRef<HTMLElement>> };
-  const el = w.__tabrunnerRefs?.get(refId)?.deref();
+  const el = window.__tabrunnerRefs?.get(refId)?.deref();
   if (!el) return { status: "no-ref" };
 
   const fire = (type: string) => el.dispatchEvent(new Event(type, { bubbles: true }));

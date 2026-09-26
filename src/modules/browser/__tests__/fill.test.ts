@@ -3,13 +3,11 @@ import { fillByRef } from "../fill";
 
 function setupDOM(html: string) {
   document.documentElement.innerHTML = `<body>${html}</body>`;
-  (window as unknown as { __tabrunnerRefs: undefined }).__tabrunnerRefs = undefined;
+  window.__tabrunnerRefs = undefined;
 }
 
 function register(el: HTMLElement, ref = "e1"): string {
-  const w = window as unknown as { __tabrunnerRefs?: Map<string, WeakRef<HTMLElement>> };
-  if (!w.__tabrunnerRefs) w.__tabrunnerRefs = new Map();
-  w.__tabrunnerRefs.set(ref, new WeakRef(el));
+  (window.__tabrunnerRefs ??= new Map()).set(ref, new WeakRef(el));
   return ref;
 }
 
