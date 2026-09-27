@@ -63,8 +63,12 @@ The load-bearing details of talking to each provider shape. Read this when a tas
   The one knob we expose is `reasoningEffort` (`none|low|medium|high|max`, optional):
   verbatim `reasoning_effort` on OpenAI-shape; `thinking: {type:"adaptive"}` +
   `output_config: {effort}` on Anthropic-shape (`none` = adaptive only: Claude Fable 5
-  400s an explicit `{type:"disabled"}`). Unsupported levels come back as a clean provider
-  400, surfaced in chat — we never sniff model names. Two exceptions ride on preset fields,
+  400s an explicit `{type:"disabled"}`, and Opus 5 with thinking off writes tool calls into
+  its text). Unsupported levels come back as a clean provider 400, surfaced in chat. One model
+  name is matched, because there the floor itself 400s on every turn and no level could fix
+  it: Claude Opus, Sonnet and Haiku 4.5 reject adaptive, so their ids (dated or not) get no
+  thinking field, no effort and `max_tokens` 64000. Documented (Anthropic per-model table
+  and models overview, read 2026-09-27). Two exceptions ride on preset fields,
   for endpoints that spell "off" their own way: `effortDialect` sends OpenRouter's and
   DeepSeek's effort through `effortParams` from `@providerkit/core` (OpenRouter's own
   `reasoning: {effort}`; DeepSeek's `thinking: {type:"disabled"}` for none), and

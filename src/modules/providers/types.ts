@@ -7,7 +7,8 @@ export type ProviderShape = "openai" | "anthropic" | "responses" | "gemini";
  * Reasoning effort — how hard the model thinks before acting.
  * Absent = provider default (never sent). Passed through verbatim on
  * OpenAI-shape (`reasoning_effort`); mapped to adaptive thinking +
- * `output_config.effort` on Anthropic-shape. Support varies per model —
+ * `output_config.effort` on Anthropic-shape (the Claude 4.5 ids get neither;
+ * see anthropic.ts). Support varies per model —
  * an unsupported level comes back as a clean provider 400, surfaced in chat.
  *
  * Ordered least → most; the type derives from the array so a runtime guard

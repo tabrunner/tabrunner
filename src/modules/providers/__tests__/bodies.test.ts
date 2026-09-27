@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildOpenAIBody } from "../openai";
 import { buildAnthropicBody } from "../anthropic";
 import { PRESETS } from "../presets";
+import { REASONING_EFFORTS } from "../types";
 import type {
   ChatMessage,
   ExternalJsonSchema,
@@ -269,6 +270,43 @@ describe("buildAnthropicBody", () => {
     const body = buildAnthropicBody({ ...anthropicBase, reasoningEffort: "high" }, messages, []);
     expect(body.thinking).toEqual({ type: "adaptive" });
     expect(body.output_config).toEqual({ effort: "high" });
+  });
+
+  it("sends the 4.5 ids no thinking at any level, and 5.x adaptive", () => {
+    // Documented (Anthropic per-model table, read 2026-09-27): the 4.5 ids 400 on
+    // adaptive and default to off, 5.x is adaptive only. Matched on the model,
+    // since OpenCode sends these same ids here.
+    const wire = (model: string, reasoningEffort?: ReasoningEffort) => {
+      const config = { ...anthropicBase, model, ...(reasoningEffort ? { reasoningEffort } : {}) };
+      const { thinking, output_config, max_tokens } = buildAnthropicBody(config, messages, []);
+      return { thinking, output_config, max_tokens };
+    };
+    const extendedOnly = [
+      "claude-haiku-4-5-20251001",
+      "claude-haiku-4-5",
+      "claude-sonnet-4-5",
+      "claude-opus-4-5",
+    ];
+    for (const model of extendedOnly) {
+      for (const effort of [undefined, ...REASONING_EFFORTS]) {
+        // 64000: "Max output: 64K tokens", read at its smaller value.
+        expect(wire(model, effort), `${model} ${effort}`).toEqual({ max_tokens: 64000 });
+      }
+    }
+    // 4.6 is the boundary: it takes adaptive, so it must not match.
+    for (const model of ["claude-sonnet-5", "claude-opus-5", "claude-sonnet-4-6"]) {
+      expect(wire(model, "high"), model).toEqual({
+        thinking: { type: "adaptive" },
+        output_config: { effort: "high" },
+        max_tokens: 65536,
+      });
+      // "none" stays adaptive, not `disabled`: Opus 5 with thinking off leaks
+      // tool calls into its text on tool-heavy work (same docs).
+      expect(wire(model, "none"), model).toEqual({
+        thinking: { type: "adaptive" },
+        max_tokens: 65536,
+      });
+    }
   });
 
   it("lands 'none' on the same adaptive floor as default — an explicit off 400s on Fable", () => {

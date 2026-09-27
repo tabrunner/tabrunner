@@ -149,6 +149,24 @@ export function createAnthropicProvider(config: ResolvedProviderConfig): ChatPro
 
 const MAX_THINKING_OUTPUT_TOKENS = 65536;
 
+/**
+ * Claude ids that know only manual extended thinking. Documented (Anthropic
+ * per-model table, read 2026-09-27): Opus 4.5, Sonnet 4.5 and Haiku 4.5 reject
+ * `{type: "adaptive"}` with a 400 ("adaptive thinking is not supported on this
+ * model") and default to thinking off. Matched on the model id rather than the
+ * preset, because OpenCode routes these same ids through this adapter; a dated
+ * snapshot (claude-haiku-4-5-20251001) is the same model.
+ */
+const EXTENDED_THINKING_ONLY = /^claude-(opus|sonnet|haiku)-4-5(-\d{8})?$/;
+
+/**
+ * Their output cap. Documented (Anthropic's models overview and each model's
+ * page, read 2026-09-27): "Max output: 64K tokens" for all three. The pages
+ * give no exact integer, so this takes the smaller reading — 65536 is over the
+ * cap if "64K" means 64,000.
+ */
+const EXTENDED_ONLY_MAX_OUTPUT_TOKENS = 64000;
+
 /** A `system` entry. Anthropic takes a bare string too, but only the block form carries a marker. */
 interface SystemBlock {
   type: "text";
@@ -174,14 +192,16 @@ export function buildAnthropicBody(
   // all pass none and answer in a single shot, so a marker on those would bill
   // a 1.25x write against a cache nothing will ever read.
   const cacheable = tools.length > 0;
+  const extendedOnly = EXTENDED_THINKING_ONLY.test(config.model);
 
   const body: Record<string, unknown> = {
     model: config.model,
     // Thinking tokens count against max_tokens, and thinking is always on here
-    // now, so the cap is unconditional: it must exceed the budget the provider
+    // (except on the extended-only ids, which get their own ceiling), so the
+    // cap does not depend on effort: it must exceed the budget the provider
     // assigns (coding-plan gateways reject the request otherwise — seen: 32768)
     // and still leave room for the answer.
-    max_tokens: MAX_THINKING_OUTPUT_TOKENS,
+    max_tokens: extendedOnly ? EXTENDED_ONLY_MAX_OUTPUT_TOKENS : MAX_THINKING_OUTPUT_TOKENS,
     stream: true,
     // tool_results and an injected mid-run message both serialize as user
     // messages, and can land back to back — merge them, Anthropic rejects
@@ -226,18 +246,30 @@ export function buildAnthropicBody(
     }));
   }
 
-  // Adaptive thinking is this shape's floor, not an opt-in. Sending no thinking
-  // field at all — what an unpinned effort used to do — is the one shape where
-  // "default" meant reasoning *off*: the OpenAI and Responses shapes leave the
-  // model to its own default, which for a current reasoning model is not off.
-  // Adaptive costs nothing on a step that doesn't need it, since Claude decides
-  // per turn, and it can't 400 a model that doesn't reason.
+  // The extended-only ids get neither field. No thinking field is their default
+  // (off), so it is also their "none". Their one thinking mode,
+  // `{type: "enabled", budget_tokens}`, is not sent at any level: in that mode
+  // the last assistant turn must open with its thinking block (documented,
+  // Anthropic's extended-thinking page, read 2026-09-27), and toAnthropicMessage
+  // replays none, so a tool loop would 400 from its second request. Effort goes
+  // too: Haiku and Sonnet 4.5 list no effort support, and Opus 4.5 has no "max".
+  // So the picked level does nothing on these three.
+  if (extendedOnly) return body;
+
+  // Everywhere else adaptive thinking is this shape's floor, not an opt-in.
+  // Sending no thinking field at all — what an unpinned effort used to do — is
+  // the one shape where "default" meant reasoning *off*: the OpenAI and
+  // Responses shapes leave the model to its own default, which for a current
+  // reasoning model is not off. Adaptive costs nothing on a step that doesn't
+  // need it, since Claude decides per turn.
   //
   // "none" lands on that same floor, and only the other levels pin
   // output_config.effort, so "none" and "default" are one request here. An
   // explicit off exists but is not safe to send: Anthropic's docs say Claude
-  // Fable 5 answers `{type: "disabled"}` with a 400. The endpoints that need it
-  // say so on the preset (`explicitNone`).
+  // Fable 5 answers `{type: "disabled"}` with a 400, and that Opus 5, which
+  // accepts it, writes tool calls into its text with thinking off on tool-heavy
+  // work — which is all this agent does. The endpoints that need it say so on
+  // the preset (`explicitNone`).
   const explicitNone =
     config.reasoningEffort === "none" &&
     PRESETS.find((p) => p.id === config.id)?.explicitNone === true;
