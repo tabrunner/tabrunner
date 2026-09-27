@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { buildResponsesBody, createResponsesProvider } from "../responses";
-import type { ResolvedProviderConfig } from "../types";
+import { ProviderError, isRetryable, type ResolvedProviderConfig } from "../types";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
@@ -321,6 +321,56 @@ describe("ChatGPT provider SSE parsing", () => {
 
     expect(deltas).toContainEqual({ type: "finish", reason: "length" });
     expect(deltas[deltas.length - 1]).toEqual({ type: "done" });
+  });
+
+  /**
+   * A failure the backend reports after it answered 200. It threw before, but
+   * as a bare status-0 error with no kind: never retried, and the reader got
+   * the backend's English with no lead line.
+   */
+  async function failureOf(event: Record<string, unknown>): Promise<unknown> {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(sseStream([frame(event)]), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+    try {
+      for await (const d of createResponsesProvider(makeConfig()).stream(
+        [],
+        [],
+        new AbortController().signal,
+      ))
+        void d;
+    } catch (e) {
+      return e;
+    }
+    throw new Error("expected the stream to throw");
+  }
+
+  it("retries a response.failed server error like any failed server", async () => {
+    const error = await failureOf({
+      type: "response.failed",
+      response: {
+        error: {
+          code: "server_error",
+          message: "An error occurred while processing your request.",
+        },
+      },
+    });
+    expect(error).toBeInstanceOf(ProviderError);
+    expect((error as ProviderError).kind).toBe("overload");
+    expect(isRetryable(error)).toBe(true);
+  });
+
+  it("names a rate limit that arrives as an error event", async () => {
+    const error = await failureOf({
+      type: "error",
+      code: "rate_limit_exceeded",
+      message: "Rate limit reached for gpt-5.4-mini on tokens per min (TPM).",
+    });
+    expect((error as ProviderError).kind).toBe("rate");
+    expect(isRetryable(error)).toBe(true);
   });
 
   it("sends the bearer token and the ChatGPT-Account-Id header to the responses endpoint", async () => {

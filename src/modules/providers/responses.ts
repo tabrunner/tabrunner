@@ -6,9 +6,8 @@ import type {
   ToolDef,
   ToolResult,
 } from "./types";
-import { ProviderError } from "./types";
 import { apiUrl, parseToolArgs } from "@providerkit/core";
-import { logCacheUsage, sessionHeaders, streamSse } from "./http";
+import { logCacheUsage, sessionHeaders, streamFrameError, streamSse } from "./http";
 import { PRESETS } from "./presets";
 
 /**
@@ -176,22 +175,16 @@ export function createResponsesProvider(config: ResolvedProviderConfig): ChatPro
             return;
           }
 
+          // A failure after the 200 went out — classified, and retried when it
+          // is transient, like the other shapes' (see streamFrameError).
           case "response.failed": {
-            const error = isRec(frame.response) ? frame.response.error : undefined;
-            throw streamError(
-              str(isRec(error) ? error.message : undefined) ?? "upstream stream failed",
-            );
+            const response = isRec(frame.response) ? frame.response : frame;
+            throw streamFrameError(config, response.error ?? response);
           }
 
           case "error":
-          case "response.error": {
-            const error = isRec(frame.error) ? frame.error : frame;
-            throw streamError(
-              str(isRec(error) ? error.message : undefined) ??
-                str(frame.message) ??
-                "upstream stream error",
-            );
-          }
+          case "response.error":
+            throw streamFrameError(config, isRec(frame.error) ? frame.error : frame);
         }
       }
 
@@ -333,11 +326,6 @@ interface PendingCall {
   callId: string;
   name: string;
   args: string;
-}
-
-/** A mid-stream backend failure — the raw HTTP layer already classified HTTP errors. */
-function streamError(message: string): ProviderError {
-  return new ProviderError(message, 0);
 }
 
 function isRec(v: unknown): v is Record<string, unknown> {

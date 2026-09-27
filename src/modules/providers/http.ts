@@ -414,16 +414,17 @@ export function envelopeProviderError(
 
 /**
  * A failure the provider reports INSIDE a 200 stream: Anthropic's `error`
- * event (an `overloaded_error` under load, its streaming 529) or an OpenAI-shape
+ * event (an `overloaded_error` under load, its streaming 529), an OpenAI-shape
  * chunk carrying `error` (OpenRouter, when the upstream fails after the headers
- * went out). The status line said 200, so the adapter has to spot the frame
- * and throw, or the closed stream reads as a model that said nothing: the loop
- * nudges it again with no backoff, and three of those end the run blaming the
- * model. Same envelope as an HTTP failure; the status is the code the frame
- * names, else the 200 that really arrived, and the kind comes from the body.
- * A body that names nothing (Anthropic's `api_error`) is still a server that
- * failed after it answered, so it reads as overload and is retried — the same
- * floor @providerkit/core's `streamError` puts under its own adapters.
+ * went out), or a Responses `response.failed` / `error` event. The status line
+ * said 200, so the adapter has to spot the frame and throw, or the closed
+ * stream reads as a model that said nothing: the loop nudges it again with no
+ * backoff, and three of those end the run blaming the model. Same envelope as
+ * an HTTP failure; the status is the code the frame names, else the 200 that
+ * really arrived, and the kind comes from the body. A body that names nothing
+ * (Anthropic's `api_error`) is still a server that failed after it answered,
+ * so it reads as overload and is retried — the same floor @providerkit/core's
+ * `streamError` puts under its own adapters.
  */
 export function streamFrameError(provider: ProviderIdentity, error: unknown): ProviderError {
   const code = (error as { code?: unknown } | null)?.code;
