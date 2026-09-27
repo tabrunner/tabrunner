@@ -656,6 +656,29 @@ describe("a failure reported inside a 200 stream", () => {
     vi.restoreAllMocks();
   });
 
+  it("OpenAI shape: the frame's own HTTP code decides, so a 400 is not retried", async () => {
+    // The same body at the 200 that arrived names nothing and would read as
+    // overload; the code OpenRouter puts in the frame says it is a bad request.
+    const config = makeConfig("openai", "https://openrouter.ai/api/v1");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          `data: ${JSON.stringify({
+            error: { code: 400, message: "Provider returned error" },
+            choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }],
+          })}`,
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+    const error = await failureOf(
+      createOpenAIProvider(config).stream([], [], new AbortController().signal),
+    );
+    expect((error as ProviderError).status).toBe(400);
+    expect(isRetryable(error)).toBe(false);
+    vi.restoreAllMocks();
+  });
+
   it("Anthropic shape: an overloaded_error event fails the turn and is retried", async () => {
     const config = makeConfig("anthropic", "https://api.anthropic.com");
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(

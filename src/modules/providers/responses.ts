@@ -7,7 +7,7 @@ import type {
   ToolResult,
 } from "./types";
 import { apiUrl, parseToolArgs } from "@providerkit/core";
-import { logCacheUsage, sessionHeaders, streamFrameError, streamSse } from "./http";
+import { isRec, logCacheUsage, sessionHeaders, streamFrameError, streamSse } from "./http";
 import { PRESETS } from "./presets";
 
 /**
@@ -326,10 +326,6 @@ interface PendingCall {
   callId: string;
   name: string;
   args: string;
-}
-
-function isRec(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
 }
 
 const str = (v: unknown): string | undefined =>
