@@ -10,7 +10,8 @@ English text differ, the English text governs.
 account, no telemetry, and no analytics. Everything you type or configure stays on your device, in
 your browser's local storage. The only places your data ever goes are (1) the AI provider **you**
 configured, (2) the websites you ask TabRunner to act on, and, only if you use them, (3) a local
-MCP bridge on your own machine, (4) a skill URL you import, and (5) the Jev host you pick.
+MCP bridge on your own machine, (4) the address you import a skill from, (5) the Jev host you
+pick, (6) remote MCP servers you add, and (7) your own webhook addresses.
 
 ---
 
@@ -34,6 +35,8 @@ namespaced `local:tabrunner:*`):
   (what TabRunner has learned) files shown in the Settings → Memory panel.
 - **Skills** — the optional recipes shown in Settings → Skills (name, description, sites,
   instructions), whether written by hand, distilled from a chat, or imported.
+- **Connections** — the Jev key, and the address and any auth headers of each remote MCP server
+  and webhook you add.
 - **Preferences** — theme and language choices.
 
 ## 2. What TabRunner processes, and where it goes
@@ -65,9 +68,11 @@ inside a task whose plan you approved.
    `127.0.0.1`. Nothing off your machine can reach it, and the daemon stores nothing: it relays
    tasks in and run progress out. It only exists while you run it, and TabRunner connects to
    nothing when you don't. See [docs/mcp.md](docs/mcp.md).
-4. **A skill URL, only when you import one** — Settings → Skills → Import fetches the single
-   https address you typed (one GET; nothing of yours is attached beyond the request itself),
-   at the moment you ask. TabRunner never fetches or updates skills on its own.
+4. **A skill's address, only when you import one** — Settings → Skills → Import fetches the https
+   address you typed, at the moment you ask; nothing of yours is attached beyond the request
+   itself. If you give a GitHub repository instead of one file, TabRunner first asks GitHub's
+   public API for that repository's file list, then fetches every skill file on it (up to 25) so
+   you can pick which ones to save. TabRunner never fetches or updates skills on its own.
 5. **Jev, only if you add a Jev key** — Settings → Providers → Jev. Jev is a low-cost model your
    model can hand a routine stretch of clicking and typing to. For each step of that stretch, the
    host you picked (TypeSafe, OpenRouter, Cloudflare Workers AI, or Vercel AI Gateway) receives
@@ -78,6 +83,19 @@ inside a task whose plan you approved.
    it only as long as it needs to; OpenRouter and Vercel pass it on to TypeSafe; Cloudflare runs
    Jev itself and keeps none of it. With no key, or with Jev switched off, nothing goes to any of
    them.
+6. **Remote MCP servers, only if you add one** — Settings → MCP → Connect to MCP servers. When a
+   task starts, and when you press Test connection, TabRunner connects to each server you have
+   switched on to list its tools, sending the auth headers you saved for it. Once you approve the
+   plan, your model can call those tools: each call sends the server what your model wrote for
+   it, which can include text from the page or the chat. If a server asks you something during a
+   task, your answer goes to that server. What the server does with this data is up to whoever
+   runs it. With no server added, or all of them switched off, TabRunner contacts none.
+7. **Your webhooks, only if you add one** — Settings → Behavior → Webhooks. When the event you
+   picked happens (a task starts, finishes, waits for your answer, or hits an error), TabRunner
+   sends one POST to the address you gave, with any headers you saved. It carries the event, the
+   time, the chat's id and the task text, plus, depending on the event, the summary and how the
+   task ended, the question and its choices, or the error message. Each text is cut at 2,000
+   characters. It is sent once and never retried. With no webhook added, nothing is sent.
 
 No other party — no relay, no proxy, no analytics, no developer-owned server — ever receives your
 data.
@@ -110,6 +128,8 @@ data.
   panel's settings menu, turns Jev off and keeps the key.
 - **Delete a skill** — Settings → Skills. The switch pauses one without deleting it; delete
   removes it from every future task.
+- **Remove an MCP server or a webhook** — Settings → MCP, or Settings → Behavior → Webhooks. Its
+  switch stops it without deleting it; Remove deletes it along with its saved headers.
 - **Stop anytime** — Esc or the Stop button in the panel, the stop in the Tasks band's list,
   or closing the tab a task is driving stops that task. Closing the panel does NOT stop a task:
   a task adopts your current tab (or opens its own when there's no page to work) and keeps

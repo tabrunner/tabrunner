@@ -1,6 +1,6 @@
 # Términos de uso de TabRunner
 
-_Última actualización: 2026-08-09 · Se aplican a TabRunner para navegadores Chromium (Chrome, Brave,
+_Última actualización: 2026-09-27 · Se aplican a TabRunner para navegadores Chromium (Chrome, Brave,
 Edge, Arc, Opera, Vivaldi)._
 
 Este documento también existe en [inglés](TERMS.md). Si la traducción y el texto en inglés difieren,
@@ -28,11 +28,12 @@ convierte en titular de una cuenta ni crea un compromiso de nivel de servicio de
 
 ## 3. Tus proveedores, tus condiciones
 
-Usas tu propio proveedor de IA: una suscripción con la que inicias sesión o una clave de API que
-pegas. Tu acuerdo con ese proveedor (precios, límites de solicitudes, uso aceptable, tratamiento de
-datos) es un asunto entre tú y ese proveedor. TabRunner envía los datos de las tareas solo al
-proveedor que configures, tal como se explica en la [Política de privacidad](PRIVACY.es.md); no
-somos parte en esa relación ni vemos ese tráfico.
+Usas tu propio proveedor de IA (una suscripción con la que inicias sesión o una clave de API que
+pegas) y, si quieres, una clave de Jev, servidores MCP remotos y webhooks. Tu acuerdo con cada uno
+de esos servicios (precios, límites de solicitudes, uso aceptable, tratamiento de datos) es un
+asunto entre tú y ellos. TabRunner envía los datos de las tareas solo a los servicios que
+configures, tal como se explica en la [Política de privacidad](PRIVACY.es.md); no somos parte en
+esas relaciones ni vemos ese tráfico.
 
 ## 4. Tu navegador, tu responsabilidad
 
