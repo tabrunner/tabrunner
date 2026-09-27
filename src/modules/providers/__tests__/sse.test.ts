@@ -742,3 +742,51 @@ describe("the server's own retry verdict", () => {
     expect(isRetryable(await failureWith(500, { "x-should-retry": "true" }))).toBe(true);
   });
 });
+
+/**
+ * OpenRouter prices each call on its last frame. With the caller's own
+ * provider key (BYOK), `cost` is only OpenRouter's fee; the inference itself
+ * arrives as `cost_details.upstream_inference_cost`.
+ */
+describe("what an OpenRouter call cost", () => {
+  async function costOf(usage: Record<string, unknown>): Promise<number | undefined> {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, ...usage } })}`,
+          "data: [DONE]",
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+    const config = makeConfig("openai", "https://openrouter.ai/api/v1");
+    let cost: number | undefined;
+    for await (const delta of createOpenAIProvider(config).stream(
+      [],
+      [],
+      new AbortController().signal,
+    )) {
+      if (delta.type === "usage") cost = delta.cost;
+    }
+    vi.restoreAllMocks();
+    return cost;
+  }
+
+  it("takes the gateway's price as it is on a call it billed itself", async () => {
+    expect(await costOf({ cost: 0.002, is_byok: false })).toBe(0.002);
+  });
+
+  it("adds the upstream bill when the call ran on the caller's own key", async () => {
+    expect(
+      await costOf({
+        cost: 0.0001,
+        is_byok: true,
+        cost_details: { upstream_inference_cost: 0.002 },
+      }),
+    ).toBeCloseTo(0.0021, 10);
+  });
+
+  it("does not pass the fee off as the bill when BYOK sends no upstream figure", async () => {
+    expect(await costOf({ cost: 0.0001, is_byok: true })).toBeUndefined();
+  });
+});
