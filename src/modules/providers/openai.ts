@@ -1,5 +1,11 @@
 import type { ChatProvider, ChatMessage, ToolDef, Delta, ResolvedProviderConfig } from "./types";
-import { apiUrl, effortParams, openRouterHostFor, parseToolArgs } from "@providerkit/core";
+import {
+  apiUrl,
+  effortParams,
+  openRouterCostUsd,
+  openRouterHostFor,
+  parseToolArgs,
+} from "@providerkit/core";
 import {
   logCacheUsage,
   promptCacheKey,
@@ -61,7 +67,11 @@ export function createOpenAIProvider(config: ResolvedProviderConfig): ChatProvid
             chunk.usage.prompt_cache_hit_tokens ??
             0;
           logCacheUsage(input, cached);
-          const cost = gatewayCost(chunk.usage);
+          // With the caller's own key (BYOK), OpenRouter's `cost` is only its
+          // fee: the kit adds the upstream bill, or prices nothing and the run
+          // falls back to `tokenCost`. It also refuses anything that is not a
+          // finite, non-negative number, because the run adds these up.
+          const cost = openRouterCostUsd(chunk.usage);
           yield {
             type: "usage",
             input,
@@ -188,26 +198,12 @@ interface OpenAIChunk {
     prompt_tokens_details?: { cached_tokens?: number };
     /** DeepSeek's own name for the cached slice. */
     prompt_cache_hit_tokens?: number;
-    /** OpenRouter-style gateways price the call at the source. */
-    cost?: number;
+    /** OpenRouter-style gateways price the call at the source. Unchecked wire data. */
+    cost?: unknown;
     /** OpenRouter: the call ran on the caller's own provider key. */
     is_byok?: boolean;
-    cost_details?: { upstream_inference_cost?: number | null } | null;
+    cost_details?: { upstream_inference_cost?: unknown } | null;
   };
-}
-
-/**
- * What the call cost, USD. With the caller's own provider key (BYOK),
- * OpenRouter's `cost` is only its fee: the inference is billed to that key and
- * arrives as `cost_details.upstream_inference_cost`, so the call cost the two
- * together. With no upstream figure there is no whole bill to report, so it
- * reports none and the run falls back to `tokenCost`: an estimate, or no price,
- * but never the fee passed off as the bill.
- */
-function gatewayCost(usage: NonNullable<OpenAIChunk["usage"]>): number | undefined {
-  if (usage.cost === undefined || usage.is_byok !== true) return usage.cost;
-  const upstream = usage.cost_details?.upstream_inference_cost;
-  return typeof upstream === "number" ? usage.cost + upstream : undefined;
 }
 
 function mapFinishReason(reason: string): "stop" | "length" | "tool_use" | "unknown" {
