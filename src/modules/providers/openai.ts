@@ -1,6 +1,7 @@
 import type { ChatProvider, ChatMessage, ToolDef, Delta, ResolvedProviderConfig } from "./types";
-import { apiUrl, parseToolArgs } from "@providerkit/core";
+import { apiUrl, effortParams, parseToolArgs } from "@providerkit/core";
 import { logCacheUsage, promptCacheKey, providerHeaders, sessionHeaders, streamSse } from "./http";
+import { PRESETS } from "./presets";
 
 /**
  * OpenAI-shape adapter — works with any OpenAI-compatible endpoint.
@@ -134,8 +135,12 @@ export function buildOpenAIBody(
     body.tools = tools.map(toOpenAITool);
   }
 
-  // Verbatim passthrough — the provider validates per-model support (400 if not).
-  if (config.reasoningEffort) {
+  // Verbatim passthrough — the provider validates per-model support (400 if
+  // not) — except where the preset names a dialect of its own.
+  const dialect = PRESETS.find((p) => p.id === config.id)?.effortDialect;
+  if (dialect) {
+    Object.assign(body, effortParams(dialect, config.reasoningEffort, config.model));
+  } else if (config.reasoningEffort) {
     body.reasoning_effort = config.reasoningEffort;
   }
 

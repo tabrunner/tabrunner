@@ -103,8 +103,8 @@ never reach the service-worker bundle.
 - `providers/` — OpenAI/Anthropic/Responses adapters, presets, pricing (spend estimates —
   `pricing.ts`, see docs/agent/providers.md), storage, config UI. Adding a
   **keyed** provider is a data change in `presets.ts` and nothing else — its wire quirks
-  ride on preset fields (`headers`, `inlineToolImages`, `supportsImages`), never on an
-  adapter branch. A **signed-in** one also gets its own `<vendor>-oauth.ts` and one entry in
+  ride on preset fields (`headers`, `inlineToolImages`, `supportsImages`, `effortDialect`,
+  `explicitNone`), never on an adapter branch. A **signed-in** one also gets its own `<vendor>-oauth.ts` and one entry in
   `OAUTH_FLOWS`; that pair is the whole seam, and the registry is what stops a provider
   being signable but not refreshable.
   **The vendor-neutral half lives in [`@providerkit/core`](https://providerkit.dev)** — error

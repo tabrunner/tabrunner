@@ -7,6 +7,7 @@ import {
   sessionHeaders,
   streamSse,
 } from "./http";
+import { PRESETS } from "./presets";
 
 /**
  * Claude Code identities the subscription token as theirs, so OAuth traffic
@@ -33,9 +34,7 @@ export function createAnthropicProvider(config: ResolvedProviderConfig): ChatPro
         // rows routed here (OpenCode Zen/Go Claude models) also carry the
         // per-conversation session header — same rule as the other adapters.
         headers: {
-          ...(config.auth
-            ? anthropicOAuthHeaders(config.apiKey)
-            : anthropicHeaders(config.apiKey)),
+          ...(config.auth ? anthropicOAuthHeaders(config.apiKey) : anthropicHeaders(config.apiKey)),
           ...sessionHeaders(config.id, config.sessionId),
         },
         body: JSON.stringify(buildAnthropicBody(config, messages, tools)),
@@ -226,11 +225,16 @@ export function buildAnthropicBody(
   // model to its own default, which for a current reasoning model is not off.
   // Adaptive costs nothing on a step that doesn't need it, since Claude decides
   // per turn, and it can't 400 a model that doesn't reason.
-  body.thinking = { type: "adaptive" };
-  // "none" has no Anthropic equivalent — there is no off switch, so it lands on
-  // the same adaptive floor as an unpinned effort, and only the other levels pin
-  // output_config.effort. That makes "none" and "default" one request on this
-  // shape; telling them apart needs an API answer we don't have, not a code change.
+  //
+  // "none" lands on that same floor, and only the other levels pin
+  // output_config.effort, so "none" and "default" are one request here. An
+  // explicit off exists but is not safe to send: Claude Fable 5 answers
+  // `{type: "disabled"}` with a 400. The endpoints that need it say so on the
+  // preset (`explicitNone`).
+  const explicitNone =
+    config.reasoningEffort === "none" &&
+    PRESETS.find((p) => p.id === config.id)?.explicitNone === true;
+  body.thinking = explicitNone ? { type: "disabled" } : { type: "adaptive" };
   if (config.reasoningEffort && config.reasoningEffort !== "none") {
     body.output_config = { effort: config.reasoningEffort };
   }

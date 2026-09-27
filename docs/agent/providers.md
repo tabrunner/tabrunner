@@ -62,9 +62,15 @@ The load-bearing details of talking to each provider shape. Read this when a tas
 - **No sampling params.** Never send temperature/topP — provider defaults always apply.
   The one knob we expose is `reasoningEffort` (`none|low|medium|high|max`, optional):
   verbatim `reasoning_effort` on OpenAI-shape; `thinking: {type:"adaptive"}` +
-  `output_config: {effort}` on Anthropic-shape (`none` = adaptive only, Anthropic has no
-  off switch). Unsupported levels come back as a clean provider 400, surfaced in chat — we
-  never sniff model names.
+  `output_config: {effort}` on Anthropic-shape (`none` = adaptive only: Claude Fable 5
+  400s an explicit `{type:"disabled"}`). Unsupported levels come back as a clean provider
+  400, surfaced in chat — we never sniff model names. Two exceptions ride on preset fields,
+  because the endpoint reads "none" as "think": `effortDialect` sends OpenRouter's and
+  DeepSeek's effort through `effortParams` from `@providerkit/core` (OpenRouter's own
+  `reasoning: {effort}`; DeepSeek's `thinking: {type:"disabled"}` for none), and
+  `explicitNone` sends Z.ai `thinking: {type:"disabled"}` for none. The one per-model rule —
+  GLM 5.3 Flash on OpenRouter 400s every explicit off, so its none is `low` — is measured
+  and lives in the package.
 - **Images are data URLs everywhere inside TabRunner**, split per wire format at the
   adapter edge. Anthropic nests image blocks inside the `tool_result` itself; an
   OpenAI-shape `role:"tool"` message is text-only, so that adapter trails a `user` message

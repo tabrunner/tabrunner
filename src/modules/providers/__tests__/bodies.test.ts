@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { buildOpenAIBody } from "../openai";
 import { buildAnthropicBody } from "../anthropic";
-import type { ChatMessage, ExternalJsonSchema, ResolvedProviderConfig, ToolDef } from "../types";
+import { PRESETS } from "../presets";
+import type {
+  ChatMessage,
+  ExternalJsonSchema,
+  ReasoningEffort,
+  ResolvedProviderConfig,
+  ToolDef,
+} from "../types";
 
 // Storage stand-in comes from src/test-setup.ts (vitest setupFiles).
 
@@ -82,6 +89,84 @@ describe("buildOpenAIBody", () => {
     const msgs = body.messages as Record<string, unknown>[];
     expect(msgs[2]).toMatchObject({ role: "tool", tool_call_id: "c1", content: "" });
     expect(JSON.stringify(msgs[2])).toContain('"content"');
+  });
+
+  describe("effort on the endpoints that spell it their own way", () => {
+    // The fields each preset row sends for one model and one effort — what the
+    // picker offers is the whole input, so the preset is the only other thing
+    // the body may depend on.
+    function effortFields(id: string, model: string, effort?: ReasoningEffort) {
+      const preset = PRESETS.find((p) => p.id === id);
+      if (!preset) throw new Error(`no preset ${id}`);
+      const body = buildOpenAIBody(
+        {
+          ...base,
+          id,
+          baseUrl: preset.baseUrl,
+          model,
+          ...(effort ? { reasoningEffort: effort } : {}),
+        },
+        messages,
+        [],
+      );
+      const { reasoning_effort, reasoning, thinking } = body;
+      return { reasoning_effort, reasoning, thinking };
+    }
+
+    it("OpenRouter: 'none' to GLM 5.3 Flash is effort low, never an explicit off", () => {
+      // Measured 2026-09-26: GLM answers every explicit off with 400 "Reasoning
+      // is mandatory", 18 of 28 hosts think when the field is left out, and
+      // effort "low" gave 0 reasoning tokens on all but two.
+      expect(effortFields("openrouter", "z-ai/glm-5.3-flash", "none")).toEqual({
+        reasoning: { effort: "low" },
+      });
+    });
+
+    it("OpenRouter: 'none' to every other model sends no field", () => {
+      // DeepSeek V4 Flash measured the reverse the same day: 0 reasoning
+      // tokens with the field left out, thinking at "low".
+      expect(effortFields("openrouter", "deepseek/deepseek-v4-flash", "none")).toEqual({});
+    });
+
+    it("OpenRouter: a named level rides in its own `reasoning` object, max included", () => {
+      for (const effort of ["low", "medium", "high", "max"] as const) {
+        expect(effortFields("openrouter", "z-ai/glm-5.3-flash", effort), effort).toEqual({
+          reasoning: { effort },
+        });
+      }
+    });
+
+    it("DeepSeek: 'none' turns thinking off, because silence leaves it on", () => {
+      expect(effortFields("deepseek", "deepseek-v4-flash", "none")).toEqual({
+        thinking: { type: "disabled" },
+      });
+    });
+
+    it("DeepSeek: low and medium cap it; high and max leave DeepSeek its own ceiling", () => {
+      expect(effortFields("deepseek", "deepseek-v4-flash", "low")).toEqual({
+        thinking: { type: "enabled" },
+        reasoning_effort: "low",
+      });
+      for (const effort of ["high", "max"] as const) {
+        expect(effortFields("deepseek", "deepseek-v4-flash", effort), effort).toEqual({
+          thinking: { type: "enabled" },
+        });
+      }
+    });
+
+    it("sends nothing on any endpoint when no effort was picked", () => {
+      for (const [id, model] of [
+        ["openrouter", "z-ai/glm-5.3-flash"],
+        ["deepseek", "deepseek-v4-flash"],
+        ["openai", "gpt-5.1"],
+      ]) {
+        expect(effortFields(id!, model!), id).toEqual({});
+      }
+    });
+
+    it("OpenAI keeps `reasoning_effort` verbatim — 'none' is one of its values", () => {
+      expect(effortFields("openai", "gpt-5.1", "none")).toEqual({ reasoning_effort: "none" });
+    });
   });
 
   it("omits reasoning_content when the turn had no reasoning", () => {
@@ -184,13 +269,28 @@ describe("buildAnthropicBody", () => {
     expect(body.output_config).toEqual({ effort: "high" });
   });
 
-  it("lands 'none' on the same adaptive floor as default — no off switch exists", () => {
-    const none = buildAnthropicBody({ ...anthropicBase, reasoningEffort: "none" }, messages, []);
-    expect(none.thinking).toEqual({ type: "adaptive" });
+  it("lands 'none' on the same adaptive floor as default — an explicit off 400s on Fable", () => {
+    for (const id of ["test", "claude", "anthropic"]) {
+      const config = { ...anthropicBase, id, model: "claude-fable-5" };
+      const none = buildAnthropicBody({ ...config, reasoningEffort: "none" }, messages, []);
+      expect(none.thinking, id).toEqual({ type: "adaptive" });
+      expect(none, id).not.toHaveProperty("output_config");
+      // Deliberate, and the reason the picker shows two rows that agree on the
+      // wire here: `explicitNone` on the preset is the only way to split them.
+      expect(none, id).toEqual(buildAnthropicBody(config, messages, []));
+    }
+  });
+
+  it("turns thinking off for 'none' on Z.ai, which thinks unless told not to", () => {
+    const zai = { ...anthropicBase, id: "zai", model: "glm-5.3-flash" };
+    const none = buildAnthropicBody({ ...zai, reasoningEffort: "none" }, messages, []);
+    expect(none.thinking).toEqual({ type: "disabled" });
     expect(none).not.toHaveProperty("output_config");
-    // Deliberate, and the reason the picker shows two rows that agree on the
-    // wire: if a way to disable thinking appears, this is the test to split.
-    expect(none).toEqual(buildAnthropicBody(anthropicBase, messages, []));
+    // Every other level keeps the shape's usual request.
+    const low = buildAnthropicBody({ ...zai, reasoningEffort: "low" }, messages, []);
+    expect(low.thinking).toEqual({ type: "adaptive" });
+    expect(low.output_config).toEqual({ effort: "low" });
+    expect(buildAnthropicBody(zai, messages, []).thinking).toEqual({ type: "adaptive" });
   });
 
   it("merges back-to-back user messages (tool_results + injected mid-run note)", () => {

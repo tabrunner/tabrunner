@@ -1,3 +1,4 @@
+import type { EffortDialect } from "@providerkit/core";
 import type { ProviderShape } from "./types";
 import { copilotHeaders } from "./github-oauth";
 import { i18n } from "@/i18n";
@@ -60,6 +61,23 @@ export interface ProviderPreset {
    * one — see responses.ts.
    */
   inlineToolImages?: true;
+  /**
+   * OpenAI-shape only: this endpoint spells "think this hard" its own way, so
+   * the effort goes out through @providerkit/core's `effortParams` instead of
+   * as a verbatim `reasoning_effort`. OpenRouter wants its own `reasoning`
+   * object, and for GLM 5.3 Flash "none" has to be "low" (every explicit off
+   * is a 400). DeepSeek thinks unless told `thinking: {type: "disabled"}`.
+   * The per-model rule is measured and lives in the package, not here.
+   */
+  effortDialect?: Extract<EffortDialect, "openrouter" | "deepseek">;
+  /**
+   * Anthropic-shape only: "none" is sent as `thinking: {type: "disabled"}`
+   * instead of the adaptive floor. Z.ai's coding endpoint needs it: it reads a
+   * missing thinking field as ON for GLM 5.3 Flash, and `disabled` is the one
+   * value measured to turn it off. Never on Anthropic itself: Claude Fable 5
+   * answers an explicit disabled with a 400.
+   */
+  explicitNone?: true;
   /**
    * OpenCode's gateway wants its per-conversation routing header on every chat
    * turn (`x-opencode-session`, the conversation id) — the same header pi's
@@ -263,6 +281,7 @@ export const PRESETS: ProviderPreset[] = [
     // sibling (both fully available on the coding plan); 5.2 stays as fallback.
     models: ["glm-5.3", "glm-5.3-flash", "glm-5.2"],
     apiKeyUrl: "https://z.ai/manage-apikey/apikey-list",
+    explicitNone: true,
     color: "#3B5BFD",
     icon: "zai",
   },
@@ -290,6 +309,7 @@ export const PRESETS: ProviderPreset[] = [
     icon: "deepseek",
     // Text-only API — a screenshot (image_url) in the body is a hard 400.
     supportsImages: false,
+    effortDialect: "deepseek",
   },
   {
     id: "gemini",
@@ -319,6 +339,7 @@ export const PRESETS: ProviderPreset[] = [
     // credits — a shortcut past the console, not a second way to pay, so it
     // stays one row. See openrouter-oauth.ts.
     signIn: true,
+    effortDialect: "openrouter",
     // App attribution for OpenRouter's rankings — public, not secret. Rides
     // every chat turn and the model listing alike.
     headers: () => ({
