@@ -231,9 +231,9 @@ export function buildAnthropicBody(
   //
   // "none" lands on that same floor, and only the other levels pin
   // output_config.effort, so "none" and "default" are one request here. An
-  // explicit off exists but is not safe to send: Claude Fable 5 answers
-  // `{type: "disabled"}` with a 400. The endpoints that need it say so on the
-  // preset (`explicitNone`).
+  // explicit off exists but is not safe to send: Anthropic's docs say Claude
+  // Fable 5 answers `{type: "disabled"}` with a 400. The endpoints that need it
+  // say so on the preset (`explicitNone`).
   const explicitNone =
     config.reasoningEffort === "none" &&
     PRESETS.find((p) => p.id === config.id)?.explicitNone === true;

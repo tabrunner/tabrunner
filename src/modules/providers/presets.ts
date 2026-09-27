@@ -67,15 +67,18 @@ export interface ProviderPreset {
    * as a verbatim `reasoning_effort`. OpenRouter wants its own `reasoning`
    * object, and for GLM 5.3 Flash "none" has to be "low" (every explicit off
    * is a 400). DeepSeek thinks unless told `thinking: {type: "disabled"}`.
-   * The per-model rule is measured and lives in the package, not here.
+   * The per-model rule lives in the package, beside the measurement behind it
+   * (OpenRouter, 2026-09-26, recorded in its `effortParams` doc).
    */
   effortDialect?: Extract<EffortDialect, "openrouter" | "deepseek">;
   /**
    * Anthropic-shape only: "none" is sent as `thinking: {type: "disabled"}`
-   * instead of the adaptive floor. Z.ai's coding endpoint needs it: it reads a
-   * missing thinking field as ON for GLM 5.3 Flash, and `disabled` is the one
-   * value measured to turn it off. Never on Anthropic itself: Claude Fable 5
-   * answers an explicit disabled with a 400.
+   * instead of the adaptive floor. Z.ai's coding endpoint needs it. Measured by
+   * @providerkit/core on 2026-09-13, live against api.z.ai/api/anthropic on
+   * glm-5.3-flash (recorded in its zai.ts): a missing thinking field gave a
+   * thinking block, `disabled` gave none. The adaptive floor this endpoint got
+   * before was not part of that measurement. Never on Anthropic itself: its
+   * docs say Claude Fable 5 answers an explicit disabled with a 400.
    */
   explicitNone?: true;
   /**

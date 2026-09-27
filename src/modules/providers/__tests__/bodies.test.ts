@@ -114,17 +114,19 @@ describe("buildOpenAIBody", () => {
     }
 
     it("OpenRouter: 'none' to GLM 5.3 Flash is effort low, never an explicit off", () => {
-      // Measured 2026-09-26: GLM answers every explicit off with 400 "Reasoning
-      // is mandatory", 18 of 28 hosts think when the field is left out, and
-      // effort "low" gave 0 reasoning tokens on all but two.
+      // @providerkit/core's measurement (2026-09-26, in its effortParams doc):
+      // GLM answers every explicit off with 400 "Reasoning is mandatory", 18 of
+      // 28 hosts think when the field is left out, and effort "low" gave 0
+      // reasoning tokens on all but two.
       expect(effortFields("openrouter", "z-ai/glm-5.3-flash", "none")).toEqual({
         reasoning: { effort: "low" },
       });
     });
 
     it("OpenRouter: 'none' to every other model sends no field", () => {
-      // DeepSeek V4 Flash measured the reverse the same day: 0 reasoning
-      // tokens with the field left out, thinking at "low".
+      // The same record: DeepSeek V4 Flash measured the reverse that day, 0
+      // reasoning tokens with the field left out and thinking at "low". Every
+      // other model is unmeasured and gets the same omission.
       expect(effortFields("openrouter", "deepseek/deepseek-v4-flash", "none")).toEqual({});
     });
 
@@ -282,6 +284,9 @@ describe("buildAnthropicBody", () => {
   });
 
   it("turns thinking off for 'none' on Z.ai, which thinks unless told not to", () => {
+    // @providerkit/core measured this endpoint on glm-5.3-flash (2026-09-13, in
+    // its zai.ts): no thinking field thinks, `disabled` does not. The adaptive
+    // floor sent before was not measured.
     const zai = { ...anthropicBase, id: "zai", model: "glm-5.3-flash" };
     const none = buildAnthropicBody({ ...zai, reasoningEffort: "none" }, messages, []);
     expect(none.thinking).toEqual({ type: "disabled" });
