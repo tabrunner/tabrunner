@@ -73,4 +73,15 @@ describe("provider names", () => {
     const go = PRESETS.find((p) => p.id === "opencode-go");
     expect(go?.modelRoutes?.responses).toContain("muse-spark-1.3-contributor");
   });
+
+  it("leads Go with MiMo v2.6 Flash and routes its GPT and Grok ids to Responses", () => {
+    // Go's docs (Endpoints table) and its live /models, 2026-09-27: grok-4.5
+    // is gone, and grok-4.7/4.6 and gpt-6-luna are served on /responses.
+    const go = PRESETS.find((p) => p.id === "opencode-go");
+    expect(go?.models[0]).toBe("mimo-v2.6-flash");
+    expect(go?.modelRoutes?.responses).toEqual(
+      expect.arrayContaining(["grok-4.7", "grok-4.6", "gpt-6-luna", "gpt-5.6-luna"]),
+    );
+    expect(go?.modelRoutes?.responses).not.toContain("grok-4.5");
+  });
 });
