@@ -38,6 +38,10 @@ export function setJevEnabled(enabled: boolean): Promise<void> {
   });
 }
 
+export function removeJevKey(): Promise<void> {
+  return serialized(() => jevSettingsItem.remove());
+}
+
 export function addJevSpend(cost: number): Promise<void> {
   if (!(cost > 0)) return Promise.resolve();
   return serialized(async () => {

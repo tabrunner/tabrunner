@@ -8,7 +8,9 @@
  * spell the same (Vercel renames Noul to "boolean").
  */
 
-export type JevHostId = "typesafe" | "openrouter" | "cloudflare" | "vercel";
+/** In the order the settings picker lists them. */
+export const JEV_HOST_IDS = ["typesafe", "openrouter", "cloudflare", "vercel"] as const;
+export type JevHostId = (typeof JEV_HOST_IDS)[number];
 
 /** What a saved Jev setup needs to reach its host. */
 export interface JevConnection {

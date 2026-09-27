@@ -82,7 +82,46 @@
       "extensionIdHint": "Defina TABRUNNER_BRIDGE_EXPECTED_EXTENSION_ID do daemon com este valor."
     },
     "walkthroughs": "Guias passo a passo",
-    "walkthroughsHint": "Deixe o agente transformar uma tarefa em um passo a passo compartilhável quando você pedir. As capturas ficam neste computador e nunca vão para o modelo."
+    "walkthroughsHint": "Deixe o agente transformar uma tarefa em um passo a passo compartilhável quando você pedir. As capturas ficam neste computador e nunca vão para o modelo.",
+    "jev": {
+      "title": "Jev para passos simples",
+      "help": "O Jev é um modelo barato que escolhe onde clicar. Com ele ligado, seu modelo principal pode passar para ele trechos simples de cliques e digitação, e depois confere o resultado. Antes de um clique que pareça pagar, enviar ou apagar algo, o Jev para e devolve a tarefa.",
+      "enable": "Usar o Jev",
+      "menuHint": "Cliques e digitação baratos para passos simples",
+      "host": "Onde o Jev roda",
+      "key": "Chave de API",
+      "token": "Token de API",
+      "keyGet": "Criar uma chave em {{host}}",
+      "useOpenRouter": "Usar minha chave do OpenRouter",
+      "accountId": "ID da conta",
+      "accountIdHint": "Aparece na página inicial da sua conta no painel da Cloudflare.",
+      "save": "Conferir chave e ligar",
+      "checking": "Conferindo a chave…",
+      "savedAs": "{{host}} · chave terminada em {{last4}}",
+      "spent": "{{cost}} gastos pelo TabRunner",
+      "balance": "{{cost}} de saldo",
+      "usageLink": "Uso em {{host}}",
+      "change": "Trocar chave",
+      "remove": "Remover chave",
+      "removeTitle": "Remover a chave do Jev?",
+      "removeBody": "As tarefas voltam a usar só o seu modelo principal. Dá para cadastrar uma chave de novo quando quiser.",
+      "privacy": {
+        "typesafe": "O Jev vê os controles e o texto da aba em que trabalha, o objetivo e os valores que pode digitar. A TypeSafe não treina modelos com isso e guarda só pelo tempo necessário.",
+        "openrouter": "O Jev vê os controles e o texto da aba em que trabalha, o objetivo e os valores que pode digitar. Isso passa pelo OpenRouter até a TypeSafe, que não treina modelos com isso.",
+        "cloudflare": "O Jev vê os controles e o texto da aba em que trabalha, o objetivo e os valores que pode digitar. A própria Cloudflare roda o Jev e não guarda nada disso.",
+        "vercel": "O Jev vê os controles e o texto da aba em que trabalha, o objetivo e os valores que pode digitar. Isso passa pela Vercel até a TypeSafe, que não treina modelos com isso."
+      },
+      "error": {
+        "missingKey": "Cole uma chave primeiro.",
+        "missingAccount": "A Cloudflare também precisa do ID da sua conta.",
+        "auth": "{{host}} não aceitou essa chave. Confira se copiou ela inteira ou crie uma nova.",
+        "authCloudflare": "A Cloudflare não aceitou esse token ou ID de conta. Confira os dois e se o token tem acesso ao Workers AI.",
+        "quota": "Sua conta em {{host}} está sem crédito. Adicione crédito e tente de novo.",
+        "busy": "{{host}} está com muita demanda agora. Tente de novo daqui a um minuto.",
+        "network": "O TabRunner não conseguiu falar com {{host}}. Confira sua conexão e tente de novo.",
+        "other": "{{host}} respondeu com um erro: {{detail}}. Tente de novo ou escolha outro provedor."
+      }
+    }
   },
   "instructions": {
     "title": "Instruções",
@@ -920,7 +959,8 @@
     "walkthrough": "Peça “e documente isso” e o agente escreve o processo como um guia compartilhável.",
     "mcpOut": "Digite /mcp para ver quais servidores remotos responderam — adicione mais em Configurações → MCP.",
     "webhooks": "Eventos de execução podem ir por POST para uma URL sua — configure webhooks em Configurações → Comportamento.",
-    "skillsManage": "Digite /skills para gerenciar suas habilidades — cada uma também roda como comando próprio."
+    "skillsManage": "Digite /skills para gerenciar suas habilidades — cada uma também roda como comando próprio.",
+    "jev": "Cadastre uma chave do Jev em Configurações → Provedores e gaste menos com cliques simples."
   },
   "notify": {
     "doneFallback": "Tarefa concluída — abra o TabRunner para ver como foi."

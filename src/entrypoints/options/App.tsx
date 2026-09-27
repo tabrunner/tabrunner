@@ -11,6 +11,7 @@ import { InstructionsSection, MemorySection } from "@/modules/memory/ui";
 import { HooksSection } from "@/modules/hooks/ui/HooksSection";
 import { SchedulesSection } from "@/modules/schedule/ui";
 import { SkillsSection } from "@/modules/skills/ui";
+import { JevSection } from "@/modules/jev/ui/JevSection";
 import { Button } from "@/components/Button";
 import { BrandMark } from "@/components/BrandMark";
 import { Icon } from "@/components/Icon";
@@ -302,21 +303,26 @@ function ProvidersPane() {
   const loaded = useProvidersStore((s) => s.loaded);
   const hasProviders = useProvidersStore((s) => s.providers.length > 0);
   return (
-    <section>
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-          {t("settings.providers")}
-        </h2>
-        {/* The empty list already offers the first-provider CTA in context —
+    <>
+      <section>
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+            {t("settings.providers")}
+          </h2>
+          {/* The empty list already offers the first-provider CTA in context —
             two Add buttons for one job is one too many. */}
-        {(!loaded || hasProviders) && (
-          <AddProviderDialog trigger={<Button size="sm">{t("settings.addProvider")}</Button>} />
-        )}
-      </div>
-      <div className="mt-3">
-        <ProviderList />
-      </div>
-    </section>
+          {(!loaded || hasProviders) && (
+            <AddProviderDialog trigger={<Button size="sm">{t("settings.addProvider")}</Button>} />
+          )}
+        </div>
+        <div className="mt-3">
+          <ProviderList />
+        </div>
+      </section>
+      {/* Beside the planners, not among them: Jev is a key the run uses for
+          its clicking, never an engine the picker could offer. */}
+      <JevSection />
+    </>
   );
 }
 

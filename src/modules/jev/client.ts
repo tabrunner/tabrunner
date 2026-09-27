@@ -164,3 +164,20 @@ export async function checkJevKey(conn: JevConnection, signal?: AbortSignal): Pr
     throw new ProviderError("jev", "invalid", "unreadable reply");
   }
 }
+
+/** OpenRouter's remaining balance in US$ — the one host that reports one. */
+export async function openRouterBalance(apiKey: string): Promise<number | undefined> {
+  try {
+    const res = await getOk("https://openrouter.ai/api/v1/credits", {
+      Authorization: `Bearer ${apiKey}`,
+    });
+    const json = (await res.json()) as {
+      data?: { total_credits?: unknown; total_usage?: unknown };
+    };
+    const { total_credits: total, total_usage: used } = json.data ?? {};
+    return typeof total === "number" && typeof used === "number" ? total - used : undefined;
+  } catch {
+    // A balance is a nicety — no balance shown beats an error about it.
+    return undefined;
+  }
+}
