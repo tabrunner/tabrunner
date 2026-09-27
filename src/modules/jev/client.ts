@@ -1,4 +1,11 @@
-import { ProviderError, classifyHttp, messageOf, withRetry } from "@providerkit/core";
+import {
+  ProviderError,
+  classifyHttp,
+  messageOf,
+  postJson,
+  retryAfterFromHeaders,
+  withRetry,
+} from "@providerkit/core";
 import { truncate } from "@/lib/logger";
 import { JEV_HOSTS } from "./hosts";
 import type { JevConnection, JevReply } from "./hosts";
@@ -20,12 +27,25 @@ export interface Choice {
   ranked: { id: string; p: number }[];
 }
 
-async function send(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+/**
+ * Cloudflare answers a wrong account id with a 404 (code 7003) that
+ * classifyHttp reads as a missing model; the fix is the account id, so it is
+ * an auth failure.
+ */
+function reclassify(e: unknown): unknown {
+  if (e instanceof ProviderError && e.status === 404 && e.body?.includes("7003")) {
+    return new ProviderError("jev", "auth", e.message, { status: 404, body: e.body, cause: e });
+  }
+  return e;
+}
+
+/** A GET that proves a key — the one request postJson doesn't cover. */
+async function getOk(url: string, headers: Record<string, string>, signal?: AbortSignal) {
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(url, {
-      ...init,
+      headers,
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
   } catch (e) {
@@ -37,12 +57,14 @@ async function send(url: string, init: RequestInit, signal?: AbortSignal): Promi
   }
   if (res.ok) return res;
   const body = await res.text().catch(() => "");
-  const retryAfter = Number(res.headers.get("retry-after"));
-  throw new ProviderError("jev", classifyHttp(res.status, body), `HTTP ${res.status}`, {
-    status: res.status,
-    body: truncate(body, 300),
-    ...(retryAfter > 0 ? { retryAfterMs: retryAfter * 1000 } : {}),
-  });
+  const retryAfterMs = retryAfterFromHeaders(res.headers);
+  throw reclassify(
+    new ProviderError("jev", classifyHttp(res.status, body), `HTTP ${res.status}`, {
+      status: res.status,
+      body: truncate(body, 300),
+      ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+    }),
+  );
 }
 
 /**
@@ -58,16 +80,22 @@ export async function askJev(
   const host = JEV_HOSTS[conn.host];
   return withRetry(
     async () => {
-      const res = await send(
-        host.url(conn),
-        {
-          method: "POST",
-          headers: { ...host.headers(conn), "Content-Type": "application/json" },
-          body: JSON.stringify(host.body(state, questions)),
-        },
-        signal,
-      );
-      const json: unknown = await res.json().catch(() => null);
+      const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+      let json: unknown;
+      try {
+        json = await postJson({
+          url: host.url(conn),
+          headers: host.headers(conn),
+          body: host.body(state, questions),
+          provider: "jev",
+          signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+        });
+      } catch (e) {
+        if (timeout.aborted && !signal?.aborted) {
+          throw new ProviderError("jev", "timeout", "no answer in 15 s", { cause: e });
+        }
+        throw reclassify(e);
+      }
       const reply = host.unwrap(json);
       if (!reply) {
         throw new ProviderError("jev", "invalid", "unreadable reply", {
@@ -80,22 +108,34 @@ export async function askJev(
   );
 }
 
+const isProbability = (p: unknown): p is number =>
+  typeof p === "number" && Number.isFinite(p) && p >= 0 && p <= 1;
+
 /**
  * Reads one Choice answer, or null when it isn't one for these options. An
- * answer that fails here never becomes an action — jev-ultrafast's
- * validate_choice rule: the pick must be offered, and it must be the most
- * likely option in its own distribution.
+ * answer that fails here never becomes an action. jev-ultrafast's rule: the
+ * pick must be offered, the distribution must name exactly the offered
+ * options and sum to 1 (within rounding drift — eight live options have been
+ * seen summing to 0.98), and the pick must be its favorite. An answer with
+ * only a `confidence` is refused, never filled in: TypeSafe's confidence
+ * measures how the distribution is spread, not P(pick).
  */
 export function readChoice(answer: unknown, ids: string[]): Choice | null {
   if (typeof answer !== "object" || answer === null) return null;
-  const { choice, probabilities } = answer as { choice?: unknown; probabilities?: unknown };
+  const { choice, probabilities } = answer as Record<string, unknown>;
   if (typeof choice !== "string" || !ids.includes(choice)) return null;
+
   if (typeof probabilities !== "object" || probabilities === null) return null;
+  const entries = Object.entries(probabilities);
+  if (entries.length !== ids.length || !entries.every(([id]) => ids.includes(id))) return null;
   const ranked: { id: string; p: number }[] = [];
-  for (const [id, p] of Object.entries(probabilities)) {
-    if (!ids.includes(id) || typeof p !== "number" || !Number.isFinite(p)) return null;
+  for (const [id, p] of entries) {
+    if (!isProbability(p)) return null;
     ranked.push({ id, p });
   }
+  const sum = ranked.reduce((total, r) => total + r.p, 0);
+  const nonzero = ranked.filter((r) => r.p > 0).length;
+  if (Math.abs(sum - 1) > Math.min(0.05, Math.max(0.01, 0.005 * nonzero))) return null;
   ranked.sort((a, b) => b.p - a.p);
   const top = ranked[0];
   const picked = ranked.find((r) => r.id === choice);
@@ -111,7 +151,7 @@ export function readChoice(answer: unknown, ids: string[]): Choice | null {
 export async function checkJevKey(conn: JevConnection, signal?: AbortSignal): Promise<void> {
   const probe = JEV_HOSTS[conn.host].check(conn);
   if (probe) {
-    await send(probe.url, { headers: probe.headers }, signal);
+    await getOk(probe.url, probe.headers, signal);
     return;
   }
   const reply = await askJev(

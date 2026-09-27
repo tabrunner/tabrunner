@@ -4,6 +4,8 @@ import type { Skill } from "@/modules/skills";
 import { handleSaveSkill } from "@/modules/skills/save-skill-tool";
 import type { RunRecorder } from "@/modules/walkthrough/recorder";
 import { normalizeMcpResult } from "@/modules/mcp";
+import { delegateDetail, delegateSummary, handleDelegate } from "@/modules/jev";
+import type { DelegateData, JevConnection } from "@/modules/jev";
 import { MCP_TOOL_PREFIX } from "@/modules/mcp";
 import type { McpHandle } from "@/modules/mcp";
 import { remember } from "@/modules/memory";
@@ -64,6 +66,11 @@ export interface ToolContext {
   /** The run's abort signal — remote calls honor it, so Stop lands promptly
    *  even mid-call instead of after the transport's own timeout. */
   signal?: AbortSignal;
+  /** The saved Jev setup — `delegate`'s executor. Absent while Jev is off. */
+  jev?: JevConnection;
+  /** Adds a tool's own spend to the run's total — Jev bills outside the
+   *  provider's turns. */
+  reportCost?: (usd: number) => void;
 }
 
 /** Execute a single tool call against the browser driver. */
@@ -282,6 +289,15 @@ export async function executeTool(
       case "cancel_schedule":
         return cancelSchedule(call.args);
 
+      case "delegate":
+        // Reachable only while Jev is on — buildToolDefs withholds the tool
+        // otherwise; this guards a model that names it anyway.
+        if (!ctx.jev) return { ok: false, error: i18n.t("jev.tool.unavailable") };
+        return handleDelegate(call.args, driver, ctx.jev, {
+          ...(ctx.signal ? { signal: ctx.signal } : {}),
+          ...(ctx.reportCost ? { reportCost: ctx.reportCost } : {}),
+        });
+
       case "ask_user":
         // No driver interaction — the loop ends the run on this call and the
         // panel renders the question; the answer arrives as the next message.
@@ -354,6 +370,11 @@ export function formatDetail(
   if (tool === "find") {
     const found = result.data as { matches?: string[]; total?: number } | undefined;
     return found?.matches?.length ? truncate(found.matches.join("\n"), MAX_DETAIL) : undefined;
+  }
+  if (tool === "delegate") {
+    // What Jev did, step by step, and what it cost — not the snapshot it
+    // hands the model, which would bury both.
+    return delegateDetail(result.data as DelegateData);
   }
   if (tool === "read_history") {
     // The log is already formatted text — showing it as escaped JSON would be unreadable.
@@ -434,6 +455,7 @@ export function formatSuccessSummary(tool: string, data: unknown): string {
       : i18n.t("errors.found", { count: total });
   }
   if (tool === "go_back") return i18n.t("errors.wentBack");
+  if (tool === "delegate") return delegateSummary(data as DelegateData);
   if (tool === "open_tab") {
     const { url } = (data ?? {}) as { url?: string };
     const where = summaryHost(url);

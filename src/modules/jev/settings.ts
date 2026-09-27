@@ -38,6 +38,14 @@ export function setJevEnabled(enabled: boolean): Promise<void> {
   });
 }
 
+export function addJevSpend(cost: number): Promise<void> {
+  if (!(cost > 0)) return Promise.resolve();
+  return serialized(async () => {
+    const prev = await jevSettingsItem.get();
+    if (prev) await jevSettingsItem.set({ ...prev, spent: prev.spent + cost });
+  });
+}
+
 /** The connection a run may use — null when Jev is off or has no key. */
 export async function jevForRun(): Promise<JevConnection | null> {
   const s = await jevSettingsItem.get();

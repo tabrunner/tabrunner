@@ -933,6 +933,50 @@
     "resumeStopped": "El siguiente mensaje del usuario decide qué pasa con este trabajo: puede continuarlo o ir en otra dirección. Llama a read_history cuando necesites los resultados completos de estos pasos.",
     "omitted": "… {{count}} pasos anteriores"
   },
+  "jev": {
+    "stop": {
+      "done": "Listo: la página muestra lo que pedía done_when.",
+      "hand_back": "Devuelto: el siguiente paso necesita un valor que no se le dio, o no se puede deshacer.",
+      "irreversible": "Se detuvo antes de {{detail}}: ese paso no se puede deshacer, así que necesita el OK del usuario.",
+      "no_progress": "Se detuvo: sus últimas 3 acciones no cambiaron la página.",
+      "repeat": "Se detuvo: insistía en {{detail}}, que no hacía nada.",
+      "unstable": "Se detuvo: la página cambiaba antes de que pudiera actuar.",
+      "unsure": "Se detuvo: no tenía claro qué hacer ({{detail}}).",
+      "stuck": "Se detuvo: concluyó que no avanzaba.",
+      "max_actions": "Se detuvo: agotó sus acciones.",
+      "max_calls": "Se detuvo: agotó sus decisiones.",
+      "timeout": "Se detuvo: pasaron 2 minutos sin terminar.",
+      "new_tab": "Se detuvo: la página abrió una pestaña nueva. list_tabs la muestra.",
+      "left_site": "Se detuvo: la página pasó a otro sitio ({{detail}}).",
+      "restricted": "Se detuvo: la página fue a un lugar donde las extensiones no funcionan ({{detail}}).",
+      "aborted": "Detenido por el usuario.",
+      "jev_error": "Se detuvo: Jev falló ({{detail}})."
+    },
+    "error": {
+      "auth": "el proveedor rechazó la clave de Jev",
+      "quota": "la cuenta de Jev no tiene saldo",
+      "busy": "el proveedor de Jev está saturado",
+      "network": "no se puede conectar con el proveedor de Jev"
+    },
+    "tool": {
+      "missingGoal": "delegate necesita goal y done_when.",
+      "unavailable": "delegate está apagado: Jev está desactivado o no tiene clave.",
+      "failed": "Jev no pudo ejecutarse: {{why}}. Sigue a mano. El usuario puede revisar la clave en Configuración → Proveedores.",
+      "noChange": "no cambió nada en pantalla",
+      "verify": "Revisa el snapshot de abajo antes de seguir. Jev puede equivocarse al creer que terminó.",
+      "continue": "Sigue a mano a partir del snapshot de abajo. No vuelvas a delegar este mismo objetivo."
+    },
+    "step": {
+      "done_one": "Jev terminó en {{count}} paso",
+      "done_other": "Jev terminó en {{count}} pasos",
+      "handedBack_one": "Jev devolvió el control tras {{count}} paso",
+      "handedBack_other": "Jev devolvió el control tras {{count}} pasos",
+      "stopped_one": "Jev se detuvo tras {{count}} paso",
+      "stopped_other": "Jev se detuvo tras {{count}} pasos",
+      "usage_one": "{{count}} llamada a Jev · {{tokens}} tokens · {{cost}}",
+      "usage_other": "{{count}} llamadas a Jev · {{tokens}} tokens · {{cost}}"
+    }
+  },
   "errors": {
     "alreadyRunningMCP": "Ya hay una tarea de un cliente MCP externo en ejecución. Detenla desde el cliente (tabrunner.stop) o espera a que termine.",
     "alreadyRunningPanel": "Ya hay una tarea ejecutándose en el panel de TabRunner. Abre el panel y detenla, o espera a que termine.",

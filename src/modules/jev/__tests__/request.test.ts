@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SnapshotElement } from "@/modules/browser/snapshot-script";
+import { readChoice } from "../client";
 import { buildRequest, readDecision } from "../request";
 import type { DelegateTask, PageView } from "../request";
 
@@ -81,7 +82,7 @@ describe("readDecision", () => {
 
   it("joins the operation and target odds and keeps the runner-up", () => {
     const d = readDecision(req, {
-      operation: answer("CLICK", { CLICK: 0.8, WAIT: 0.2 }),
+      operation: answer("CLICK", { CLICK: 0.8, SCROLL_DOWN: 0, WAIT: 0.2, HAND_BACK: 0 }),
       click_target: answer("1", { "1": 0.5, "2": 0.5 }),
       goal_done: answer("NO", { YES: 0.1, NO: 0.9 }),
       stuck: answer("NO", { YES: 0.05, NO: 0.95 }),
@@ -96,13 +97,33 @@ describe("readDecision", () => {
   it("refuses an answer that picks something it wasn't offered", () => {
     expect(
       readDecision(req, {
-        operation: answer("CLICK", { CLICK: 1 }),
-        click_target: answer("7", { "7": 1 }),
+        operation: answer("CLICK", { CLICK: 1, SCROLL_DOWN: 0, WAIT: 0, HAND_BACK: 0 }),
+        click_target: answer("7", { "1": 0, "2": 0, "7": 1 }),
       }),
     ).toBeNull();
   });
 
   it("refuses a pick that isn't its own most likely option", () => {
     expect(readDecision(req, { operation: answer("WAIT", { WAIT: 0.1, CLICK: 0.9 }) })).toBeNull();
+  });
+});
+
+describe("readChoice", () => {
+  const ids = ["A", "B", "C"];
+
+  it("needs every offered option in the distribution, and nothing else", () => {
+    expect(readChoice(answer("A", { A: 0.9, B: 0.1 }), ids)).toBeNull();
+    expect(readChoice(answer("A", { A: 0.8, B: 0.1, C: 0.05, D: 0.05 }), ids)).toBeNull();
+    expect(readChoice(answer("A", { A: 0.8, B: 0.1, C: 0.1 }), ids)?.p).toBe(0.8);
+  });
+
+  it("allows rounding drift in the sum, not a broken distribution", () => {
+    expect(readChoice(answer("A", { A: 0.79, B: 0.1, C: 0.1 }), ids)).not.toBeNull();
+    expect(readChoice(answer("A", { A: 0.7, B: 0.1, C: 0.1 }), ids)).toBeNull();
+    expect(readChoice(answer("A", { A: 1.2, B: -0.1, C: -0.1 }), ids)).toBeNull();
+  });
+
+  it("refuses an answer that carries only a confidence — it is a spread, not P(pick)", () => {
+    expect(readChoice({ choice: "NO", confidence: 0.35 }, ["YES", "NO"])).toBeNull();
   });
 });

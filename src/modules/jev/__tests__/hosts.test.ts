@@ -27,7 +27,7 @@ describe("JEV_HOSTS", () => {
     expect(reply?.cost).toBe(0.0005);
   });
 
-  it("unwraps Cloudflare's double envelope and refuses an unfinished task", () => {
+  it("unwraps Cloudflare's double envelope and refuses a reply without answers", () => {
     const done = {
       success: true,
       result: { status: "Completed", result: { answers, usage: { input_tokens: 10 } } },
@@ -60,6 +60,20 @@ describe("askJev", () => {
     const reply = await askJev({ host: "typesafe", apiKey: "k" }, {}, {});
     expect(reply.answers).toEqual(answers);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls a Cloudflare unknown-account 404 a key problem, not a missing model", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ success: false, errors: [{ code: 7003 }] }, { status: 404 }),
+        ),
+    );
+    await expect(
+      askJev({ host: "cloudflare", apiKey: "k", accountId: "nope" }, {}, {}),
+    ).rejects.toMatchObject({ kind: "auth" });
   });
 
   it("fails a rejected key at once, classified", async () => {

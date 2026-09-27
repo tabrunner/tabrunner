@@ -933,6 +933,50 @@
     "resumeStopped": "A próxima mensagem do usuário decide o que acontece com este trabalho — ela pode continuá-lo ou seguir outro rumo. Chame read_history quando precisar dos resultados completos desses passos.",
     "omitted": "… {{count}} passos anteriores"
   },
+  "jev": {
+    "stop": {
+      "done": "Pronto: a página mostra o que o done_when pediu.",
+      "hand_back": "Devolvido: o próximo passo precisa de um valor que não foi passado, ou não tem volta.",
+      "irreversible": "Parou antes de {{detail}}: esse passo não tem volta, então precisa do OK do usuário.",
+      "no_progress": "Parou: as últimas 3 ações não mudaram a página.",
+      "repeat": "Parou: insistiu em {{detail}}, que não fazia nada.",
+      "unstable": "Parou: a página mudava antes que desse para agir.",
+      "unsure": "Parou: não tinha certeza do que fazer ({{detail}}).",
+      "stuck": "Parou: concluiu que não estava saindo do lugar.",
+      "max_actions": "Parou: usou todas as ações.",
+      "max_calls": "Parou: usou todas as decisões.",
+      "timeout": "Parou: passaram 2 minutos e não terminou.",
+      "new_tab": "Parou: a página abriu uma aba nova. O list_tabs mostra qual.",
+      "left_site": "Parou: a página foi para outro site ({{detail}}).",
+      "restricted": "Parou: a página foi para um lugar onde extensões não funcionam ({{detail}}).",
+      "aborted": "Interrompido pelo usuário.",
+      "jev_error": "Parou: o Jev falhou ({{detail}})."
+    },
+    "error": {
+      "auth": "o provedor recusou a chave do Jev",
+      "quota": "a conta do Jev está sem crédito",
+      "busy": "o provedor do Jev está sobrecarregado",
+      "network": "não deu para conectar ao provedor do Jev"
+    },
+    "tool": {
+      "missingGoal": "O delegate precisa de goal e de done_when.",
+      "unavailable": "O delegate está desligado: o Jev está desativado ou sem chave.",
+      "failed": "O Jev não conseguiu rodar: {{why}}. Continue manualmente. O usuário pode conferir a chave em Configurações → Provedores.",
+      "noChange": "nada mudou na tela",
+      "verify": "Confira o snapshot abaixo antes de seguir. O Jev pode se enganar achando que terminou.",
+      "continue": "Continue manualmente a partir do snapshot abaixo. Não delegue esse mesmo objetivo de novo."
+    },
+    "step": {
+      "done_one": "O Jev terminou em {{count}} passo",
+      "done_other": "O Jev terminou em {{count}} passos",
+      "handedBack_one": "O Jev devolveu depois de {{count}} passo",
+      "handedBack_other": "O Jev devolveu depois de {{count}} passos",
+      "stopped_one": "O Jev parou depois de {{count}} passo",
+      "stopped_other": "O Jev parou depois de {{count}} passos",
+      "usage_one": "{{count}} chamada ao Jev · {{tokens}} tokens · {{cost}}",
+      "usage_other": "{{count}} chamadas ao Jev · {{tokens}} tokens · {{cost}}"
+    }
+  },
   "errors": {
     "alreadyRunningMCP": "Uma tarefa de um cliente MCP externo já está em execução. Pare-a pelo cliente (tabrunner.stop) ou aguarde terminar.",
     "alreadyRunningPanel": "Uma tarefa já está em execução no painel do TabRunner. Abra o painel e pare-a, ou aguarde terminar.",

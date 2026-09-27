@@ -933,6 +933,50 @@
     "resumeStopped": "The user's next message decides what happens to this work — it may continue it or go somewhere else. Call read_history when you need these steps' full results.",
     "omitted": "… {{count}} earlier steps"
   },
+  "jev": {
+    "stop": {
+      "done": "Done: the page shows what done_when asked for.",
+      "hand_back": "Handed back: the next step needs a value it wasn't given, or can't be undone.",
+      "irreversible": "Stopped before {{detail}}: that step can't be undone, so it needs the user's OK.",
+      "no_progress": "Stopped: its last 3 actions didn't change the page.",
+      "repeat": "Stopped: it kept trying {{detail}}, which did nothing.",
+      "unstable": "Stopped: the page kept changing before it could act.",
+      "unsure": "Stopped: it wasn't sure what to do next ({{detail}}).",
+      "stuck": "Stopped: it judged that it was going nowhere.",
+      "max_actions": "Stopped: it used up its actions.",
+      "max_calls": "Stopped: it used up its decisions.",
+      "timeout": "Stopped: 2 minutes passed without finishing.",
+      "new_tab": "Stopped: the page opened a new tab. list_tabs shows it.",
+      "left_site": "Stopped: the page moved to another site ({{detail}}).",
+      "restricted": "Stopped: the page moved somewhere extensions can't work ({{detail}}).",
+      "aborted": "Stopped by the user.",
+      "jev_error": "Stopped: Jev failed ({{detail}})."
+    },
+    "error": {
+      "auth": "the host rejected the Jev key",
+      "quota": "the Jev account is out of credit",
+      "busy": "the Jev host is busy",
+      "network": "the Jev host can't be reached"
+    },
+    "tool": {
+      "missingGoal": "delegate needs both goal and done_when.",
+      "unavailable": "delegate is off: Jev is switched off or has no key.",
+      "failed": "Jev couldn't run: {{why}}. Carry on by hand. The user can check the key in Settings → Providers.",
+      "noChange": "no visible change",
+      "verify": "Check the snapshot below before you go on. Jev can be wrong about being done.",
+      "continue": "Carry on by hand from the snapshot below. Don't delegate this same goal again."
+    },
+    "step": {
+      "done_one": "Jev finished in {{count}} step",
+      "done_other": "Jev finished in {{count}} steps",
+      "handedBack_one": "Jev handed back after {{count}} step",
+      "handedBack_other": "Jev handed back after {{count}} steps",
+      "stopped_one": "Jev stopped after {{count}} step",
+      "stopped_other": "Jev stopped after {{count}} steps",
+      "usage_one": "{{count}} Jev call · {{tokens}} tokens · {{cost}}",
+      "usage_other": "{{count}} Jev calls · {{tokens}} tokens · {{cost}}"
+    }
+  },
   "errors": {
     "alreadyRunningMCP": "A task from an external MCP client is already running. Stop it from the client (tabrunner.stop), or wait for it to finish.",
     "alreadyRunningPanel": "A task is already running in the TabRunner panel. Open the panel and stop it, or wait for it to finish.",

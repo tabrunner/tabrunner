@@ -90,18 +90,18 @@ export const JEV_HOSTS: Record<JevHostId, JevHost> = {
     check: (c) => ({ url: "https://openrouter.ai/api/v1/credits", headers: bearer(c) }),
   },
   cloudflare: {
-    label: "Cloudflare",
+    label: "Cloudflare Workers AI",
     keyUrl: "https://dash.cloudflare.com/profile/api-tokens",
     usageUrl: "https://dash.cloudflare.com/?to=/:account/ai/workers-ai",
     url: (c) =>
       `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(c.accountId ?? "")}/ai/run`,
     headers: bearer,
     body: (state, questions) => ({ model: "typesafe/jev", input: { state, questions } }),
-    // Workers AI wraps twice: the API envelope, then the task record.
+    // Workers AI wraps twice: the API envelope, then the task record. A task
+    // that isn't finished has no answers, which plainReply already refuses.
     unwrap: (json) => {
       if (!isRecord(json) || json.success === false || !isRecord(json.result)) return null;
       const task = json.result;
-      if (typeof task.status === "string" && task.status !== "Completed") return null;
       return plainReply(isRecord(task.result) ? task.result : task);
     },
     // Lists Workers AI models on the account: proves the token, the account

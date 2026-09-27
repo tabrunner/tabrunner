@@ -16,6 +16,7 @@ describe("isGatedTool", () => {
       "scroll_down",
       "scroll_up",
       "schedule_task",
+      "delegate",
     ]) {
       expect(isGatedTool(name)).toBe(true);
     }

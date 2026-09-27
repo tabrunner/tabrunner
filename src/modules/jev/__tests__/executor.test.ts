@@ -40,10 +40,20 @@ const page = (elements: SnapshotElement[], url = "https://shop.example.com/cart"
   elements,
 });
 
-const pick = (choice: string, p = 0.9, other = "NO") => ({
-  choice,
-  probabilities: choice === other ? { [choice]: 1 } : { [choice]: p, [other]: 1 - p },
-});
+/** A full distribution over a question's options: the pick gets `p`, the
+ *  rest share what's left — the shape readChoice insists on. */
+function dist(question: ChoiceQuestion, choice: string, p: number) {
+  const ids = Object.keys(question.criteria);
+  const rest = ids.length > 1 ? (1 - p) / (ids.length - 1) : 0;
+  return {
+    choice,
+    probabilities: Object.fromEntries(ids.map((id) => [id, id === choice ? p : rest])),
+  };
+}
+
+/** A yes/no answer with P(YES) = `yes`. */
+const yesNo = (q: ChoiceQuestion, yes: number) =>
+  yes >= 0.5 ? dist(q, "YES", yes) : dist(q, "NO", 1 - yes);
 
 interface Script {
   op: string;
@@ -69,38 +79,26 @@ function fakeJev(script: Script[], commits = 0.02): Ask & { calls: string[] } {
     });
     if (questions.commits) {
       calls.push("guard");
-      return reply({
-        commits: pick(
-          commits >= 0.5 ? "YES" : "NO",
-          Math.max(commits, 1 - commits),
-          commits >= 0.5 ? "NO" : "YES",
-        ),
-      });
+      return reply({ commits: yesNo(questions.commits, commits) });
     }
     const s = script[Math.min(i++, script.length - 1)]!;
     calls.push(s.op);
-    const ops = Object.keys(questions.operation!.criteria);
-    const pOp = s.pOp ?? 0.9;
-    const other = ops.find((o) => o !== s.op)!;
     const answers: Record<string, unknown> = {
-      operation: { choice: s.op, probabilities: { [s.op]: pOp, [other]: 1 - pOp } },
-      goal_done: pick(
-        (s.done ?? 0) >= 0.5 ? "YES" : "NO",
-        Math.max(s.done ?? 0, 1 - (s.done ?? 0)),
-        (s.done ?? 0) >= 0.5 ? "NO" : "YES",
-      ),
-      stuck: pick(
-        (s.stuck ?? 0) >= 0.5 ? "YES" : "NO",
-        Math.max(s.stuck ?? 0, 1 - (s.stuck ?? 0)),
-        (s.stuck ?? 0) >= 0.5 ? "NO" : "YES",
-      ),
+      operation: dist(questions.operation!, s.op, s.pOp ?? 0.9),
+      goal_done: yesNo(questions.goal_done!, s.done ?? 0),
+      stuck: yesNo(questions.stuck!, s.stuck ?? 0),
     };
-    if (s.target) {
-      const probabilities: Record<string, number> = s.spread ?? {
+    const targets = questions[`${s.op.toLowerCase()}_target`];
+    if (s.target && targets) {
+      const ids = Object.keys(targets.criteria);
+      const odds: Record<string, number> = s.spread ?? {
         [s.target]: s.runnerUp ? 0.6 : 1,
+        ...(s.runnerUp ? { [s.runnerUp]: 0.4 } : {}),
       };
-      if (s.runnerUp) probabilities[s.runnerUp] = 0.4;
-      answers[`${s.op.toLowerCase()}_target`] = { choice: s.target, probabilities };
+      answers[`${s.op.toLowerCase()}_target`] = {
+        choice: s.target,
+        probabilities: Object.fromEntries(ids.map((id) => [id, odds[id] ?? 0])),
+      };
     }
     return reply(answers);
   };
