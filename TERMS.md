@@ -1,6 +1,6 @@
 # TabRunner Terms of Use
 
-_Last updated: 2026-08-09 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
+_Last updated: 2026-09-27 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
 Opera, Vivaldi)._
 
 TabRunner also publishes this document in Portuguese and Spanish. If a translation and this
@@ -27,11 +27,11 @@ relationship or a service-level commitment of any kind.
 
 ## 3. Your providers, your terms
 
-You bring your own AI provider — a subscription you sign into, or an API key you paste. Your
-agreement with that provider (pricing, rate limits, acceptable use, data handling) is between
-you and them. TabRunner sends task data only to the provider you configure, as
-[PRIVACY.md](PRIVACY.md) describes; we are not a party to that relationship and don't see the
-traffic.
+You bring your own AI provider — a subscription you sign into, or an API key you paste — and,
+if you add them, a Jev key, remote MCP servers and webhooks. Your agreement with each of those
+services (pricing, rate limits, acceptable use, data handling) is between you and them.
+TabRunner sends task data only to the services you set up, as [PRIVACY.md](PRIVACY.md)
+describes; we are not a party to those relationships and don't see the traffic.
 
 ## 4. Your browser, your responsibility
 

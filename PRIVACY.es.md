@@ -10,8 +10,9 @@ difieren, prevalece el texto en inglés.
 ni cuenta, ni telemetría, ni servicios de analítica. Todo lo que escribes o configuras se queda en
 tu dispositivo, en el almacenamiento local de tu navegador. Los únicos destinos de tus datos son (1)
 el proveedor de IA que **tú** hayas configurado, (2) los sitios web en los que le pidas a TabRunner
-que actúe y, solo si los usas, (3) un puente MCP local en tu propio equipo, (4) la URL de una
-habilidad que importes y (5) el servicio de Jev que elijas.
+que actúe y, solo si los usas, (3) un puente MCP local en tu propio equipo, (4) la dirección
+desde la que importes una habilidad, (5) el servicio de Jev que elijas, (6) los servidores MCP
+remotos que añadas y (7) las direcciones de tus webhooks.
 
 ---
 
@@ -36,6 +37,8 @@ proveedor que hayas configurado y los sitios en los que la pongas a trabajar.
   `MEMORY.md` (lo que TabRunner ha aprendido), que aparecen en el panel Configuración → Memoria.
 - **Habilidades**: las recetas opcionales que aparecen en Configuración → Habilidades (nombre,
   descripción, sitios, instrucciones), ya estén escritas a mano, extraídas de un chat o importadas.
+- **Conexiones**: la clave de Jev y, de cada servidor MCP remoto y cada webhook que añadas, la
+  dirección y los encabezados de autenticación que guardes.
 - **Preferencias**: el tema y el idioma que elijas.
 
 ## 2. Qué procesa TabRunner y adónde van los datos
@@ -69,10 +72,12 @@ en la red:
    `127.0.0.1`. Nada fuera de tu equipo puede acceder a él, y el daemon no guarda nada: retransmite
    las tareas que entran y el progreso de las ejecuciones que sale. Solo existe mientras lo
    ejecutas; si no, TabRunner no se conecta a nada. Consulta [docs/mcp.md](docs/mcp.md).
-4. **La URL de una habilidad, solo cuando importas una**: Configuración → Habilidades → Importar
-   accede únicamente a la dirección https que escribas (una sola solicitud GET; no se adjunta nada
-   tuyo aparte de la propia solicitud), en el momento en que lo pidas. TabRunner nunca descarga ni
-   actualiza habilidades por su cuenta.
+4. **La dirección de una habilidad, solo cuando importas una**: Configuración → Habilidades →
+   Importar accede a la dirección https que escribas, en el momento en que lo pidas; no se adjunta
+   nada tuyo aparte de la propia solicitud. Si indicas un repositorio de GitHub en lugar de un
+   archivo, TabRunner primero le pide a la API pública de GitHub la lista de archivos de ese
+   repositorio y luego descarga todas las habilidades que encuentre en ella (hasta 25), para que
+   elijas cuáles guardar. TabRunner nunca descarga ni actualiza habilidades por su cuenta.
 5. **Jev, solo si añades una clave de Jev**: Configuración → Proveedores → Jev. Jev es un modelo
    económico al que tu modelo puede pasarle tramos rutinarios de clics y escritura. En cada paso de
    ese tramo, el servicio que elegiste (TypeSafe, OpenRouter, Cloudflare Workers AI o Vercel AI
@@ -83,6 +88,20 @@ en la red:
    lista. TypeSafe, que desarrolla Jev, no entrena modelos con estos datos y solo los guarda el
    tiempo necesario; OpenRouter y Vercel se los pasan a TypeSafe; Cloudflare ejecuta Jev por su
    cuenta y no guarda nada. Sin clave, o con Jev desactivado, no se envía nada a ninguno de ellos.
+6. **Servidores MCP remotos, solo si añades uno**: Configuración → MCP → Conectar a servidores
+   MCP. Cuando empieza una tarea, y cuando pulsas Probar conexión, TabRunner se conecta a cada
+   servidor activado para ver qué herramientas ofrece y le envía los encabezados de autenticación
+   que guardaste. Cuando apruebas el plan, tu modelo puede usar esas herramientas: cada llamada le
+   envía al servidor lo que tu modelo escribió para ella, que puede incluir texto de la página o del
+   chat. Si un servidor te pregunta algo durante una tarea, tu respuesta va a ese servidor. Lo que
+   el servidor haga con esos datos depende de quien lo gestione. Sin servidores, o con todos
+   desactivados, TabRunner no se conecta a ninguno.
+7. **Tus webhooks, solo si añades uno**: Configuración → Comportamiento → Webhooks. Cuando ocurre
+   el evento que elegiste (una tarea empieza, termina, espera tu respuesta o da un error), TabRunner
+   envía un POST a la dirección que indicaste, con los encabezados que guardaste. Incluye el
+   evento, la hora, el id del chat y el texto de la tarea y, según el evento, el resumen y cómo
+   terminó la tarea, la pregunta y sus opciones, o el mensaje de error. Cada texto se corta a los
+   2000 caracteres. Se envía una sola vez, sin reintentos. Sin webhooks, no se envía nada.
 
 Nadie más (ni servidores intermedios, ni proxies, ni servicios de analítica, ni servidores de los
 desarrolladores) recibe nunca tus datos.
@@ -117,6 +136,9 @@ desarrolladores) recibe nunca tus datos.
   esa sección, o el del menú de ajustes del panel, desactiva Jev y conserva la clave.
 - **Eliminar una habilidad**: Configuración → Habilidades. El interruptor pausa una habilidad sin
   eliminarla; si la eliminas, deja de usarse en todas las próximas tareas.
+- **Eliminar un servidor MCP o un webhook**: Configuración → MCP, o Configuración → Comportamiento
+  → Webhooks. El interruptor lo desactiva sin eliminarlo; Eliminar lo borra junto con sus
+  encabezados guardados.
 - **Detener en cualquier momento**: Esc o el botón Detener del panel, el botón de detener de la
   lista de la franja Tareas, o cerrar la pestaña controlada por la tarea: cualquiera de estas
   opciones detiene esa tarea. Cerrar el panel NO detiene una tarea: la tarea usa tu pestaña actual
