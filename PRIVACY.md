@@ -1,6 +1,6 @@
 # TabRunner Privacy Policy
 
-_Last updated: 2026-09-13 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
+_Last updated: 2026-09-27 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
 Opera, Vivaldi)._
 
 TabRunner also publishes this document in Portuguese and Spanish. If a translation and this
@@ -10,7 +10,7 @@ English text differ, the English text governs.
 account, no telemetry, and no analytics. Everything you type or configure stays on your device, in
 your browser's local storage. The only places your data ever goes are (1) the AI provider **you**
 configured, (2) the websites you ask TabRunner to act on, and, only if you use them, (3) a local
-MCP bridge on your own machine and (4) a skill URL you import.
+MCP bridge on your own machine, (4) a skill URL you import, and (5) the Jev host you pick.
 
 ---
 
@@ -68,6 +68,16 @@ inside a task whose plan you approved.
 4. **A skill URL, only when you import one** — Settings → Skills → Import fetches the single
    https address you typed (one GET; nothing of yours is attached beyond the request itself),
    at the moment you ask. TabRunner never fetches or updates skills on its own.
+5. **Jev, only if you add a Jev key** — Settings → Providers → Jev. Jev is a low-cost model your
+   model can hand a routine stretch of clicking and typing to. For each step of that stretch, the
+   host you picked (TypeSafe, OpenRouter, Cloudflare Workers AI, or Vercel AI Gateway) receives
+   your Jev key, the page's address and title, a list of its controls (what kind each one is, its
+   label, its current value, and the text around it), up to 3,000 characters of the text on
+   screen, the goal your model wrote, the values Jev may type, and its last few steps. Password
+   and card fields are never on that list. TypeSafe, which makes Jev, doesn't train on this data and keeps
+   it only as long as it needs to; OpenRouter and Vercel pass it on to TypeSafe; Cloudflare runs
+   Jev itself and keeps none of it. With no key, or with Jev switched off, nothing goes to any of
+   them.
 
 No other party — no relay, no proxy, no analytics, no developer-owned server — ever receives your
 data.
@@ -96,6 +106,8 @@ data.
   future tasks.
 - **Remove a provider** — Settings → Providers → Remove. Deletes the stored API key or sign-in
   token; you can add it again any time.
+- **Remove the Jev key** — Settings → Providers → Jev → Remove key. The switch there, or in the
+  panel's settings menu, turns Jev off and keeps the key.
 - **Delete a skill** — Settings → Skills. The switch pauses one without deleting it; delete
   removes it from every future task.
 - **Stop anytime** — Esc or the Stop button in the panel, the stop in the Tasks band's list,

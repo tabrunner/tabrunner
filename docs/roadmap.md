@@ -316,6 +316,23 @@ number and cannot be unref'd. The concern it serves (an abandoned stream holding
 self-bounded here: the watchdog's own timer is the only one, its firing ends the wait, and an MV3
 worker's lifetime is Port-held while a panel watches anyway.
 
+### 9. Jev executor — widen only on bench numbers
+
+Shipped opt-in: a saved Jev key gives the planner `delegate` (see `jev/` in
+[agent/architecture.md](agent/architecture.md)). Where it came from: the 2026-09 spike ran whole
+tasks at 23/36 on 12 sites, ~35–95× cheaper than Claude per action and no faster; it misjudged
+"done" and once bought despite a rule, and a per-click yes/no check caught 10/10. Local
+classifiers cap at 20 options, so they stay out.
+
+What would change the shape, each gated on `bun run bench:jev` (the spike's 12 tasks on the
+production executor, Jev credits only) — the bar is not below 23/36 and zero purchases:
+
+- **Swap the wire to `@providerkit/core/jev`** when it's published — delete `jev/client.ts` and
+  the wire half of `hosts.ts`; labels, prices, the guard, and the loop stay here.
+- **Trust "done" more** only if the bench shows `goal_done` agreeing with the graders; today the
+  planner re-checks every stretch.
+- **Delegate reading** stays out: Jev can't write text, and extraction is judgment.
+
 ---
 
 ## Later
@@ -365,15 +382,14 @@ works, the next send recovers the work, and the thread's bare ending is honest i
 
 ## Deliberately not doing
 
-|                                             | Why                                                                                                                                                                                                                                                                                                                         |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Telemetry                                   | The product's promise. Feedback is the user-initiated pre-filled issue (`lib/report.ts`) — nothing collected, nothing sent, the user presses Submit on GitHub or it never exists.                                                                                                                                           |
-| Cron strings                                | Unreadable in a settings list and needs a parser. The structured `Recurrence` union covers every case anyone named. Cron can later become a _parser_ that emits it — never the storage model.                                                                                                                               |
-| Sampling params                             | No temperature/topP on any provider. The only knob is `reasoningEffort`.                                                                                                                                                                                                                                                    |
-| A second scheduler for "loops"              | A recurring schedule **is** a loop, and self-pacing falls out of giving the agent `schedule_task`. Two clocks on a one-slot run queue is a bug generator, not a feature.                                                                                                                                                    |
-| Multi-run concurrency                       | One CDP target, one run slot. A schedule firing mid-chat queues FIFO behind you. Concurrency here means two agents fighting over your keyboard.                                                                                                                                                                             |
-| stdio / native-messaging MCP                | An MV3 worker cannot spawn processes; stdio servers would need either a helper daemon running (a second install surface most users don't have) or a native host per platform (store-review friction). Remote Streamable HTTP covers the actual ask. Revisit only alongside a native-host story we'd ship anyway.            |
-| A persistent MCP connection                 | Sessions live for one run and die with it. Between runs there is nothing listening, so server push (`notifications/tools/list_changed`) goes unseen — accepted: tools are snapshotted at run start anyway, and a permanent link costs wake-ups for a feature that works without them.                                       |
-| sampling/roots on MCP sessions              | Undeclared capabilities, answered -32601. Declaring what we won't honor is how chatty servers hang us. Elicitation is the one server→client request with a human at this end, and it's wired.                                                                                                                               |
-| Per-assistant-turn webhooks ("message end") | Turn boundaries mid-run are ambiguous while tokens stream; steps already give finer granularity than anyone consumes. The seam is a new LoopCallback after the assistant push in the loop, if a real consumer appears.                                                                                                      |
-| Classifier executors (Jev, local models)    | Jev 1.13, 2026-09. Picking elements for the LLM: 49/49, but the LLM already had the refs. Running whole tasks: 23/36 on 12 sites, ~35–95× cheaper than Claude, no faster; misjudges "done", once bought despite a rule (a per-click yes/no check caught 10/10). Local models cap at 20 options. Revisit if users flag cost. |
+|                                             | Why                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Telemetry                                   | The product's promise. Feedback is the user-initiated pre-filled issue (`lib/report.ts`) — nothing collected, nothing sent, the user presses Submit on GitHub or it never exists.                                                                                                                                |
+| Cron strings                                | Unreadable in a settings list and needs a parser. The structured `Recurrence` union covers every case anyone named. Cron can later become a _parser_ that emits it — never the storage model.                                                                                                                    |
+| Sampling params                             | No temperature/topP on any provider. The only knob is `reasoningEffort`.                                                                                                                                                                                                                                         |
+| A second scheduler for "loops"              | A recurring schedule **is** a loop, and self-pacing falls out of giving the agent `schedule_task`. Two clocks on a one-slot run queue is a bug generator, not a feature.                                                                                                                                         |
+| Multi-run concurrency                       | One CDP target, one run slot. A schedule firing mid-chat queues FIFO behind you. Concurrency here means two agents fighting over your keyboard.                                                                                                                                                                  |
+| stdio / native-messaging MCP                | An MV3 worker cannot spawn processes; stdio servers would need either a helper daemon running (a second install surface most users don't have) or a native host per platform (store-review friction). Remote Streamable HTTP covers the actual ask. Revisit only alongside a native-host story we'd ship anyway. |
+| A persistent MCP connection                 | Sessions live for one run and die with it. Between runs there is nothing listening, so server push (`notifications/tools/list_changed`) goes unseen — accepted: tools are snapshotted at run start anyway, and a permanent link costs wake-ups for a feature that works without them.                            |
+| sampling/roots on MCP sessions              | Undeclared capabilities, answered -32601. Declaring what we won't honor is how chatty servers hang us. Elicitation is the one server→client request with a human at this end, and it's wired.                                                                                                                    |
+| Per-assistant-turn webhooks ("message end") | Turn boundaries mid-run are ambiguous while tokens stream; steps already give finer granularity than anyone consumes. The seam is a new LoopCallback after the assistant push in the loop, if a real consumer appears.                                                                                           |
