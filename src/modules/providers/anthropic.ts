@@ -24,7 +24,7 @@ export function createAnthropicProvider(config: ResolvedProviderConfig): ChatPro
   return {
     async *stream(messages, tools, signal): AsyncIterable<Delta> {
       let toolCallBuffer: { id: string; name: string; args: string } | null = null;
-      let inputTokens = 0;
+      let freshInput = 0;
       let cacheRead = 0;
       let cacheWritten = 0;
 
@@ -68,22 +68,26 @@ export function createAnthropicProvider(config: ResolvedProviderConfig): ChatPro
             // a tenth its real size, so auto-compaction never fires and the run
             // dies on a context 400 it should have compacted its way past.
             const usage = event.message?.usage;
-            const read = usage?.cache_read_input_tokens ?? 0;
-            const written = usage?.cache_creation_input_tokens ?? 0;
-            inputTokens = (usage?.input_tokens ?? 0) + read + written;
-            cacheRead = read;
-            cacheWritten = written;
-            logCacheUsage(inputTokens, read, written);
+            freshInput = usage?.input_tokens ?? 0;
+            cacheRead = usage?.cache_read_input_tokens ?? 0;
+            cacheWritten = usage?.cache_creation_input_tokens ?? 0;
+            logCacheUsage(freshInput + cacheRead + cacheWritten, cacheRead, cacheWritten);
             break;
           }
           case "message_delta": {
-            // Carries stop_reason and cumulative output usage
+            // Carries stop_reason and cumulative usage. Z.ai's coding endpoint
+            // opens at input 0 and reports the real input totals here instead
+            // (measured by @providerkit/core, 2026-09-13). The counters are
+            // cumulative, so a field left out keeps what message_start said.
+            freshInput = event.usage?.input_tokens ?? freshInput;
+            cacheRead = event.usage?.cache_read_input_tokens ?? cacheRead;
+            cacheWritten = event.usage?.cache_creation_input_tokens ?? cacheWritten;
             if (event.delta?.stop_reason) {
               yield { type: "finish", reason: mapStopReason(event.delta.stop_reason) };
             }
             yield {
               type: "usage",
-              input: inputTokens,
+              input: freshInput + cacheRead + cacheWritten,
               output: event.usage?.output_tokens ?? 0,
               // The cache split of that input — reads and writes bill at their
               // own rates, so cost cannot be estimated from the sum alone.
@@ -255,7 +259,12 @@ interface AnthropicSSE {
       cache_creation_input_tokens?: number;
     };
   };
-  usage?: { output_tokens?: number };
+  usage?: {
+    output_tokens?: number;
+    input_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
   delta?: {
     type: string;
     text?: string;

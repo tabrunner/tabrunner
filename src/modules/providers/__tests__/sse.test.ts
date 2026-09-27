@@ -539,6 +539,46 @@ describe("Anthropic provider SSE parsing", () => {
     vi.restoreAllMocks();
   });
 
+  it("takes the input totals from message_delta when the endpoint sends them there", async () => {
+    // Z.ai's coding endpoint opens every message at input_tokens 0 and reports
+    // the real totals in the closing delta (@providerkit/core measured this
+    // live on glm-5.3-flash, 2026-09-13). They are cumulative counters, so a
+    // field the delta leaves out keeps the value it had.
+    const config = makeConfig("anthropic", "https://api.z.ai/api/anthropic");
+    const provider = createAnthropicProvider(config);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          `data: ${JSON.stringify({
+            type: "message_start",
+            message: { usage: { input_tokens: 0, cache_creation_input_tokens: 300 } },
+          })}`,
+          `data: ${JSON.stringify({
+            type: "message_delta",
+            usage: { input_tokens: 1200, cache_read_input_tokens: 800, output_tokens: 50 },
+          })}`,
+          `data: ${JSON.stringify({ type: "message_stop" })}`,
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const deltas = [];
+    for await (const d of provider.stream([], [], new AbortController().signal)) {
+      deltas.push(d);
+    }
+
+    expect(deltas).toContainEqual({
+      type: "usage",
+      input: 2300,
+      output: 50,
+      cacheRead: 800,
+      cacheWrite: 300,
+    });
+    vi.restoreAllMocks();
+  });
+
   it("parses tool use across content block lifecycle", async () => {
     const config = makeConfig("anthropic", "https://api.anthropic.com");
     const provider = createAnthropicProvider(config);
