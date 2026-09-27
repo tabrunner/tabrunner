@@ -334,8 +334,6 @@ sits in a shadow root the snapshot can't see; Jev hands back at once, which is r
 What would change the shape, each gated on `bun run bench:jev` (the spike's 12 tasks on the
 production executor, Jev credits only) — the bar is not below 23/36 and zero purchases:
 
-- **Swap the wire to `@providerkit/core/jev`** when it's published — delete `jev/client.ts` and
-  the wire half of `hosts.ts`; labels, prices, the guard, and the loop stay here.
 - **Trust "done" more** only if the bench shows `goal_done` agreeing with the graders; today the
   planner re-checks every stretch.
 - **Delegate reading** stays out: Jev can't write text, and extraction is judgment.

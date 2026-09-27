@@ -1,12 +1,11 @@
-import { ProviderError } from "@providerkit/core";
+import { ProviderError, costUsd } from "@providerkit/core";
 import type { ErrorKind } from "@providerkit/core";
+import type { ChoiceQuestion, JevClient } from "@providerkit/core/jev";
 import { isRestrictedUrl } from "@/modules/browser/restricted-url";
 import type { SnapshotElement } from "@/modules/browser/snapshot-script";
 import { createLogger } from "@/lib/logger";
-import { readChoice } from "./client";
-import type { ChoiceQuestion } from "./client";
 import { COMMIT_THRESHOLD, commitCheck } from "./guard";
-import type { JevReply } from "./hosts";
+import { JEV_RATE } from "./hosts";
 import { TOKEN_BUDGET, buildRequest, describeElement, readDecision } from "./request";
 import type { Decision, DelegateTask, HistoryEntry, Op, PageView, Target } from "./request";
 
@@ -46,11 +45,8 @@ function toAction(op: Op, t: Target | undefined): PageAction | null {
   return { op };
 }
 
-export type Ask = (
-  state: unknown,
-  questions: Record<string, ChoiceQuestion>,
-  signal?: AbortSignal,
-) => Promise<JevReply>;
+/** The one thing the loop needs from Jev: the package client's `ask`. */
+export type Jev = Pick<JevClient, "ask">;
 
 export type StopReason =
   | "done"
@@ -157,7 +153,7 @@ export function siteOf(url: string): string {
 
 export async function runDelegate(
   page: ExecutorPage,
-  ask: Ask,
+  jev: Jev,
   task: DelegateTask,
   opts: { maxActions?: number; signal?: AbortSignal; now?: () => number } = {},
 ): Promise<DelegateReport> {
@@ -178,9 +174,9 @@ export async function runDelegate(
 
   const call = async (state: unknown, questions: Record<string, ChoiceQuestion>) => {
     calls++;
-    const reply = await ask(state, questions, opts.signal);
-    inputTokens += reply.inputTokens;
-    cost += reply.cost;
+    const reply = await jev.ask(state, questions, opts.signal ? { signal: opts.signal } : {});
+    inputTokens += reply.usage.inputTokens;
+    cost += costUsd(reply.usage, JEV_RATE);
     return reply;
   };
   const end = (reason: StopReason, detail?: string, kind?: ErrorKind): DelegateReport => ({
@@ -218,7 +214,7 @@ export async function runDelegate(
       const canEnter = steps.at(-1)?.key.startsWith("TYPE|") === true;
       const history: HistoryEntry[] = steps.map(({ action, changed }) => ({ action, changed }));
       let req = buildRequest(view, task, history, canEnter);
-      let reply: JevReply;
+      let reply: Awaited<ReturnType<typeof call>>;
       try {
         reply = await call(req.state, req.questions);
       } catch (e) {
@@ -283,11 +279,9 @@ export async function runDelegate(
           op === "CLICK" ? "click" : "press Enter in",
           op === "CLICK" ? target?.element : typed,
         );
-        const answer = readChoice((await call(check.state, check.questions)).answers.commits, [
-          "YES",
-          "NO",
-        ]);
-        const commits = answer?.ranked.find((r) => r.id === "YES")?.p ?? 1;
+        // An answer that failed its checks counts as YES: unsure is not safe.
+        const answer = (await call(check.state, check.questions)).answers.commits;
+        const commits = answer ? (answer.probabilities.YES ?? 1) : 1;
         if (commits >= COMMIT_THRESHOLD) {
           return end("irreversible", label(op, target, typed));
         }

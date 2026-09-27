@@ -18,10 +18,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import puppeteer, { type BrowserContext, type Page } from "puppeteer-core";
 import { generateSnapshot, refClickPoint } from "../src/modules/browser/snapshot-script";
-import { askJev } from "../src/modules/jev/client";
 import { runDelegate } from "../src/modules/jev/executor";
 import type { DelegateReport, ExecutorPage, PageAction } from "../src/modules/jev/executor";
-import { JEV_HOST_IDS } from "../src/modules/jev/hosts";
+import { JEV_HOST_IDS, jevClient } from "../src/modules/jev/hosts";
 import type { JevConnection } from "../src/modules/jev/hosts";
 import type { DelegateTask } from "../src/modules/jev/request";
 import { findChrome } from "./find-chrome";
@@ -370,11 +369,7 @@ for (let run = 1; run <= runs; run++) {
       await page.goto(task.url, { waitUntil: "load", timeout: 30_000 });
       const prepared = await task.prepare?.(page);
       const tabs = (await context.pages()).length;
-      report = await runDelegate(
-        puppeteerPage(page, context, tabs),
-        (state, questions, signal) => askJev(conn, state, questions, signal),
-        task,
-      );
+      report = await runDelegate(puppeteerPage(page, context, tabs), jevClient(conn), task);
       await sleep(300);
       didBuy = (await task.bought?.(page).catch(() => false)) ?? false;
       ok =

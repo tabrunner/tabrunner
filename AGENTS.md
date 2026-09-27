@@ -167,9 +167,9 @@ never reach the service-worker bundle.
   repeated dead step, unstable reads, low confidence, a new tab, leaving the site, a restricted
   url — never a loop. Before any CLICK or ENTER, `guard.ts` asks one yes/no "does this commit the
   user?"; YES ≥ 0.5 hands back, and the planner takes that step after `ask_user`. Sensitive fields
-  and file pickers are never offered. `hosts.ts` is one envelope per host (TypeSafe, OpenRouter,
-  Cloudflare, Vercel) over one `askJev`; that wire half moves to `@providerkit/core/jev` once it
-  ships. Cost reaches the run as `onUsage({ input: 0, output: 0, cost })`, so the context gauge
+  and file pickers are never offered. The wire to the four hosts (TypeSafe, OpenRouter,
+  Cloudflare, Vercel) is `@providerkit/core/jev`; `hosts.ts` keeps only labels, links, the rate,
+  and OpenRouter's balance. Cost reaches the run as `onUsage({ input: 0, output: 0, cost })`, so the context gauge
   stays the planner's. Background-safe except `ui/`.
 - `schedule/` — unattended runs on a timer: one-shot, daily, or every-N-minutes with an optional
   weekday filter and active-hours window. Wall-clock rules recomputed after every fire (never

@@ -696,10 +696,10 @@ to 3,000 chars of visible text, the last 6 actions, and the questions: `operatio
 `<op>_target` per op that has targets, `goal_done`, and `stuck`. Jev bills the state once per
 call however many questions ride on it, so the questions are cheap and the page is not: a target
 criterion only names its element by index and label, and its value, state and context stay on the
-element's row. `readChoice` (`client.ts`) is
-strict — the pick must be offered, the distribution must name exactly the offered options, sum to
-1 within drift, and favor the pick. An answer that fails it never becomes an action; one carrying
-only `confidence` is refused, since that number measures spread, not P(pick).
+element's row. The package's `ask` checks every answer against its question — the pick must be
+offered, the distribution must name exactly the offered options and favor the pick — and hands
+back null for one that fails, which never becomes an action. `confidence` is never read as
+P(pick): it measures how the distribution is spread.
 
 **Every exit is a stop** (`executor.ts`). `done` (goal_done ≥ 0.85, or Jev picking the DONE
 operation with goal_done ≥ 0.5 — without DONE, a finished page could only exit through HAND_BACK,
@@ -717,11 +717,13 @@ complete a purchase, send, post, delete, or anything that can't be undone? YES �
 10/10 (YES 0.73–0.87, NO ≤ 0.05). Password and card fields are filtered out of what Jev is offered,
 and file inputs never reach the element list.
 
-**Hosts** (`hosts.ts`, `client.ts`). One envelope per host — url, headers, body wrapper, reply
-unwrap, key check — over one `askJev` (providerkit's `postJson` + `withRetry` on 429/503/529).
-Cloudflare double-wraps the reply and answers a wrong account id with 404/7003, reclassified as
-auth. Only OpenRouter reports a balance; everywhere else Settings shows our own `spent` count and
-links to the host's usage page. The wire half is slated to move to `@providerkit/core/jev`.
+**Hosts** (`hosts.ts`). The wire is `@providerkit/core/jev`: `jevClient(conn)` wraps its
+`createJevClient` (four host envelopes, answer checks, retries on 429/503/529, Cloudflare's
+404/7003 read as auth, a one-question `checkKey`). What stays here is what the package can't
+know: host labels and key/usage links for Settings, the $0.042/M rate `costUsd` bills at
+(OpenRouter's reported bill wins over it), TabRunner's OpenRouter attribution, and OpenRouter's
+balance read. Only OpenRouter reports a balance; everywhere else Settings shows our own `spent`
+count and links to the host's usage page.
 
 **Cost** reaches the run as `onUsage({ input: 0, output: 0, cost })`: the spend meter counts it,
 the context gauge — the planner's window — never does.

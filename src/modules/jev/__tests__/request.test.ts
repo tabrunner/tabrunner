@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { SnapshotElement } from "@/modules/browser/snapshot-script";
-import { readChoice } from "../client";
 import { buildRequest, readDecision } from "../request";
 import type { DelegateTask, PageView } from "../request";
+import type { ChoiceAnswer } from "@providerkit/core/jev";
 
 const el = (ref: string, name: string, extra: Partial<SnapshotElement> = {}): SnapshotElement => ({
   ref,
@@ -26,9 +26,11 @@ const view = (elements: SnapshotElement[]): PageView => ({
   elements,
 });
 
-const answer = (choice: string, probabilities: Record<string, number>) => ({
+const answer = (choice: string, probabilities: Record<string, number>): ChoiceAnswer => ({
+  type: "choice",
   choice,
   probabilities,
+  confidence: null,
 });
 
 describe("buildRequest", () => {
@@ -101,29 +103,5 @@ describe("readDecision", () => {
         click_target: answer("7", { "1": 0, "2": 0, "7": 1 }),
       }),
     ).toBeNull();
-  });
-
-  it("refuses a pick that isn't its own most likely option", () => {
-    expect(readDecision(req, { operation: answer("WAIT", { WAIT: 0.1, CLICK: 0.9 }) })).toBeNull();
-  });
-});
-
-describe("readChoice", () => {
-  const ids = ["A", "B", "C"];
-
-  it("needs every offered option in the distribution, and nothing else", () => {
-    expect(readChoice(answer("A", { A: 0.9, B: 0.1 }), ids)).toBeNull();
-    expect(readChoice(answer("A", { A: 0.8, B: 0.1, C: 0.05, D: 0.05 }), ids)).toBeNull();
-    expect(readChoice(answer("A", { A: 0.8, B: 0.1, C: 0.1 }), ids)?.p).toBe(0.8);
-  });
-
-  it("allows rounding drift in the sum, not a broken distribution", () => {
-    expect(readChoice(answer("A", { A: 0.79, B: 0.1, C: 0.1 }), ids)).not.toBeNull();
-    expect(readChoice(answer("A", { A: 0.7, B: 0.1, C: 0.1 }), ids)).toBeNull();
-    expect(readChoice(answer("A", { A: 1.2, B: -0.1, C: -0.1 }), ids)).toBeNull();
-  });
-
-  it("refuses an answer that carries only a confidence — it is a spread, not P(pick)", () => {
-    expect(readChoice({ choice: "NO", confidence: 0.35 }, ["YES", "NO"])).toBeNull();
   });
 });

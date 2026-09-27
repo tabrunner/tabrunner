@@ -1,5 +1,5 @@
 import { createWriteQueue, defineItem } from "@/lib/storage";
-import { checkJevKey } from "./client";
+import { jevClient } from "./hosts";
 import type { JevConnection } from "./hosts";
 
 /**
@@ -22,7 +22,7 @@ const serialized = createWriteQueue();
 /** Checks the key against its host, then saves it switched on. Throws the
  *  host's classified error when the key doesn't work. */
 export async function saveJevKey(conn: JevConnection, signal?: AbortSignal): Promise<void> {
-  await checkJevKey(conn, signal);
+  await jevClient(conn).checkKey(signal ? { signal } : {});
   await serialized(async () => {
     const prev = await jevSettingsItem.get();
     // A new key starts a new count; re-saving the same one keeps it.

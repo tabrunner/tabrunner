@@ -1,5 +1,5 @@
 import type { SnapshotElement } from "@/modules/browser/snapshot-script";
-import type { ChoiceQuestion } from "./client";
+import type { ChoiceQuestion } from "@providerkit/core/jev";
 import type { PageView } from "./request";
 
 /**

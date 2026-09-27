@@ -2,10 +2,10 @@ import type { BrowserDriver } from "@/modules/browser";
 import type { ErrorKind } from "@providerkit/core";
 import { i18n } from "@/i18n";
 import { formatMoney } from "@/lib/format";
-import { askJev } from "./client";
 import { driverPage } from "./driver-page";
 import { runDelegate } from "./executor";
 import type { DelegateReport } from "./executor";
+import { jevClient } from "./hosts";
 import type { JevConnection } from "./hosts";
 import type { DelegateValue } from "./request";
 import { addJevSpend } from "./settings";
@@ -64,7 +64,7 @@ export async function handleDelegate(
 
   const report = await runDelegate(
     await driverPage(driver),
-    (state, questions, signal) => askJev(conn, state, questions, signal),
+    jevClient(conn),
     { goal, doneWhen, values: readValues(args.values) },
     {
       ...(maxActions !== undefined ? { maxActions } : {}),

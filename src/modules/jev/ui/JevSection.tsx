@@ -12,16 +12,15 @@ import { TextField } from "@/components/TextField";
 import { useStoredItem } from "@/components/useStoredItem";
 import { i18n } from "@/i18n";
 import { formatMoney } from "@/lib/format";
-import { openRouterBalance } from "../client";
-import { JEV_HOSTS, JEV_HOST_IDS } from "../hosts";
-import type { JevHostId } from "../hosts";
+import type { JevHost } from "@providerkit/core/jev";
+import { JEV_HOSTS, JEV_HOST_IDS, openRouterBalance } from "../hosts";
 import { jevSettingsItem, removeJevKey, saveJevKey, setJevEnabled } from "../settings";
 
 /** A key check that never answers must not strand the button. */
 const KEY_CHECK_TIMEOUT_MS = 10_000;
 
 /** A failed key check, in words that say what to fix. */
-function checkError(e: unknown, host: JevHostId): string {
+function checkError(e: unknown, host: JevHost): string {
   const name = JEV_HOSTS[host].label;
   // Our own 10 s cap aborts the check with a bare TimeoutError, not a ProviderError.
   const timedOut = e instanceof Error && e.name === "TimeoutError";
@@ -55,7 +54,7 @@ export function JevSection() {
     (s) => s.providers.find((p) => p.id === "openrouter")?.apiKey,
   );
   const [editing, setEditing] = useState(false);
-  const [host, setHost] = useState<JevHostId>(saved?.host ?? "typesafe");
+  const [host, setHost] = useState<JevHost>(saved?.host ?? "typesafe");
   const [apiKey, setApiKey] = useState("");
   const [accountId, setAccountId] = useState(saved?.accountId ?? "");
   const [checking, setChecking] = useState(false);

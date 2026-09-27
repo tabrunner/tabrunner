@@ -1,6 +1,10 @@
 import type { SnapshotElement } from "@/modules/browser/snapshot-script";
-import { readChoice } from "./client";
-import type { Choice, ChoiceQuestion } from "./client";
+import type {
+  ChoiceAnswer,
+  ChoiceQuestion,
+  JevAnswer,
+  JevInstructions,
+} from "@providerkit/core/jev";
 
 /**
  * One Jev request per page read: which operation to run, which target for
@@ -54,7 +58,7 @@ export interface JevRequest {
   operations: Operation[];
   /** Option id → what it names, per operation that takes a target. */
   targets: Partial<Record<Op, Record<string, Target>>>;
-  /** Rough size: state plus the longest question — what Jev's window counts. */
+  /** Rough size: the state plus every question — what Jev bills. */
   tokens: number;
 }
 
@@ -113,7 +117,7 @@ const OPERATIONS: Record<Operation, string> = {
     "Stop and hand back: the next step can't be undone (buy, pay, send, post, delete, confirm), or it needs a value that wasn't given.",
 };
 
-const yesNo = (yes: string, no: string, instructions: unknown): ChoiceQuestion => ({
+const yesNo = (yes: string, no: string, instructions: JevInstructions): ChoiceQuestion => ({
   type: "choice",
   criteria: { YES: yes, NO: no },
   instructions,
@@ -262,30 +266,52 @@ export function buildRequest(
   return request;
 }
 
-const yes = (c: Choice | null) => c?.ranked.find((r) => r.id === "YES")?.p ?? 0;
+/** P(YES) of a yes/no answer; 0 when the answer failed the package's checks. */
+const yes = (a: JevAnswer | null | undefined) =>
+  a?.type === "choice" ? (a.probabilities.YES ?? 0) : 0;
 
-/** Jev's answers, turned back into one action — or null when they don't parse. */
-export function readDecision(req: JevRequest, answers: Record<string, unknown>): Decision | null {
-  const op = readChoice(answers.operation, req.operations);
-  if (!op) return null;
+/** A choice answer's options, most likely first. */
+const ranking = (a: ChoiceAnswer) =>
+  Object.entries(a.probabilities)
+    .map(([id, p]) => ({ id, p }))
+    .sort((x, y) => y.p - x.p);
+
+/**
+ * Jev's answers, turned back into one action — or null when they don't add up
+ * to one. `ask` has already checked each answer against its question (the
+ * pick is offered, the distribution is whole, the pick is its favorite).
+ */
+export function readDecision(
+  req: JevRequest,
+  answers: Record<string, JevAnswer | null>,
+): Decision | null {
+  const op = answers.operation;
+  if (op?.type !== "choice") return null;
+  const operation = req.operations.find((o) => o === op.choice);
+  if (!operation) return null;
   const common = {
-    done: yes(readChoice(answers.goal_done, ["YES", "NO"])),
-    stuck: yes(readChoice(answers.stuck, ["YES", "NO"])),
-    ranked: op.ranked.slice(0, 3).map((r) => ({ op: r.id, p: r.p })),
+    done: yes(answers.goal_done),
+    stuck: yes(answers.stuck),
+    ranked: ranking(op)
+      .slice(0, 3)
+      .map((r) => ({ op: r.id, p: r.p })),
   };
-  const operation = op.choice as Operation;
+  const pOp = op.probabilities[operation] ?? 0;
   const group =
     operation === "DONE" || operation === "HAND_BACK" ? undefined : req.targets[operation];
-  if (!group) return { op: operation, p: op.p, ...common };
+  if (!group) return { op: operation, p: pOp, ...common };
 
-  const pick = readChoice(answers[`${operation.toLowerCase()}_target`], Object.keys(group));
-  if (!pick) return null;
-  const runnerUp = pick.ranked[1];
+  const pick = answers[`${operation.toLowerCase()}_target`];
+  if (pick?.type !== "choice") return null;
+  const target = group[pick.choice];
+  if (!target) return null;
+  const runnerUp = ranking(pick)[1];
+  const fallback = runnerUp && group[runnerUp.id];
   return {
     op: operation,
-    target: group[pick.choice],
-    p: op.p * pick.p,
-    ...(runnerUp ? { fallback: group[runnerUp.id] } : {}),
+    target,
+    p: pOp * (pick.probabilities[pick.choice] ?? 0),
+    ...(fallback ? { fallback } : {}),
     ...common,
   };
 }

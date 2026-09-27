@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { SnapshotElement } from "@/modules/browser/snapshot-script";
 import { runDelegate, siteOf } from "../executor";
-import type { Ask, ExecutorPage, Observed, PageAction } from "../executor";
-import type { ChoiceQuestion } from "../client";
+import { readAnswer } from "@providerkit/core/jev";
+import type { ChoiceQuestion, JevAnswer } from "@providerkit/core/jev";
+import type { ExecutorPage, Jev, Observed, PageAction } from "../executor";
 import type { DelegateTask } from "../request";
 
 const button = (ref: string, name: string): SnapshotElement => ({
@@ -41,11 +42,12 @@ const page = (elements: SnapshotElement[], url = "https://shop.example.com/cart"
 });
 
 /** A full distribution over a question's options: the pick gets `p`, the
- *  rest share what's left — the shape readChoice insists on. */
+ *  rest share what's left — the shape readAnswer insists on. */
 function dist(question: ChoiceQuestion, choice: string, p: number) {
   const ids = Object.keys(question.criteria);
   const rest = ids.length > 1 ? (1 - p) / (ids.length - 1) : 0;
   return {
+    type: "choice",
     choice,
     probabilities: Object.fromEntries(ids.map((id) => [id, id === choice ? p : rest])),
   };
@@ -67,15 +69,21 @@ interface Script {
 }
 
 /** A Jev that answers each step from the script (the last line repeats) and the
- *  commit check with `commits`. */
-function fakeJev(script: Script[], commits = 0.02): Ask & { calls: string[] } {
+ *  commit check with `commits`. Raw answers pass the package's own readAnswer,
+ *  as they do inside the real client's `ask`. */
+function fakeJev(script: Script[], commits = 0.02): Jev & { calls: string[] } {
   const calls: string[] = [];
   let i = 0;
   const ask = async (_state: unknown, questions: Record<string, ChoiceQuestion>) => {
-    const reply = (answers: Record<string, unknown>) => ({
-      answers,
-      inputTokens: 1000,
-      cost: 0.0001,
+    const reply = (raw: Record<string, unknown>) => ({
+      answers: Object.fromEntries(
+        Object.entries(questions).map(([id, q]): [string, JevAnswer | null] => [
+          id,
+          readAnswer(q, raw[id]),
+        ]),
+      ),
+      usage: { inputTokens: 1000, cachedInputTokens: 0, outputTokens: 0 },
+      model: "jev-test",
     });
     if (questions.commits) {
       calls.push("guard");
@@ -96,13 +104,16 @@ function fakeJev(script: Script[], commits = 0.02): Ask & { calls: string[] } {
         ...(s.runnerUp ? { [s.runnerUp]: 0.4 } : {}),
       };
       answers[`${s.op.toLowerCase()}_target`] = {
+        type: "choice",
         choice: s.target,
         probabilities: Object.fromEntries(ids.map((id) => [id, odds[id] ?? 0])),
       };
     }
     return reply(answers);
   };
-  return Object.assign(ask, { calls });
+  // The client's `ask` is generic over the question map; this fake serves the
+  // executor's one map shape, which the generic signature can't express.
+  return { ask: ask as Jev["ask"], calls };
 }
 
 describe("runDelegate", () => {
@@ -156,7 +167,8 @@ describe("runDelegate", () => {
     );
     expect(clicked).toBe(true);
     expect(report).toMatchObject({ status: "done", calls: 3, inputTokens: 3000 });
-    expect(report.cost).toBeCloseTo(0.0003);
+    // 3,000 input tokens at TypeSafe's $0.042/M.
+    expect(report.cost).toBeCloseTo(0.000126, 9);
     expect(report.steps).toEqual([{ action: 'CLICK button "Next"', changed: true }]);
   });
 
