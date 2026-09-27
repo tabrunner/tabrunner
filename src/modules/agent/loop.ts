@@ -18,6 +18,7 @@ import { loadSkillsForRun } from "@/modules/skills";
 import type { McpRunSnapshot } from "@/modules/mcp";
 import { MCP_TOOL_PREFIX } from "@/modules/mcp";
 import type { RunRecorder } from "@/modules/walkthrough/recorder";
+import type { JevConnection } from "@/modules/jev";
 import type { ToolDef } from "@/modules/providers/types";
 import { newlyApplicableSkills } from "@/modules/skills";
 import { truncateTo } from "@/lib/format";
@@ -92,6 +93,7 @@ const MAX_ATTACHED_IMAGES = 2;
  * and read_console_messages stay free: they only watch what the tab already did.
  */
 const ACTION_TOOLS = new Set([
+  "delegate",
   "navigate",
   "go_back",
   "open_tab",
@@ -155,7 +157,7 @@ const PAGE_STATE_TOOLS = new Set(["click", "type", "fill", "press_key"]);
  * switch_tab is here despite acting on nothing: after a re-target, refs resolve
  * against a different tab's registry, where the same id means something else.
  */
-const NEW_PAGE_TOOLS = new Set(["navigate", "go_back", "open_tab", "switch_tab"]);
+const NEW_PAGE_TOOLS = new Set(["navigate", "go_back", "open_tab", "switch_tab", "delegate"]);
 
 /**
  * Whether the page is holding interactive elements no ref covers yet — a menu
@@ -274,6 +276,9 @@ export interface LoopOptions {
   recorder?: RunRecorder;
   /** The schedule this run fired from — the only record `schedule_task` may re-time. */
   scheduleId?: string;
+  /** The saved Jev setup — present only while Jev is on, and then the
+   *  `delegate` tool is offered. */
+  jev?: JevConnection;
   /**
    * Remote MCP tools resolved once before turn one — defs appended to the
    * tool array, the handle executing them. Absent when no server is enabled.
@@ -484,6 +489,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
     supportsImages,
     runSkills.all.length > 0,
     recorder !== undefined,
+    opts.jev !== undefined,
     opts.mcp?.tools ?? [],
   );
   // Skills named in the start catalog are already known to the model — mid-run
@@ -813,6 +819,10 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         skills: runSkills.all,
         signal: opts.signal,
         ...(opts.mcp ? { mcp: opts.mcp.handle } : {}),
+        ...(opts.jev ? { jev: opts.jev } : {}),
+        // Jev bills per call, outside the provider's turns. Input stays 0 so
+        // the context gauge keeps measuring the planner's window, not Jev's.
+        reportCost: (cost) => callbacks.onUsage?.({ input: 0, output: 0, cost }),
         ...(recorder ? { recorder } : {}),
       });
       await recorder?.afterAction(call, result.ok, result.data);

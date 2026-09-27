@@ -884,6 +884,53 @@ const DOCUMENT_TOOL: ToolDef = {
 };
 
 /**
+ * Offered only while the user has Jev switched on with a key. A page action
+ * like any other — gated on the approved plan — that hands a stretch of
+ * routine clicking and typing to a classifier and reports back. The limits
+ * live in `modules/jev/executor.ts`; this text is what keeps the planner from
+ * handing over the parts a classifier gets wrong: reading, judging, and the
+ * step that commits the user.
+ */
+const DELEGATE_TOOL: ToolDef = {
+  name: "delegate",
+  description:
+    "Hand a stretch of routine page work on the current site to Jev, a low-cost executor, instead of doing each click yourself: filling in a search form and submitting it, setting filters, stepping to a result. Jev reads the page, acts one step at a time, and stops when done_when is visible or it can't go on, then reports what it did. Use it for 3 or more mechanical steps whose values you already know. Never use it to read or extract information, make a judgment call, sign in, or take any step that pays, sends, posts, deletes, or submits — it stops before those, and that last step stays yours, after ask_user. It can be wrong about being done: its result carries a fresh snapshot, so check it before you move on. If it stops short, carry on by hand from where it left off; don't delegate the same goal again.",
+  params: {
+    type: "object",
+    properties: {
+      goal: {
+        type: "string",
+        description:
+          'The end state, not the steps — e.g. "One-way flights from Zurich to London on 20 Oct are listed".',
+      },
+      done_when: {
+        type: "string",
+        description:
+          'What will be visible on the page once it is done, concretely — e.g. "a list of flights with prices".',
+      },
+      values: {
+        type: "array",
+        description:
+          "Every text Jev may type, each with the field it belongs in. It types nothing else. Never include passwords or card numbers — Jev never types into those fields.",
+        items: {
+          type: "object",
+          properties: {
+            for: { type: "string", description: 'The field, as the page labels it — e.g. "From".' },
+            text: { type: "string", description: "The exact text to type." },
+          },
+          required: ["text"],
+        },
+      },
+      max_actions: {
+        type: "number",
+        description: "How many actions it may take. Default 20, at most 30.",
+      },
+    },
+    required: ["goal", "done_when"],
+  },
+};
+
+/**
  * The screenshot tool is withheld from text-only models — its output is an image
  * the wire would reject, so offering it would make the model waste turns.
  * Remote MCP tools append last and arrive resolved ONCE per run: providers mark
@@ -895,6 +942,7 @@ export function buildToolDefs(
   supportsImages = true,
   skillsOn = false,
   documentOn = false,
+  delegateOn = false,
   mcpTools: ToolDef[] = [],
 ): ToolDef[] {
   const defs = supportsImages ? TOOL_DEFS : TOOL_DEFS.filter((t) => t.name !== "screenshot");
@@ -904,5 +952,6 @@ export function buildToolDefs(
   const withSave = [...withMemory, SAVE_SKILL_TOOL];
   const withSkills = skillsOn ? [...withSave, SKILL_TOOL] : withSave;
   const withDocument = documentOn ? [...withSkills, DOCUMENT_TOOL] : withSkills;
-  return mcpTools.length > 0 ? [...withDocument, ...mcpTools] : withDocument;
+  const withDelegate = delegateOn ? [...withDocument, DELEGATE_TOOL] : withDocument;
+  return mcpTools.length > 0 ? [...withDelegate, ...mcpTools] : withDelegate;
 }

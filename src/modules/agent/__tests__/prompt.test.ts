@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { ToolDef } from "@/modules/providers/types";
 import { buildSystemPrompt, buildToolDefs } from "../prompt";
 import { DURABLE_FACT_RULES, type AgentContext } from "@/modules/memory";
 import type { Skill } from "@/modules/skills";
@@ -113,5 +114,18 @@ describe("skills in the prompt and tool list", () => {
     expect(buildToolDefs(false, true, true).map((t) => t.name)).toContain("skill");
     expect(buildToolDefs(false, true, false).map((t) => t.name)).not.toContain("skill");
     expect(buildToolDefs(false, true).map((t) => t.name)).not.toContain("skill");
+  });
+
+  it("offers delegate only while Jev is on, ahead of any remote tools", () => {
+    const remote: ToolDef = {
+      name: "mcp__x__y",
+      description: "",
+      params: { type: "object", properties: {} },
+    };
+    const on = buildToolDefs(false, true, false, false, true, [remote]).map((t) => t.name);
+    expect(on.slice(-2)).toEqual(["delegate", "mcp__x__y"]);
+    expect(buildToolDefs(false, true, false, false, false).map((t) => t.name)).not.toContain(
+      "delegate",
+    );
   });
 });

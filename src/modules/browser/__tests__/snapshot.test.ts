@@ -110,8 +110,69 @@ describe("generateSnapshot", () => {
     `);
     const result = generateSnapshot({} as SnapshotOptions);
     expect(result.pageContent).toMatch(/checkbox \[ref=e\d+\]/);
-    expect(result.pageContent).toMatch(/radio \[ref=e\d+\]/);
+    expect(result.pageContent).toMatch(/radio "Large" \[ref=e\d+\]/);
     expect(result.pageContent).toMatch(/combobox "Blue" \[ref=e\d+\]/);
+  });
+
+  it("returns the same refs as data when asked for a structured snapshot", () => {
+    setupDOM(`
+      <ul>
+        <li>Backpack $29.99 <button>Add to cart</button></li>
+        <li>Bike light $9.99 <button>Add to cart</button></li>
+      </ul>
+      <input type="checkbox" checked style="opacity:0" aria-label="Keep me signed in" />
+      <input type="password" aria-label="Password" value="hunter2" />
+      <select aria-label="Size"><option>S</option><option selected>M</option><option disabled>XL</option></select>
+      <button>Checkout</button>
+      <button disabled>Pay</button>
+    `);
+    const result = generateSnapshot({ structured: true });
+    const elements = result.elements ?? [];
+    const treeRefs = [...result.pageContent.matchAll(/\[ref=(e\d+)\]/g)].map((m) => m[1]);
+    // Disabled controls stay in the tree but can't be acted on, so they're left out.
+    expect(elements.map((e) => e.ref)).toEqual(treeRefs.slice(0, -1));
+
+    const [first, second] = elements;
+    expect(first?.context).toContain("Backpack");
+    expect(second?.context).toContain("Bike light");
+    expect(elements.find((e) => e.name === "Checkout")?.context).toBeUndefined();
+    expect(elements.find((e) => e.role === "checkbox")).toMatchObject({
+      kind: "click",
+      checked: true,
+    });
+    expect(elements.find((e) => e.name === "Password")).toMatchObject({
+      kind: "fill",
+      sensitive: true,
+      value: "[value redacted]",
+    });
+    expect(elements.find((e) => e.kind === "select")).toMatchObject({
+      options: ["S", "M"],
+      value: "M",
+    });
+    expect(JSON.stringify(result)).not.toContain("hunter2");
+  });
+
+  it("names a control by the label wrapped around it", () => {
+    setupDOM(`
+      <label>Customer name: <input name="custname" /></label>
+      <label><input type="radio" name="size" value="large" /> Large</label>
+    `);
+    const { pageContent } = generateSnapshot({});
+    expect(pageContent).toMatch(/textbox "Customer name:" \[ref=e\d+\]/);
+    expect(pageContent).toMatch(/radio "Large" \[ref=e\d+\]/);
+  });
+
+  it("keeps file pickers out of the structured elements", () => {
+    setupDOM(`<input type="file" aria-label="Receipt" /><button>Send</button>`);
+    const result = generateSnapshot({ structured: true });
+    expect(result.elements?.map((e) => e.name)).toEqual(["Send"]);
+  });
+
+  it("leaves the plain snapshot untouched", () => {
+    setupDOM(`<button>Go</button>`);
+    const plain = generateSnapshot({});
+    expect(plain.elements).toBeUndefined();
+    expect(plain.visibleText).toBeUndefined();
   });
 
   it("still hides opacity:0 containers and text fields", () => {

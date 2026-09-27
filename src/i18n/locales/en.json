@@ -82,7 +82,46 @@
       "extensionIdHint": "Set the daemon's TABRUNNER_BRIDGE_EXPECTED_EXTENSION_ID to this."
     },
     "walkthroughs": "Walkthroughs",
-    "walkthroughsHint": "Let the agent turn a task into a shareable step-by-step walkthrough when you ask it to. Screenshots stay on this computer and are never sent to the model."
+    "walkthroughsHint": "Let the agent turn a task into a shareable step-by-step walkthrough when you ask it to. Screenshots stay on this computer and are never sent to the model.",
+    "jev": {
+      "title": "Jev for routine steps",
+      "help": "Jev is a low-cost model that picks what to click. With it on, your main model can hand it simple runs of clicking and typing, then check the result. Before a click that looks like paying, sending or deleting, Jev stops and hands back.",
+      "enable": "Use Jev",
+      "menuHint": "Low-cost clicks and typing for simple steps",
+      "host": "Where Jev runs",
+      "key": "API key",
+      "token": "API token",
+      "keyGet": "Get a key from {{host}}",
+      "useOpenRouter": "Use my OpenRouter key",
+      "accountId": "Account ID",
+      "accountIdHint": "It's on your account's home page in the Cloudflare dashboard.",
+      "save": "Check key and turn on",
+      "checking": "Checking key…",
+      "savedAs": "{{host}} · key ending in {{last4}}",
+      "spent": "{{cost}} spent through TabRunner",
+      "balance": "{{cost}} left",
+      "usageLink": "Usage on {{host}}",
+      "change": "Change key",
+      "remove": "Remove key",
+      "removeTitle": "Remove the Jev key?",
+      "removeBody": "Runs go back to using only your main model. You can add a key again any time.",
+      "privacy": {
+        "typesafe": "Jev sees the controls and text on the tab it works in, the goal, and the values it may type. TypeSafe doesn't train on it and keeps it only as long as it needs to.",
+        "openrouter": "Jev sees the controls and text on the tab it works in, the goal, and the values it may type. It goes through OpenRouter to TypeSafe, which doesn't train on it.",
+        "cloudflare": "Jev sees the controls and text on the tab it works in, the goal, and the values it may type. Cloudflare runs Jev itself and keeps none of it.",
+        "vercel": "Jev sees the controls and text on the tab it works in, the goal, and the values it may type. It goes through Vercel to TypeSafe, which doesn't train on it."
+      },
+      "error": {
+        "missingKey": "Paste a key first.",
+        "missingAccount": "Cloudflare also needs your account ID.",
+        "auth": "{{host}} didn't accept this key. Check that you copied all of it, or make a new one.",
+        "authCloudflare": "Cloudflare didn't accept this token or account ID. Check both, and that the token can use Workers AI.",
+        "quota": "Your {{host}} account is out of credit. Add some, then try again.",
+        "busy": "{{host}} is busy right now. Try again in a minute.",
+        "network": "TabRunner couldn't reach {{host}}. Check your connection, then try again.",
+        "other": "{{host}} returned an error: {{detail}}. Try again, or pick another host."
+      }
+    }
   },
   "instructions": {
     "title": "Instructions",
@@ -920,7 +959,8 @@
     "walkthrough": "Ask “and document it” and the agent writes the process up as a shareable guide.",
     "mcpOut": "Type /mcp to see which remote servers answered — add more under Settings → MCP.",
     "webhooks": "Run events can POST to your own URL — wire webhooks up under Settings → Behavior.",
-    "skillsManage": "Type /skills to manage your skills — every one also runs as its own command."
+    "skillsManage": "Type /skills to manage your skills — every one also runs as its own command.",
+    "jev": "Add a Jev key under Settings → Providers to spend less on simple clicking."
   },
   "notify": {
     "doneFallback": "Task finished — open TabRunner to see how it went."
@@ -932,6 +972,50 @@
     "resume": "Call read_history to see these steps' full results, then continue from where it stopped instead of repeating them.",
     "resumeStopped": "The user's next message decides what happens to this work — it may continue it or go somewhere else. Call read_history when you need these steps' full results.",
     "omitted": "… {{count}} earlier steps"
+  },
+  "jev": {
+    "stop": {
+      "done": "Done: the page shows what done_when asked for.",
+      "hand_back": "Handed back: the next step needs a value it wasn't given, or can't be undone.",
+      "irreversible": "Stopped before {{detail}}: that step can't be undone, so it needs the user's OK.",
+      "no_progress": "Stopped: its last 3 actions didn't change the page.",
+      "repeat": "Stopped: it kept trying {{detail}}, which did nothing.",
+      "unstable": "Stopped: the page kept changing before it could act.",
+      "unsure": "Stopped: it wasn't sure what to do next ({{detail}}).",
+      "stuck": "Stopped: it judged that it was going nowhere.",
+      "max_actions": "Stopped: it used up its actions.",
+      "max_calls": "Stopped: it used up its decisions.",
+      "timeout": "Stopped: 2 minutes passed without finishing.",
+      "new_tab": "Stopped: the page opened a new tab. list_tabs shows it.",
+      "left_site": "Stopped: the page moved to another site ({{detail}}).",
+      "restricted": "Stopped: the page moved somewhere extensions can't work ({{detail}}).",
+      "aborted": "Stopped by the user.",
+      "jev_error": "Stopped: Jev failed ({{detail}})."
+    },
+    "error": {
+      "auth": "the host rejected the Jev key",
+      "quota": "the Jev account is out of credit",
+      "busy": "the Jev host is busy",
+      "network": "the Jev host can't be reached"
+    },
+    "tool": {
+      "missingGoal": "delegate needs both goal and done_when.",
+      "unavailable": "delegate is off: Jev is switched off or has no key.",
+      "failed": "Jev couldn't run: {{why}}. Carry on by hand. The user can check the key in Settings → Providers.",
+      "noChange": "no visible change",
+      "verify": "Check the snapshot below before you go on. Jev can be wrong about being done.",
+      "continue": "Carry on by hand from the snapshot below. Don't delegate this same goal again."
+    },
+    "step": {
+      "done_one": "Jev finished in {{count}} step",
+      "done_other": "Jev finished in {{count}} steps",
+      "handedBack_one": "Jev handed back after {{count}} step",
+      "handedBack_other": "Jev handed back after {{count}} steps",
+      "stopped_one": "Jev stopped after {{count}} step",
+      "stopped_other": "Jev stopped after {{count}} steps",
+      "usage_one": "{{count}} Jev call · {{tokens}} tokens · {{cost}}",
+      "usage_other": "{{count}} Jev calls · {{tokens}} tokens · {{cost}}"
+    }
   },
   "errors": {
     "alreadyRunningMCP": "A task from an external MCP client is already running. Stop it from the client (tabrunner.stop), or wait for it to finish.",

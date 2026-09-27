@@ -82,7 +82,46 @@
       "extensionIdHint": "Asigna este valor a TABRUNNER_BRIDGE_EXPECTED_EXTENSION_ID del daemon."
     },
     "walkthroughs": "Guías paso a paso",
-    "walkthroughsHint": "Deja que el agente convierta una tarea en una guía paso a paso que puedas compartir cuando se lo pidas. Las capturas se quedan en este equipo y nunca se envían al modelo."
+    "walkthroughsHint": "Deja que el agente convierta una tarea en una guía paso a paso que puedas compartir cuando se lo pidas. Las capturas se quedan en este equipo y nunca se envían al modelo.",
+    "jev": {
+      "title": "Jev para pasos simples",
+      "help": "Jev es un modelo económico que elige dónde hacer clic. Con él activado, tu modelo principal puede pasarle tramos simples de clics y escritura, y después revisa el resultado. Antes de un clic que parezca pagar, enviar o borrar algo, Jev se detiene y devuelve la tarea.",
+      "enable": "Usar Jev",
+      "menuHint": "Clics y escritura económicos para pasos simples",
+      "host": "Dónde se ejecuta Jev",
+      "key": "Clave de API",
+      "token": "Token de API",
+      "keyGet": "Crear una clave en {{host}}",
+      "useOpenRouter": "Usar mi clave de OpenRouter",
+      "accountId": "ID de cuenta",
+      "accountIdHint": "Aparece en la página de inicio de tu cuenta, en el panel de Cloudflare.",
+      "save": "Comprobar clave y activar",
+      "checking": "Comprobando la clave…",
+      "savedAs": "{{host}} · clave que termina en {{last4}}",
+      "spent": "{{cost}} gastados desde TabRunner",
+      "balance": "{{cost}} de saldo",
+      "usageLink": "Uso en {{host}}",
+      "change": "Cambiar clave",
+      "remove": "Quitar clave",
+      "removeTitle": "¿Quitar la clave de Jev?",
+      "removeBody": "Las tareas vuelven a usar solo tu modelo principal. Puedes añadir una clave cuando quieras.",
+      "privacy": {
+        "typesafe": "Jev ve los controles y el texto de la pestaña en la que trabaja, el objetivo y los valores que puede escribir. TypeSafe no entrena modelos con eso y lo guarda solo el tiempo necesario.",
+        "openrouter": "Jev ve los controles y el texto de la pestaña en la que trabaja, el objetivo y los valores que puede escribir. Pasa por OpenRouter hasta TypeSafe, que no entrena modelos con eso.",
+        "cloudflare": "Jev ve los controles y el texto de la pestaña en la que trabaja, el objetivo y los valores que puede escribir. Cloudflare ejecuta Jev por su cuenta y no guarda nada.",
+        "vercel": "Jev ve los controles y el texto de la pestaña en la que trabaja, el objetivo y los valores que puede escribir. Pasa por Vercel hasta TypeSafe, que no entrena modelos con eso."
+      },
+      "error": {
+        "missingKey": "Pega una clave primero.",
+        "missingAccount": "Cloudflare también necesita el ID de tu cuenta.",
+        "auth": "{{host}} no aceptó esta clave. Comprueba que la copiaste entera o crea una nueva.",
+        "authCloudflare": "Cloudflare no aceptó este token o ID de cuenta. Revisa ambos y que el token tenga acceso a Workers AI.",
+        "quota": "Tu cuenta de {{host}} no tiene saldo. Añade saldo y vuelve a intentarlo.",
+        "busy": "{{host}} está recibiendo demasiadas solicitudes. Vuelve a intentarlo en un minuto.",
+        "network": "TabRunner no pudo conectar con {{host}}. Revisa tu conexión y vuelve a intentarlo.",
+        "other": "{{host}} devolvió un error: {{detail}}. Vuelve a intentarlo o elige otro proveedor."
+      }
+    }
   },
   "instructions": {
     "title": "Instrucciones",
@@ -920,7 +959,8 @@
     "walkthrough": "Pide “y documéntalo” y el agente escribe el proceso como una guía para compartir.",
     "mcpOut": "Escribe /mcp para ver qué servidores remotos respondieron — añade más en Ajustes → MCP.",
     "webhooks": "Los eventos de ejecución pueden llegar por POST a tu propia URL — configura los webhooks en Ajustes → Comportamiento.",
-    "skillsManage": "Escribe /skills para gestionar tus habilidades — cada una también funciona como su propio comando."
+    "skillsManage": "Escribe /skills para gestionar tus habilidades — cada una también funciona como su propio comando.",
+    "jev": "Añade una clave de Jev en Ajustes → Proveedores y gasta menos en clics simples."
   },
   "notify": {
     "doneFallback": "Tarea terminada — abre TabRunner para ver cómo fue."
@@ -932,6 +972,50 @@
     "resume": "Llama a read_history para ver los resultados completos de estos pasos y continúa donde se detuvo, en lugar de repetirlos.",
     "resumeStopped": "El siguiente mensaje del usuario decide qué pasa con este trabajo: puede continuarlo o ir en otra dirección. Llama a read_history cuando necesites los resultados completos de estos pasos.",
     "omitted": "… {{count}} pasos anteriores"
+  },
+  "jev": {
+    "stop": {
+      "done": "Listo: la página muestra lo que pedía done_when.",
+      "hand_back": "Devuelto: el siguiente paso necesita un valor que no se le dio, o no se puede deshacer.",
+      "irreversible": "Se detuvo antes de {{detail}}: ese paso no se puede deshacer, así que necesita el OK del usuario.",
+      "no_progress": "Se detuvo: sus últimas 3 acciones no cambiaron la página.",
+      "repeat": "Se detuvo: insistía en {{detail}}, que no hacía nada.",
+      "unstable": "Se detuvo: la página cambiaba antes de que pudiera actuar.",
+      "unsure": "Se detuvo: no tenía claro qué hacer ({{detail}}).",
+      "stuck": "Se detuvo: concluyó que no avanzaba.",
+      "max_actions": "Se detuvo: agotó sus acciones.",
+      "max_calls": "Se detuvo: agotó sus decisiones.",
+      "timeout": "Se detuvo: pasaron 2 minutos sin terminar.",
+      "new_tab": "Se detuvo: la página abrió una pestaña nueva. list_tabs la muestra.",
+      "left_site": "Se detuvo: la página pasó a otro sitio ({{detail}}).",
+      "restricted": "Se detuvo: la página fue a un lugar donde las extensiones no funcionan ({{detail}}).",
+      "aborted": "Detenido por el usuario.",
+      "jev_error": "Se detuvo: Jev falló ({{detail}})."
+    },
+    "error": {
+      "auth": "el proveedor rechazó la clave de Jev",
+      "quota": "la cuenta de Jev no tiene saldo",
+      "busy": "el proveedor de Jev está saturado",
+      "network": "no se puede conectar con el proveedor de Jev"
+    },
+    "tool": {
+      "missingGoal": "delegate necesita goal y done_when.",
+      "unavailable": "delegate está apagado: Jev está desactivado o no tiene clave.",
+      "failed": "Jev no pudo ejecutarse: {{why}}. Sigue a mano. El usuario puede revisar la clave en Configuración → Proveedores.",
+      "noChange": "no cambió nada en pantalla",
+      "verify": "Revisa el snapshot de abajo antes de seguir. Jev puede equivocarse al creer que terminó.",
+      "continue": "Sigue a mano a partir del snapshot de abajo. No vuelvas a delegar este mismo objetivo."
+    },
+    "step": {
+      "done_one": "Jev terminó en {{count}} paso",
+      "done_other": "Jev terminó en {{count}} pasos",
+      "handedBack_one": "Jev devolvió el control tras {{count}} paso",
+      "handedBack_other": "Jev devolvió el control tras {{count}} pasos",
+      "stopped_one": "Jev se detuvo tras {{count}} paso",
+      "stopped_other": "Jev se detuvo tras {{count}} pasos",
+      "usage_one": "{{count}} llamada a Jev · {{tokens}} tokens · {{cost}}",
+      "usage_other": "{{count}} llamadas a Jev · {{tokens}} tokens · {{cost}}"
+    }
   },
   "errors": {
     "alreadyRunningMCP": "Ya hay una tarea de un cliente MCP externo en ejecución. Detenla desde el cliente (tabrunner.stop) o espera a que termine.",

@@ -1,6 +1,6 @@
 # Política de privacidade do TabRunner
 
-_Última atualização: 2026-09-13 · Aplica-se ao TabRunner para navegadores Chromium (Chrome, Brave,
+_Última atualização: 2026-09-27 · Aplica-se ao TabRunner para navegadores Chromium (Chrome, Brave,
 Edge, Arc, Opera, Vivaldi)._
 
 Este documento também existe em [inglês](PRIVACY.md). Se a tradução e o texto em inglês divergirem,
@@ -10,8 +10,8 @@ vale o texto em inglês.
 TabRunner, nem conta, nem telemetria, nem analytics. Tudo o que você digita ou configura fica no seu
 dispositivo, no armazenamento local do navegador. Os seus dados só vão para (1) o provedor de IA que
 **você** configurou, (2) os sites em que você pede para o TabRunner agir e, só se você usar esses
-recursos, (3) uma ponte MCP local na sua própria máquina e (4) a URL de uma habilidade que você
-importar.
+recursos, (3) uma ponte MCP local na sua própria máquina, (4) a URL de uma habilidade que você
+importar e (5) o serviço do Jev que você escolher.
 
 ---
 
@@ -73,6 +73,16 @@ destinatários na rede:
    busca apenas o endereço https que você digitou (uma requisição GET; nada seu vai junto além da
    própria requisição), no momento em que você pede. O TabRunner nunca busca nem atualiza
    habilidades por conta própria.
+5. **O Jev, só se você cadastrar uma chave dele**: Configurações → Provedores → Jev. O Jev é um
+   modelo barato para o qual o seu modelo pode passar trechos rotineiros de cliques e digitação. A
+   cada passo desse trecho, o serviço que você escolheu (TypeSafe, OpenRouter, Cloudflare Workers
+   AI ou Vercel AI Gateway) recebe a sua chave do Jev, o endereço e o título da página, uma lista
+   dos controles dela (o tipo de cada um, o rótulo, o valor atual e o texto ao redor), até 3 mil
+   caracteres do texto que aparece na tela, o objetivo que o seu modelo escreveu, os valores que o
+   Jev pode digitar e os últimos passos dele. Campos de senha e de cartão nunca entram nessa lista.
+   A TypeSafe, que faz o Jev, não treina modelos com esses dados e só os guarda pelo tempo
+   necessário; o OpenRouter e a Vercel repassam tudo para a TypeSafe; a Cloudflare roda o próprio
+   Jev e não guarda nada. Sem chave, ou com o Jev desligado, nada vai para nenhum deles.
 
 Mais ninguém (nenhum servidor intermediário, nenhum proxy, nenhum serviço de analytics, nenhum
 servidor dos desenvolvedores) recebe os seus dados, em momento algum.
@@ -103,6 +113,8 @@ servidor dos desenvolvedores) recebe os seus dados, em momento algum.
   que esse conteúdo seja enviado com as próximas tarefas.
 - **Remover um provedor**: Configurações → Provedores → Remover. Apaga a chave de API ou o token de
   login guardado; você pode adicionar de novo quando quiser.
+- **Remover a chave do Jev**: Configurações → Provedores → Jev → Remover chave. O interruptor dessa
+  seção, ou o do menu de ajustes do painel, desliga o Jev e mantém a chave.
 - **Excluir uma habilidade**: Configurações → Habilidades. O interruptor pausa uma habilidade sem
   excluí-la; ao excluir, ela sai de todas as próximas tarefas.
 - **Parar quando quiser**: aperte Esc ou o botão Parar no painel, use o botão de parar na lista da

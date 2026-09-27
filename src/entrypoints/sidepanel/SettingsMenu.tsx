@@ -12,6 +12,7 @@ import { ThemeToggle } from "@/components/ThemeControl";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { Icon } from "@/components/Icon";
 import { widgetHidden } from "@/lib/prefs";
+import { jevSettingsItem, setJevEnabled } from "@/modules/jev/settings";
 import { newIssueUrl } from "@/lib/report";
 
 function GearIcon() {
@@ -45,6 +46,8 @@ export function SettingsMenu() {
   // Stored inverted ("hidden") so the default needs no write; shown here as
   // the positive toggle.
   const hidden = useStoredItem(widgetHidden);
+  // Only once a key is saved: a switch that can't turn anything on is a dead end.
+  const jev = useStoredItem(jevSettingsItem);
   // The same provider every other surface calls active — a report is only
   // reproducible if it names the one the run actually used.
   const provider = useProvidersStore(activeProviderOf);
@@ -96,6 +99,23 @@ export function SettingsMenu() {
                   ariaLabel={t("settings.showWidget")}
                 />
               </div>
+              {jev && (
+                <div className="flex items-center justify-between gap-3 px-1 py-1.5">
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
+                      {t("settings.jev.enable")}
+                    </div>
+                    <div className="mt-0.5 text-[11px] leading-snug text-neutral-500 dark:text-neutral-400">
+                      {t("settings.jev.menuHint")}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={jev.enabled}
+                    onChange={(v) => void setJevEnabled(v)}
+                    ariaLabel={t("settings.jev.enable")}
+                  />
+                </div>
+              )}
               <div className="mt-1 flex flex-col border-t border-neutral-100 pt-1 dark:border-neutral-800">
                 <Button
                   variant="ghost"

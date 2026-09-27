@@ -6,39 +6,16 @@
  *
  *   bun run shots:ui
  */
-import { existsSync, mkdirSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer, { type Page } from "puppeteer-core";
+import { findChrome } from "./find-chrome";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const extPath = join(root, "dist", "chrome-mv3");
 const outDir = join(root, "preview", "shots");
 mkdirSync(outDir, { recursive: true });
-
-/**
- * Branded Chrome ignores --load-extension in headless; Chrome for Testing
- * doesn't. Resolve the newest CfT from the puppeteer cache, fall back to the
- * system Chrome.
- */
-function findChrome(): string {
-  const cache = join(homedir(), ".cache", "puppeteer", "chrome");
-  if (existsSync(cache)) {
-    for (const version of readdirSync(cache).sort().reverse()) {
-      const dir = join(cache, version);
-      for (const arch of existsSync(dir) ? readdirSync(dir) : []) {
-        const bin = join(
-          dir,
-          arch,
-          "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-        );
-        if (existsSync(bin)) return bin;
-      }
-    }
-  }
-  return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-}
 
 const browser = await puppeteer.launch({
   executablePath: findChrome(),

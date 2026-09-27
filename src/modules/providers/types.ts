@@ -215,8 +215,9 @@ export interface JSONSchemaProperty {
   type: string;
   description: string;
   enum?: string[];
-  /** Element schema for `type: "array"` — both wire formats pass it through verbatim. */
-  items?: { type: string };
+  /** Element schema for `type: "array"` — both wire formats pass it through verbatim.
+   *  Object elements carry their own fields (delegate's `{for, text}` values). */
+  items?: { type: string; properties?: Record<string, JSONSchemaProperty>; required?: string[] };
   /** Nested fields for `type: "object"` — a rule with several parts (a
    *  recurrence) reads far better as one argument than as five flat ones. */
   properties?: Record<string, JSONSchemaProperty>;

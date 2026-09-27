@@ -1,6 +1,7 @@
 import { i18n } from "@/i18n";
 import { buildConversationHistory, runAgentLoop } from ".";
 import { loadMcpForRun } from "@/modules/mcp";
+import { jevForRun } from "@/modules/jev";
 import type { McpRunSnapshot } from "@/modules/mcp";
 import { fireHook, hooksPending } from "@/modules/hooks";
 import { extractAndRemember } from "@/modules/memory";
@@ -502,6 +503,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // From here the emit wrapper above derives error/finished deliveries.
       runIsReal = true;
       fireHook("run_started", { conversationId, task });
+      // Read once per run, like every other per-run tool switch: the tool
+      // array is frozen for the run's prompt cache.
+      const jev = await jevForRun();
       const wire = await runAgentLoop({
         provider,
         driver,
@@ -511,6 +515,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         owner,
         ...(mcp.tools.length > 0 ? { mcp } : {}),
         ...(recorder ? { recorder } : {}),
+        ...(jev ? { jev } : {}),
         ...(opts.scheduleId ? { scheduleId: opts.scheduleId } : {}),
         images,
         supportsImages: resolvedProvider?.supportsImages,

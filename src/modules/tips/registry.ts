@@ -31,6 +31,7 @@ export const TIPS = [
   { id: "engineScope", cooldownOpens: 8 },
   { id: "mcpOut", cooldownOpens: 8 },
   { id: "webhooks", cooldownOpens: 8 },
+  { id: "jev", cooldownOpens: 10 },
 ] as const;
 
 export type TipId = (typeof TIPS)[number]["id"];

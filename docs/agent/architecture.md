@@ -674,6 +674,60 @@ per-rule `lastDelivery` receipt the Settings row shows and stay quiet. Deliverie
 keepalive window (`Promise.allSettled([extraction, titling, hooksPending()])`) rather than arming
 a second alarm — a `run_finished` POST that outlives the run still gets its worker time.
 
+### `jev/` — the Jev executor
+
+Jev (TypeSafe) is a classifier: it answers Choice questions with a full probability distribution,
+billed per input token ($0.042/M, output free, 32k window). It never writes text, so it can't be a
+planner — but picking the next control on a page is a choice. The planner delegates a stretch; Jev
+runs it; the planner checks the result. Measured on the 2026-09 spike: 23/36 whole tasks on 12
+sites, ~35–95× cheaper per action than a frontier model, no faster (page loads dominate). Its
+known flaw is judging "done", which is why `done_when` is required and the reply carries a fresh
+snapshot the planner must read.
+
+**The tool.** `delegate {goal, done_when, values[{for, text}], max_actions?}` is offered only while
+`jevForRun()` returns a connection (a key saved and switched on), gated with the action tools, and
+in `NEW_PAGE_TOOLS` so a turn's later calls cancel behind it. `values` is the only text Jev may
+type — it picks field and value together (`idx=v` options), so no text model runs. `max_actions`
+defaults to 20, capped at 30.
+
+**One request per step** (`request.ts`, pure). Each page read becomes one call carrying the
+element table (on-screen controls always; below-the-fold ones while a ~10k-token budget lasts), up
+to 3,000 chars of visible text, the last 6 actions, and the questions: `operation`, one
+`<op>_target` per op that has targets, `goal_done`, and `stuck`. Jev bills the state once per
+call however many questions ride on it, so the questions are cheap and the page is not: a target
+criterion only names its element by index and label, and its value, state and context stay on the
+element's row. The package's `ask` checks every answer against its question — the pick must be
+offered, the distribution must name exactly the offered options and favor the pick — and hands
+back null for one that fails, which never becomes an action. `confidence` is never read as
+P(pick): it measures how the distribution is spread.
+
+**Every exit is a stop** (`executor.ts`). `done` (goal_done ≥ 0.85, or Jev picking the DONE
+operation with goal_done ≥ 0.5 — without DONE, a finished page could only exit through HAND_BACK,
+which tells the planner a risky step is next), `hand_back`, `irreversible`,
+`no_progress` (3 actions with no change), `repeat` (a dead step comes back — the runner-up gets one
+try first), `unstable` (4 decisions discarded because the page moved), `unsure` (P < 0.2 twice, or
+DONE that its own done check doubts),
+`stuck` (≥ 0.85 once 2 steps are in), `max_actions`, `max_calls` (2× actions), `timeout` (120 s),
+`new_tab`, `left_site`, `restricted`, `aborted`, `jev_error`. The report names the reason, the
+steps, and the spend; the prompt tells the planner not to re-delegate the same goal after a stop.
+
+**The guard** (`guard.ts`). Before any CLICK or ENTER, a separate ~300-token yes/no: does this
+complete a purchase, send, post, delete, or anything that can't be undone? YES ≥ 0.5 stops with
+`irreversible` and the planner takes the step itself after `ask_user`. On the spike it caught
+10/10 (YES 0.73–0.87, NO ≤ 0.05). Password and card fields are filtered out of what Jev is offered,
+and file inputs never reach the element list.
+
+**Hosts** (`hosts.ts`). The wire is `@providerkit/core/jev`: `jevClient(conn)` wraps its
+`createJevClient` (four host envelopes, answer checks, retries on 429/503/529, Cloudflare's
+404/7003 read as auth, a one-question `checkKey`). What stays here is what the package can't
+know: host labels and key/usage links for Settings, the $0.042/M rate `costUsd` bills at
+(OpenRouter's reported bill wins over it), TabRunner's OpenRouter attribution, and OpenRouter's
+balance read. Only OpenRouter reports a balance; everywhere else Settings shows our own `spent`
+count and links to the host's usage page.
+
+**Cost** reaches the run as `onUsage({ input: 0, output: 0, cost })`: the spend meter counts it,
+the context gauge — the planner's window — never does.
+
 ### `tips/` — rotating tips
 
 The rotating "Tip: …" line (Claude Code's spinner-tip pattern, reduced): a dim hint under

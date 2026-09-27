@@ -17,6 +17,7 @@ bun run i18n:check # locale parity + every static t() key resolves (--unused for
 bun run icons      # regenerate public/icon/* + docs/og.png from src/shared/logo.ts
 bun run shots      # store screenshots → docs/screenshots/ (+ site sync when ../site exists)
 bun run shots:ui   # light/dark UI previews → preview/ (gitignored)
+bun run bench:jev  # Jev executor on the 12 spike tasks, live sites (JEV_API_KEY; Jev credits only)
 bun run zip        # build + pack dist/tabrunner-<version>-chrome.zip (the one release artifact)
 bun run release    # bun run release <patch|minor|major> — gates, bump, commit, tag, zip
 bun run bridge     # run the MCP daemon by hand (clients spawn it themselves)
@@ -157,6 +158,19 @@ never reach the service-worker bundle.
   ask_user, error) to their own URL. Fire-and-forget by contract; deliveries join the memory
   keepalive window instead of arming anything new, failures stamp a per-rule receipt for the
   Settings row and stay quiet. Background-safe except `ui/`.
+- `jev/` — the Jev executor. With a Jev key saved (Settings → Providers; saving turns it on, the
+  panel menu's switch turns it off), the model gets a gated `delegate` tool that hands a routine
+  stretch of clicking and typing on the current site to Jev, a classifier billed per input token.
+  `executor.ts` loops observe → one batched Choice request → guard → act → settle against an
+  `ExecutorPage` (the driver in production, fakes in tests, puppeteer in the bench), and every
+  exit is a named stop the planner hears — caps on actions, decisions and time, no change, a
+  repeated dead step, unstable reads, low confidence, a new tab, leaving the site, a restricted
+  url — never a loop. Before any CLICK or ENTER, `guard.ts` asks one yes/no "does this commit the
+  user?"; YES ≥ 0.5 hands back, and the planner takes that step after `ask_user`. Sensitive fields
+  and file pickers are never offered. The wire to the four hosts (TypeSafe, OpenRouter,
+  Cloudflare, Vercel) is `@providerkit/core/jev`; `hosts.ts` keeps only labels, links, the rate,
+  and OpenRouter's balance. Cost reaches the run as `onUsage({ input: 0, output: 0, cost })`, so the context gauge
+  stays the planner's. Background-safe except `ui/`.
 - `schedule/` — unattended runs on a timer: one-shot, daily, or every-N-minutes with an optional
   weekday filter and active-hours window. Wall-clock rules recomputed after every fire (never
   `periodInMinutes` — it can't hold 9am across a DST shift), one `chrome.alarms` one-shot per

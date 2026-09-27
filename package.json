@@ -27,6 +27,7 @@
     "icons": "bun run scripts/gen-icons.ts",
     "shots": "bun run scripts/shoot-store.ts",
     "shots:ui": "bun run scripts/shoot-ui.ts",
+    "bench:jev": "bun run scripts/jev-bench.ts",
     "postinstall": "wxt prepare"
   },
   "dependencies": {
