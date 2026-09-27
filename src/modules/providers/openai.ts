@@ -1,5 +1,5 @@
 import type { ChatProvider, ChatMessage, ToolDef, Delta, ResolvedProviderConfig } from "./types";
-import { apiUrl, effortParams, parseToolArgs } from "@providerkit/core";
+import { apiUrl, effortParams, openRouterHostFor, parseToolArgs } from "@providerkit/core";
 import {
   logCacheUsage,
   promptCacheKey,
@@ -154,6 +154,8 @@ export function buildOpenAIBody(
     body.reasoning_effort = config.reasoningEffort;
   }
 
+  // OpenRouter picks a fresh upstream host per request, and the prompt cache
+  // lives on that host, so the model's own vendor is pinned to keep it warm.
   const pin = openRouterHostFor(config.baseUrl, config.model);
   if (pin) {
     // allow_fallbacks keeps the pin a preference, not a lock: when the pinned
@@ -162,53 +164,6 @@ export function buildOpenAIBody(
   }
 
   return body;
-}
-
-/**
- * OpenRouter's default routing picks a fresh upstream host per request, but the
- * prompt cache lives ON that host — so the stable prefix (system prompt, tools,
- * history) re-prefills cold every turn. Pinning the model's own vendor keeps
- * consecutive turns on one host, where its cache holds.
- *
- * Keys are model-id vendor prefixes whose vendor serves its own models on
- * OpenRouter; values are the provider slugs `order` accepts (verified 2026-09-01
- * against OpenRouter's provider listing and each vendor's endpoint listings —
- * slugs drift, so re-check before trusting a new entry). Prefixes not here —
- * open-weight models served only by third parties (`meta-llama`, `nvidia`, …),
- * or a vendor added later — get no pin and keep default routing.
- */
-const OPENROUTER_HOSTS: Record<string, string> = {
-  anthropic: "anthropic",
-  "arcee-ai": "arcee-ai",
-  cohere: "cohere",
-  deepseek: "deepseek",
-  google: "google-ai-studio",
-  meta: "meta",
-  minimax: "minimax",
-  mistralai: "mistral",
-  moonshotai: "moonshotai",
-  morph: "morph",
-  openai: "openai",
-  perplexity: "perplexity",
-  qwen: "alibaba",
-  stepfun: "stepfun",
-  tencent: "tencent",
-  upstage: "upstage",
-  "x-ai": "xai",
-  "z-ai": "z-ai",
-};
-
-/** The upstream slug an OpenRouter call should prefer, if the model's vendor serves it. */
-function openRouterHostFor(baseUrl: string, model: string): string | undefined {
-  let host: string;
-  try {
-    host = new URL(baseUrl).hostname;
-  } catch {
-    return undefined;
-  }
-  if (host !== "openrouter.ai") return undefined;
-  const vendor = model.split("/")[0]?.toLowerCase();
-  return vendor ? OPENROUTER_HOSTS[vendor] : undefined;
 }
 
 interface OpenAIChunk {

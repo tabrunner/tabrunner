@@ -202,6 +202,7 @@ describe("buildOpenAIBody", () => {
         "x-ai/grok-4.6": "xai",
         "google/gemini-3.7-flash": "google-ai-studio",
         "z-ai/glm-5.3": "z-ai",
+        "zai/glm-5.3": "z-ai",
       };
       for (const [model, slug] of Object.entries(aliases)) {
         const body = buildOpenAIBody({ ...openrouter, model }, messages, []);
