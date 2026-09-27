@@ -6,7 +6,7 @@ import type {
   ToolDef,
   ToolResult,
 } from "./types";
-import { apiUrl, parseToolArgs } from "@providerkit/core";
+import { apiUrl, openRouterCostUsd, parseToolArgs } from "@providerkit/core";
 import { isRec, logCacheUsage, sessionHeaders, streamFrameError, streamSse } from "./http";
 import { PRESETS } from "./presets";
 
@@ -353,12 +353,19 @@ function usageDelta(usage: Record<string, unknown>): Delta {
   const details = isRec(usage.input_tokens_details) ? usage.input_tokens_details : undefined;
   const cached = num(details?.cached_tokens) ?? 0;
   logCacheUsage(input, cached);
+  // OpenRouter's `/responses` names its bill as chat does, so the kit prices
+  // it the same way: the upstream bill added under BYOK, and nothing that is
+  // not a finite, non-negative number, because the run adds these up.
+  const cost = openRouterCostUsd({
+    cost: usage.cost,
+    is_byok: usage.is_byok === true,
+    cost_details: isRec(usage.cost_details) ? usage.cost_details : null,
+  });
   return {
     type: "usage",
     input,
     output: num(usage.output_tokens) ?? 0,
     cacheRead: cached,
-    // Gateways that price their own calls ride the figure through verbatim.
-    ...(num(usage.cost) !== undefined ? { cost: num(usage.cost) } : {}),
+    ...(cost !== undefined ? { cost } : {}),
   };
 }

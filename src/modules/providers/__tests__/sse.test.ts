@@ -852,4 +852,20 @@ describe("what an OpenRouter call cost", () => {
   it("does not pass the fee off as the bill when BYOK sends no upstream figure", async () => {
     expect(await costOf({ cost: 0.0001, is_byok: true })).toBeUndefined();
   });
+
+  // The run adds each call's cost to a running total, so a string would turn
+  // the sum into "00.002" and ride into the thread's persisted spend. With no
+  // price the run falls back to the table's estimate instead.
+  it("prices nothing when the figure is not a usable number", async () => {
+    expect(await costOf({ cost: "0.002" })).toBeUndefined();
+    expect(await costOf({ cost: null })).toBeUndefined();
+    expect(await costOf({ cost: -0.002 })).toBeUndefined();
+    expect(
+      await costOf({
+        cost: 0.0001,
+        is_byok: true,
+        cost_details: { upstream_inference_cost: "0.002" },
+      }),
+    ).toBeUndefined();
+  });
 });
