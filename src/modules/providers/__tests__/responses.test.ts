@@ -400,3 +400,49 @@ describe("ChatGPT provider SSE parsing", () => {
     });
   });
 });
+
+/**
+ * The adapter takes any base URL, so OpenRouter's `/responses` is one setting
+ * away, and its closing usage carries `cost`, `is_byok` and `cost_details`
+ * under the same names as chat. The run adds each call's cost to a running
+ * total, so only a finite, non-negative number may reach it.
+ */
+describe("what a Responses call cost", () => {
+  async function costOf(usage: Record<string, unknown>): Promise<number | undefined> {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          frame({
+            type: "response.completed",
+            response: { usage: { input_tokens: 10, output_tokens: 5, ...usage } },
+          }),
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+    const provider = createResponsesProvider(
+      makeConfig({ baseUrl: "https://openrouter.ai/api/v1" }),
+    );
+    let cost: number | undefined;
+    for await (const d of provider.stream([], [], new AbortController().signal)) {
+      if (d.type === "usage") cost = d.cost;
+    }
+    return cost;
+  }
+
+  it("takes a plain number and refuses a negative or a string", async () => {
+    expect(await costOf({ cost: 0.002 })).toBe(0.002);
+    expect(await costOf({ cost: -0.002 })).toBeUndefined();
+    expect(await costOf({ cost: "0.002" })).toBeUndefined();
+  });
+
+  it("adds the upstream bill when the call ran on the caller's own key", async () => {
+    expect(
+      await costOf({
+        cost: 0.0001,
+        is_byok: true,
+        cost_details: { upstream_inference_cost: 0.002 },
+      }),
+    ).toBeCloseTo(0.0021, 10);
+  });
+});
