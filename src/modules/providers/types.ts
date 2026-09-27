@@ -320,10 +320,15 @@ export function isRetryable(e: unknown): boolean {
       if (!(e.kind === "quota" && shortWait)) return false;
     }
     if (e.retryAfterMs !== undefined && e.retryAfterMs > MAX_RETRY_WAIT_MS) return false;
+    // `overload` and `rate` name the same transient states as a 5xx and a 429,
+    // and they need the name when the status cannot say it: a failure inside
+    // a 200 stream (streamFrameError) carries the 200 that really arrived.
     return (
       e.kind === "auth" ||
       e.kind === "network" ||
       e.kind === "timeout" ||
+      e.kind === "overload" ||
+      e.kind === "rate" ||
       e.status === 429 ||
       e.status >= 500
     );

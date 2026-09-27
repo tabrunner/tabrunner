@@ -1,6 +1,13 @@
 import type { ChatProvider, ChatMessage, ToolDef, Delta, ResolvedProviderConfig } from "./types";
 import { apiUrl, effortParams, parseToolArgs } from "@providerkit/core";
-import { logCacheUsage, promptCacheKey, providerHeaders, sessionHeaders, streamSse } from "./http";
+import {
+  logCacheUsage,
+  promptCacheKey,
+  providerHeaders,
+  sessionHeaders,
+  streamFrameError,
+  streamSse,
+} from "./http";
 import { PRESETS } from "./presets";
 
 /**
@@ -38,6 +45,8 @@ export function createOpenAIProvider(config: ResolvedProviderConfig): ChatProvid
         } catch {
           continue;
         }
+
+        if (chunk.error) throw streamFrameError(config, chunk.error);
 
         // Final usage chunk (stream_options.include_usage) — choices is empty
         if (chunk.usage) {
@@ -202,6 +211,8 @@ function openRouterHostFor(baseUrl: string, model: string): string | undefined {
 }
 
 interface OpenAIChunk {
+  /** A failure after the 200 went out — see streamFrameError. */
+  error?: unknown;
   choices?: {
     finish_reason?: string | null;
     delta?: {

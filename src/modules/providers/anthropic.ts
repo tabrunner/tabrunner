@@ -5,6 +5,7 @@ import {
   anthropicOAuthHeaders,
   logCacheUsage,
   sessionHeaders,
+  streamFrameError,
   streamSse,
 } from "./http";
 import { PRESETS } from "./presets";
@@ -132,6 +133,8 @@ export function createAnthropicProvider(config: ResolvedProviderConfig): ChatPro
             yield { type: "done" };
             return;
           }
+          case "error":
+            throw streamFrameError(config, event.error);
         }
       }
 
@@ -260,6 +263,8 @@ interface AnthropicSSE {
     partial_json?: string;
     stop_reason?: string;
   };
+  /** The `error` event — a failure after the 200 went out; see streamFrameError. */
+  error?: unknown;
 }
 
 /** Idempotent — the non-OAuth path streams unprefixed names and is untouched. */

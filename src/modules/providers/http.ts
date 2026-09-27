@@ -112,6 +112,7 @@ function providerErrorMessage(
   fallbackDetail: string,
   reset: RateLimitReset,
   now: number,
+  unknownAs?: ErrorKind,
 ): { message: string; kind?: ErrorKind } {
   const label = providerDisplayName(provider);
   // The data-policy gate is checked before classification: its body would
@@ -129,6 +130,7 @@ function providerErrorMessage(
   // reads the same way, but the fix is another model, which is what `model`
   // offers (no dialog: the picker is already on screen).
   let kind = classifyHttp(status, text);
+  if (kind === "unknown" && unknownAs) kind = unknownAs;
   if (/pass a valid API key|API key (not valid|is invalid|is required|is missing)/i.test(text)) {
     kind = "auth";
   } else if (/multiturn chat is not enabled/i.test(text)) {
@@ -354,7 +356,7 @@ export function envelopeProviderError(
   provider: ProviderIdentity,
   status: number,
   text: string,
-  opts: { detail?: string; headers?: Headers; url?: string } = {},
+  opts: { detail?: string; headers?: Headers; url?: string; unknownAs?: ErrorKind } = {},
 ): ProviderError {
   const now = Date.now();
   // Headers are authoritative (Anthropic names the window); the body fills
@@ -385,6 +387,7 @@ export function envelopeProviderError(
     opts.detail ?? "",
     reset,
     now,
+    opts.unknownAs,
   );
   // A classified failure (rate limit, quota, auth…) is an expected provider state
   // the chat already surfaces with its fix — warn keeps it off chrome://extensions'
@@ -397,6 +400,27 @@ export function envelopeProviderError(
     log.error(`HTTP ${status} from ${where}: ${truncate(text)}`);
   }
   return new ProviderError(message, status, kind, reset.retryAfterMs);
+}
+
+/**
+ * A failure the provider reports INSIDE a 200 stream: Anthropic's `error`
+ * event (an `overloaded_error` under load, its streaming 529) or an OpenAI-shape
+ * chunk carrying `error` (OpenRouter, when the upstream fails after the headers
+ * went out). The status line said 200, so the adapter has to spot the frame
+ * and throw, or the closed stream reads as a model that said nothing: the loop
+ * nudges it again with no backoff, and three of those end the run blaming the
+ * model. Same envelope as an HTTP failure; the status is the code the frame
+ * names, else the 200 that really arrived, and the kind comes from the body.
+ * A body that names nothing (Anthropic's `api_error`) is still a server that
+ * failed after it answered, so it reads as overload and is retried — the same
+ * floor @providerkit/core's `streamError` puts under its own adapters.
+ */
+export function streamFrameError(provider: ProviderIdentity, error: unknown): ProviderError {
+  const code = (error as { code?: unknown } | null)?.code;
+  const status = typeof code === "number" && code >= 400 ? code : 200;
+  return envelopeProviderError(provider, status, JSON.stringify(error) ?? "", {
+    unknownAs: "overload",
+  });
 }
 
 /**

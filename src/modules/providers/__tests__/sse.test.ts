@@ -245,7 +245,11 @@ describe("OpenAI provider SSE parsing", () => {
         headers: { "content-type": "text/event-stream" },
       }),
     );
-    for await (const d of createOpenAIProvider(config).stream([], [], new AbortController().signal)) {
+    for await (const d of createOpenAIProvider(config).stream(
+      [],
+      [],
+      new AbortController().signal,
+    )) {
       void d;
     }
     const headers = spy.mock.calls[0]![1]?.headers as Record<string, string>;
@@ -608,6 +612,92 @@ describe("Anthropic provider SSE parsing", () => {
 
     expect((error as ProviderError).kind).toBe("rate");
     expect((error as ProviderError).message).toContain("rate-limiting");
+    expect(isRetryable(error)).toBe(true);
+    vi.restoreAllMocks();
+  });
+});
+
+/**
+ * A provider can fail AFTER it answered 200: the headers are out, so the only
+ * place left to say so is a frame in the stream. Dropped, the closed stream
+ * reads as a model that said nothing: the loop nudges it again with no backoff,
+ * and three of those end the run as "no text and no tool call" when the fix was
+ * to wait a second.
+ */
+describe("a failure reported inside a 200 stream", () => {
+  async function failureOf(stream: AsyncIterable<unknown>): Promise<unknown> {
+    try {
+      for await (const delta of stream) void delta;
+    } catch (e) {
+      return e;
+    }
+    return undefined;
+  }
+
+  it("OpenAI shape: an error chunk fails the turn, classified from its own code", async () => {
+    const config = makeConfig("openai", "https://openrouter.ai/api/v1");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          `data: ${JSON.stringify({
+            error: { code: 502, message: "Provider returned error" },
+            choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }],
+          })}`,
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+    const error = await failureOf(
+      createOpenAIProvider(config).stream([], [], new AbortController().signal),
+    );
+    expect(error).toBeInstanceOf(ProviderError);
+    expect((error as ProviderError).kind).toBe("overload");
+    expect(isRetryable(error)).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  it("Anthropic shape: an overloaded_error event fails the turn and is retried", async () => {
+    const config = makeConfig("anthropic", "https://api.anthropic.com");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          `event: error\ndata: ${JSON.stringify({
+            type: "error",
+            error: { type: "overloaded_error", message: "Overloaded" },
+          })}`,
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+    const error = await failureOf(
+      createAnthropicProvider(config).stream([], [], new AbortController().signal),
+    );
+    expect(error).toBeInstanceOf(ProviderError);
+    expect((error as ProviderError).kind).toBe("overload");
+    expect((error as ProviderError).message).toContain("overloaded");
+    expect(isRetryable(error)).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  it("a frame whose body names nothing still reads as a failed server, not a silent model", async () => {
+    const config = makeConfig("anthropic", "https://api.anthropic.com");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          `event: error\ndata: ${JSON.stringify({
+            type: "error",
+            error: { type: "api_error", message: "Internal server error" },
+          })}`,
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+    const error = await failureOf(
+      createAnthropicProvider(config).stream([], [], new AbortController().signal),
+    );
+    expect(error).toBeInstanceOf(ProviderError);
+    expect((error as ProviderError).kind).toBe("overload");
+    expect((error as ProviderError).message).toContain("Internal server error");
     expect(isRetryable(error)).toBe(true);
     vi.restoreAllMocks();
   });
