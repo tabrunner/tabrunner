@@ -447,7 +447,7 @@ export const PRESETS: ProviderPreset[] = [
     name: "OpenCode Go",
     shape: "openai",
     baseUrl: "https://opencode.ai/zen/go/v1",
-    models: ["glm-5.3", "kimi-k2.6", "qwen3.8-max", "mimo-v2.5"],
+    models: ["mimo-v2.6-flash", "glm-5.3", "kimi-k2.6", "qwen3.8-max", "mimo-v2.5"],
     apiKeyUrl: "https://opencode.ai/auth",
     sessionHeader: true,
     // Per OpenCode's Go docs, with pi's correction: pi reroutes minimax-m2.7
@@ -456,7 +456,9 @@ export const PRESETS: ProviderPreset[] = [
     // below ride /messages and /responses.
     modelRoutes: {
       responses: [
-        "grok-4.5",
+        "grok-4.7",
+        "grok-4.6",
+        "gpt-6-luna",
         "gpt-5.6-luna",
         "muse-spark-1.3-contributor",
         "muse-spark-1.2-contributor",
