@@ -221,8 +221,13 @@ export function buildResponsesBody(
 
   // The ChatGPT backend has no off switch for reasoning — `none` omits the
   // knob entirely; the rest map to the standard Responses effort config.
-  if (config.reasoningEffort && config.reasoningEffort !== "none") {
-    body.reasoning = { effort: config.reasoningEffort };
+  // `max` is the picker's word, not this shape's, so it goes out as `high`.
+  // That rests on @providerkit/core's record for its own Responses adapter
+  // (responses.ts, 0.12.2): it "sent it through and earned a 400 on the top
+  // setting alone". Not measured here.
+  const effort = config.reasoningEffort;
+  if (effort && effort !== "none") {
+    body.reasoning = { effort: effort === "max" ? "high" : effort };
   }
 
   return body;

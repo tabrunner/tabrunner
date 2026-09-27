@@ -166,6 +166,12 @@ describe("buildResponsesBody", () => {
     expect(body.reasoning).toEqual({ effort: "high" });
   });
 
+  it("sends the picker's 'max' as 'high', the top level this shape takes", () => {
+    // @providerkit/core records a 400 for `max` on this shape (its responses.ts).
+    const body = buildResponsesBody(makeConfig({ reasoningEffort: "max" }), [], []);
+    expect(body.reasoning).toEqual({ effort: "high" });
+  });
+
   it("serializes tools to Responses function definitions", () => {
     const body = buildResponsesBody(
       makeConfig(),
