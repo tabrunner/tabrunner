@@ -23,6 +23,26 @@ export interface SnapshotOptions {
   filter?: "all" | "interactive";
   maxDepth?: number;
   maxElements?: number;
+  /** Also return the controls as data and the text on screen — what the Jev executor reads. */
+  structured?: boolean;
+}
+
+/** One control a ref names, as data: the structured twin of a `[ref=…]` line. */
+export interface SnapshotElement {
+  ref: string;
+  role: string;
+  name: string;
+  /** What acting on it means: type into it, pick one of its options, or click it. */
+  kind: "fill" | "select" | "click";
+  /** Current field value or selected option; a password or card field only says it's filled. */
+  value?: string;
+  checked?: boolean;
+  expanded?: boolean;
+  options?: string[];
+  sensitive?: boolean;
+  inViewport: boolean;
+  /** The text of the row or card it sits in, set only when its name alone is ambiguous. */
+  context?: string;
 }
 
 export interface SnapshotResult {
@@ -38,6 +58,10 @@ export interface SnapshotResult {
    * no-arguments call the snapshot tool makes.
    */
   newRefs: number;
+  /** Only with `structured`. */
+  elements?: SnapshotElement[];
+  /** Only with `structured`: the text inside the viewport, capped. */
+  visibleText?: string;
 }
 
 /**
@@ -303,8 +327,76 @@ export function generateSnapshot(opts: SnapshotOptions): SnapshotResult {
     return line;
   }
 
+  const TEXT_TYPES = ["", "text", "search", "email", "url", "tel", "number", "password"];
+
+  function describe(el: HTMLElement, role: string, name: string, ref: string): SnapshotElement {
+    const tag = el.tagName.toLowerCase();
+    const type = (el.getAttribute("type") || "").toLowerCase();
+    const r = el.getBoundingClientRect();
+    const item: SnapshotElement = {
+      ref,
+      role,
+      name: name.replace(/\s+/g, " ").substring(0, 100),
+      kind: "click",
+      inViewport:
+        r.width > 0 &&
+        r.height > 0 &&
+        r.bottom > 0 &&
+        r.right > 0 &&
+        r.top < window.innerHeight &&
+        r.left < window.innerWidth,
+    };
+    const input = el as HTMLInputElement;
+    if (tag === "select") {
+      const sel = el as HTMLSelectElement;
+      item.kind = "select";
+      item.options = [...sel.options]
+        .filter((o) => !o.disabled)
+        .map((o) => o.textContent?.trim() || o.value)
+        .slice(0, 50);
+      item.value = sel.selectedOptions[0]?.textContent?.trim() ?? "";
+    } else if (tag === "input" && (type === "checkbox" || type === "radio")) {
+      item.checked = input.checked;
+    } else if (
+      tag === "textarea" ||
+      el.getAttribute("contenteditable") === "true" ||
+      (tag === "input" && TEXT_TYPES.includes(type) && !input.readOnly)
+    ) {
+      item.kind = "fill";
+      const v = tag === "input" || tag === "textarea" ? input.value : (el.textContent ?? "");
+      if (isSensitive(el)) {
+        item.sensitive = true;
+        if (v) item.value = "[value redacted]";
+      } else if (v) item.value = v.replace(/\s+/g, " ").substring(0, 80);
+    }
+    const ariaChecked = el.getAttribute("aria-checked");
+    if (ariaChecked === "true" || ariaChecked === "false") item.checked = ariaChecked === "true";
+    const expanded = el.getAttribute("aria-expanded");
+    if (expanded === "true" || expanded === "false") item.expanded = expanded === "true";
+    return item;
+  }
+
+  /** The row or card around a control — the text that tells six "Add to cart" apart. */
+  function contextOf(el: HTMLElement, name: string): string | undefined {
+    let box = el.closest<HTMLElement>(
+      'li,tr,article,[role="row"],[role="listitem"],[role="article"]',
+    );
+    if (!box) {
+      for (let p = el.parentElement, i = 0; p && p !== document.body && i < 5; i++) {
+        if ((p.innerText ?? p.textContent ?? "").length > 400) break;
+        box = p;
+        p = p.parentElement;
+      }
+    }
+    const text = (box?.innerText ?? box?.textContent ?? "").replace(/\s+/g, " ").trim();
+    return text && text !== name ? text.substring(0, 140) : undefined;
+  }
+
   const lines: string[] = [];
   let count = 0;
+  const structured = opts.structured === true;
+  const elements: SnapshotElement[] = [];
+  const elementNodes: HTMLElement[] = [];
 
   function walk(el: HTMLElement, depth: number) {
     if (count >= maxElements || !el.tagName || depth > maxDepth) return;
@@ -327,6 +419,15 @@ export function generateSnapshot(opts: SnapshotOptions): SnapshotResult {
     if (included) {
       const ref = INTERACTIVE_ROLES.has(role) || interactive ? getOrCreateRef(el) : undefined;
       lines.push(formatLine(depth, role, name, ref, el));
+      if (
+        structured &&
+        ref &&
+        !el.matches(":disabled") &&
+        el.getAttribute("aria-disabled") !== "true"
+      ) {
+        elements.push(describe(el, role, name, ref));
+        elementNodes.push(el);
+      }
       count++;
 
       if (el.tagName.toLowerCase() === "select" && !isSensitive(el)) {
@@ -363,13 +464,52 @@ export function generateSnapshot(opts: SnapshotOptions): SnapshotResult {
     pageContent += `\n[truncated at ${maxElements} elements — call find with a distinctive word to locate what you need, or read_page_text to read the page as prose]`;
   }
 
-  return {
+  const result: SnapshotResult = {
     pageContent,
     viewport: { width: window.innerWidth, height: window.innerHeight },
     url: location.href,
     title: document.title,
     newRefs,
   };
+  if (!structured) return result;
+
+  // Context only where the name can't tell a control apart — innerText forces
+  // layout, and a long page holds thousands of refs.
+  const seen = new Map<string, number>();
+  for (const e of elements)
+    seen.set(`${e.role}|${e.name}`, (seen.get(`${e.role}|${e.name}`) ?? 0) + 1);
+  elements.forEach((e, i) => {
+    if (!e.name || seen.get(`${e.role}|${e.name}`)! > 1) {
+      const context = contextOf(elementNodes[i]!, e.name);
+      if (context) e.context = context;
+    }
+  });
+
+  const words: string[] = [];
+  let length = 0;
+  if (document.body) {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let node = walker.nextNode(); node && length < 3000; node = walker.nextNode()) {
+      const text = node.textContent?.trim();
+      const parent = node.parentElement;
+      if (!text || !parent || parent.closest("script,style,noscript,template")) continue;
+      if (!isVisible(parent)) continue;
+      range.selectNodeContents(node);
+      const r = range.getBoundingClientRect?.();
+      if (!r || r.width <= 0 || r.height <= 0) continue;
+      if (
+        r.bottom <= 0 ||
+        r.top >= window.innerHeight ||
+        r.right <= 0 ||
+        r.left >= window.innerWidth
+      )
+        continue;
+      words.push(text);
+      length += text.length + 1;
+    }
+  }
+  return { ...result, elements, visibleText: words.join("\n").substring(0, 3000) };
 }
 
 /**
