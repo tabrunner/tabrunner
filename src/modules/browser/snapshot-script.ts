@@ -423,7 +423,9 @@ export function generateSnapshot(opts: SnapshotOptions): SnapshotResult {
         structured &&
         ref &&
         !el.matches(":disabled") &&
-        el.getAttribute("aria-disabled") !== "true"
+        el.getAttribute("aria-disabled") !== "true" &&
+        // A file picker is an upload nobody chose — the executor never gets one.
+        !(el instanceof HTMLInputElement && el.type === "file")
       ) {
         elements.push(describe(el, role, name, ref));
         elementNodes.push(el);

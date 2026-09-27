@@ -152,6 +152,12 @@ describe("generateSnapshot", () => {
     expect(JSON.stringify(result)).not.toContain("hunter2");
   });
 
+  it("keeps file pickers out of the structured elements", () => {
+    setupDOM(`<input type="file" aria-label="Receipt" /><button>Send</button>`);
+    const result = generateSnapshot({ structured: true });
+    expect(result.elements?.map((e) => e.name)).toEqual(["Send"]);
+  });
+
   it("leaves the plain snapshot untouched", () => {
     setupDOM(`<button>Go</button>`);
     const plain = generateSnapshot({});

@@ -18,11 +18,11 @@ const log = createLogger("jev");
  * out is a stop the planner hears about with its reason; none of them loops.
  */
 
-/** The page, as the executor drives it. Production wraps the run's driver;
- *  tests and the bench bring their own. */
 /** A page read, plus whether the page opened a tab since the last one. */
 export type Observed = PageView & { openedTab?: boolean };
 
+/** The page, as the executor drives it. Production wraps the run's driver;
+ *  tests and the bench bring their own. */
 export interface ExecutorPage {
   observe(): Promise<Observed>;
   act(action: PageAction): Promise<void>;
