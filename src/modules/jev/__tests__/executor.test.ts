@@ -113,6 +113,23 @@ describe("runDelegate", () => {
     expect(p.acts).toEqual([]);
   });
 
+  it("takes Jev's DONE when its own done check agrees, and not when it doesn't", async () => {
+    const agreed = await runDelegate(
+      fakePage(page([button("e1", "Pay")])),
+      fakeJev([{ op: "DONE", done: 0.6 }]),
+      task,
+    );
+    expect(agreed).toMatchObject({ status: "done", reason: "done" });
+
+    const doubted = await runDelegate(
+      fakePage(page([button("e1", "Pay")])),
+      fakeJev([{ op: "DONE", done: 0.2 }]),
+      task,
+    );
+    expect(doubted).toMatchObject({ status: "stopped", reason: "unsure" });
+    expect(doubted.detail).toMatch(/^DONE 0\.90/);
+  });
+
   it("hands back before a click the commit check calls irreversible", async () => {
     const p = fakePage(page([button("e1", "Finish")]));
     const jev = fakeJev([{ op: "CLICK", target: "1" }], 0.8);

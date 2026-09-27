@@ -11,7 +11,7 @@ import type { Choice, ChoiceQuestion } from "./client";
  */
 
 export type Op = "CLICK" | "TYPE" | "SELECT" | "ENTER" | "SCROLL_DOWN" | "SCROLL_UP" | "WAIT";
-export type Operation = Op | "HAND_BACK";
+export type Operation = Op | "DONE" | "HAND_BACK";
 
 /** A text the planner lets Jev type, with a hint of which field it belongs in. */
 export interface DelegateValue {
@@ -106,6 +106,9 @@ const OPERATIONS: Record<Operation, string> = {
   SCROLL_DOWN: "Scroll down to see more of the page.",
   SCROLL_UP: "Scroll back up.",
   WAIT: "Wait for results or a control that is still loading.",
+  // Without it, a finished page has no way out but HAND_BACK — which tells
+  // the planner a risky step is next when none is.
+  DONE: "Stop: the done condition is already visibly true on this page; nothing is left to do.",
   HAND_BACK:
     "Stop and hand back: the next step can't be undone (buy, pay, send, post, delete, confirm), or it needs a value that wasn't given.",
 };
@@ -173,6 +176,7 @@ function compose(
     "SCROLL_DOWN",
     ...(history.some((h) => h.action === "SCROLL_DOWN") ? (["SCROLL_UP"] as const) : []),
     "WAIT",
+    "DONE",
     "HAND_BACK",
   ];
   const values = task.values.map((v, j) => ({ value: j + 1, text: v.text, for: v.for ?? "" }));
@@ -200,17 +204,20 @@ function compose(
     ),
   };
   for (const [op, group] of Object.entries(targets)) {
-    const criteria: Record<string, unknown> = {};
+    // Just enough to name the target: its value, state and surrounding text
+    // are on its row in `elements`, under the same index. Repeating them here
+    // billed the page twice (Jev charges the state once per call, however
+    // many questions ride on it).
+    const criteria: Record<string, string> = {};
     for (const [id, t] of Object.entries(group)) {
       const index = Number(id.split(/[=:]/)[0]);
-      criteria[id] = {
-        element: `[${index}] ${describeElement(t.element)}`,
-        ...(t.element.value !== undefined ? { current_value: t.element.value } : {}),
-        ...(op === "TYPE" ? { type_value: t.text } : {}),
-        ...(op === "SELECT" ? { option: t.text } : {}),
-        ...(t.element.checked !== undefined ? { checked: t.element.checked } : {}),
-        ...(t.element.context ? { context: t.element.context } : {}),
-      };
+      const el = `[${index}] ${describeElement(t.element)}`;
+      criteria[id] =
+        op === "TYPE"
+          ? `type "${t.text}" into ${el}`
+          : op === "SELECT"
+            ? `"${t.text}" in ${el}`
+            : el;
     }
     questions[`${op.toLowerCase()}_target`] = {
       type: "choice",
@@ -227,8 +234,8 @@ function compose(
       page_changed: h.changed,
     })),
   };
-  const longest = Math.max(...Object.values(questions).map((q) => JSON.stringify(q).length));
-  const tokens = Math.ceil((JSON.stringify(state).length + longest) / 3);
+  // Billed once: the state plus every question (measured, 2026-09-27).
+  const tokens = Math.ceil((JSON.stringify(state).length + JSON.stringify(questions).length) / 3);
   return { state, questions, operations, targets, tokens };
 }
 
@@ -267,7 +274,8 @@ export function readDecision(req: JevRequest, answers: Record<string, unknown>):
     ranked: op.ranked.slice(0, 3).map((r) => ({ op: r.id, p: r.p })),
   };
   const operation = op.choice as Operation;
-  const group = operation === "HAND_BACK" ? undefined : req.targets[operation];
+  const group =
+    operation === "DONE" || operation === "HAND_BACK" ? undefined : req.targets[operation];
   if (!group) return { op: operation, p: op.p, ...common };
 
   const pick = readChoice(answers[`${operation.toLowerCase()}_target`], Object.keys(group));

@@ -8,7 +8,7 @@ import type { ChoiceQuestion } from "./client";
 import { COMMIT_THRESHOLD, commitCheck } from "./guard";
 import type { JevReply } from "./hosts";
 import { TOKEN_BUDGET, buildRequest, describeElement, readDecision } from "./request";
-import type { DelegateTask, HistoryEntry, Op, PageView, Target } from "./request";
+import type { Decision, DelegateTask, HistoryEntry, Op, PageView, Target } from "./request";
 
 const log = createLogger("jev");
 
@@ -95,6 +95,9 @@ export const MAX_ACTIONS = 30;
 const MAX_MS = 120_000;
 /** jev-browser's line for both checks, measured on Wikipedia and DuckDuckGo. */
 const DONE_AT = 0.85;
+/** Jev choosing DONE is one vote; its own done check past even odds is the
+ *  second. ponytail: tuned on `bun run bench:jev`, not derived. */
+const DONE_AGREED_AT = 0.5;
 const STUCK_AT = 0.85;
 /** Below this joint confidence twice running, Jev is guessing. */
 const UNSURE_AT = 0.2;
@@ -111,6 +114,9 @@ function label(op: Op, t: Target | undefined, typed: SnapshotElement | undefined
   if (op === "SELECT") return `SELECT "${t.text}" in ${el}`;
   return `CLICK ${el}`;
 }
+
+/** Jev's top operations with their odds — the detail of an unsure stop. */
+const ranking = (d: Decision) => d.ranked.map((r) => `${r.op} ${r.p.toFixed(2)}`).join(", ");
 
 /** Where the page is and what its controls hold. */
 const structureOf = (v: PageView) =>
@@ -224,7 +230,7 @@ export async function runDelegate(
       const d = readDecision(req, reply.answers);
       if (!d) return end("jev_error", "unreadable answer");
 
-      if (d.done >= DONE_AT) {
+      if (d.done >= DONE_AT || (d.op === "DONE" && d.done >= DONE_AGREED_AT)) {
         // Judged on the page as it was a round trip ago; only a page whose
         // controls still stand as they were gets to call it done. Text alone
         // may move on — a live clock must not keep a finished stretch going.
@@ -234,10 +240,12 @@ export async function runDelegate(
         continue;
       }
       if (d.stuck >= STUCK_AT && steps.length >= 2) return end("stuck");
+      // Said done, but its own done check disagrees: the planner looks.
+      if (d.op === "DONE") return end("unsure", ranking(d));
       if (d.op === "HAND_BACK") return end("hand_back");
       unsure = d.p < UNSURE_AT ? unsure + 1 : 0;
       if (unsure >= 2) {
-        return end("unsure", d.ranked.map((r) => `${r.op} ${r.p.toFixed(2)}`).join(", "));
+        return end("unsure", ranking(d));
       }
       if (steps.length >= maxActions) return end("max_actions");
 

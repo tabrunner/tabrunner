@@ -82,7 +82,7 @@ describe("readDecision", () => {
 
   it("joins the operation and target odds and keeps the runner-up", () => {
     const d = readDecision(req, {
-      operation: answer("CLICK", { CLICK: 0.8, SCROLL_DOWN: 0, WAIT: 0.2, HAND_BACK: 0 }),
+      operation: answer("CLICK", { CLICK: 0.8, SCROLL_DOWN: 0, WAIT: 0.2, DONE: 0, HAND_BACK: 0 }),
       click_target: answer("1", { "1": 0.5, "2": 0.5 }),
       goal_done: answer("NO", { YES: 0.1, NO: 0.9 }),
       stuck: answer("NO", { YES: 0.05, NO: 0.95 }),
@@ -97,7 +97,7 @@ describe("readDecision", () => {
   it("refuses an answer that picks something it wasn't offered", () => {
     expect(
       readDecision(req, {
-        operation: answer("CLICK", { CLICK: 1, SCROLL_DOWN: 0, WAIT: 0, HAND_BACK: 0 }),
+        operation: answer("CLICK", { CLICK: 1, SCROLL_DOWN: 0, WAIT: 0, DONE: 0, HAND_BACK: 0 }),
         click_target: answer("7", { "1": 0, "2": 0, "7": 1 }),
       }),
     ).toBeNull();
