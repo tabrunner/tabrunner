@@ -73,9 +73,11 @@ The load-bearing details of talking to each provider shape. Read this when a tas
   DeepSeek's effort through `effortParams` from `@providerkit/core` (OpenRouter's own
   `reasoning: {effort}`; DeepSeek's `thinking: {type:"disabled"}` for none), and
   `explicitNone` sends Z.ai `thinking: {type:"disabled"}` for none. The measurements behind
-  both are the package's, not ours: GLM 5.3 Flash on OpenRouter 400s every explicit off, so
-  its none is `low` (2026-09-26, in `effortParams`), and Z.ai's coding endpoint thinks with
-  the field left out and stops at `disabled` (2026-09-13, in its `zai.ts`).
+  both are the package's, not ours. On OpenRouter, none is said per model: GLM 5.3 Flash and
+  gpt-5-mini 400 every explicit off, so theirs is `low` and `minimal`; MiMo v2.6 Flash takes
+  `none`; an unmeasured model gets no field (2026-09-26 and 2026-09-27, in
+  `OPENROUTER_NONE`, 0.12.3). Z.ai's coding endpoint thinks with the field left out and stops
+  at `disabled` (2026-09-13, in its `zai.ts`).
 - **Images are data URLs everywhere inside TabRunner**, split per wire format at the
   adapter edge. Anthropic nests image blocks inside the `tool_result` itself; an
   OpenAI-shape `role:"tool"` message is text-only, so that adapter trails a `user` message

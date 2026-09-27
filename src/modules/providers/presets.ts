@@ -65,10 +65,12 @@ export interface ProviderPreset {
    * OpenAI-shape only: this endpoint spells "think this hard" its own way, so
    * the effort goes out through @providerkit/core's `effortParams` instead of
    * as a verbatim `reasoning_effort`. OpenRouter wants its own `reasoning`
-   * object, and for GLM 5.3 Flash "none" has to be "low" (every explicit off
-   * is a 400). DeepSeek thinks unless told `thinking: {type: "disabled"}`.
-   * The per-model rule lives in the package, beside the measurement behind it
-   * (OpenRouter, 2026-09-26, recorded in its `effortParams` doc).
+   * object, and says "none" per model: "low" for GLM 5.3 Flash and "minimal"
+   * for gpt-5-mini (every explicit off is a 400 on both), an explicit "none"
+   * for MiMo v2.6 Flash, and nothing for a model not measured. DeepSeek thinks
+   * unless told `thinking: {type: "disabled"}`. The per-model rule lives in the
+   * package, beside the measurements behind it (OpenRouter, 2026-09-26 and
+   * 2026-09-27, recorded in its `OPENROUTER_NONE` doc, 0.12.3).
    */
   effortDialect?: Extract<EffortDialect, "openrouter" | "deepseek">;
   /**

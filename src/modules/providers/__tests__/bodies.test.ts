@@ -114,20 +114,26 @@ describe("buildOpenAIBody", () => {
       return { reasoning_effort, reasoning, thinking };
     }
 
-    it("OpenRouter: 'none' to GLM 5.3 Flash is effort low, never an explicit off", () => {
-      // @providerkit/core's measurement (2026-09-26, in its effortParams doc):
-      // GLM answers every explicit off with 400 "Reasoning is mandatory", 18 of
-      // 28 hosts think when the field is left out, and effort "low" gave 0
-      // reasoning tokens on all but two.
-      expect(effortFields("openrouter", "z-ai/glm-5.3-flash", "none")).toEqual({
-        reasoning: { effort: "low" },
-      });
+    it("OpenRouter: 'none' is said per measured model, never as a blanket off", () => {
+      // @providerkit/core's record (0.12.3, in its OPENROUTER_NONE doc; 2026-09-26
+      // sweep and 2026-09-27 matrix): GLM 5.3 Flash and gpt-5-mini answer every
+      // explicit off with 400 "Reasoning is mandatory", and their lowest level
+      // gave 0 reasoning tokens; MiMo v2.6 Flash thinks when the field is left
+      // out and stops at an explicit none.
+      const rows: Array<[string, string]> = [
+        ["z-ai/glm-5.3-flash", "low"],
+        ["openai/gpt-5-mini", "minimal"],
+        ["xiaomi/mimo-v2.6-flash", "none"],
+      ];
+      for (const [model, effort] of rows) {
+        expect(effortFields("openrouter", model, "none"), model).toEqual({ reasoning: { effort } });
+      }
     });
 
-    it("OpenRouter: 'none' to every other model sends no field", () => {
-      // The same record: DeepSeek V4 Flash measured the reverse that day, 0
-      // reasoning tokens with the field left out and thinking at "low". Every
-      // other model is unmeasured and gets the same omission.
+    it("OpenRouter: 'none' to an unlisted model sends no field", () => {
+      // The same record leaves DeepSeek V4 Flash off on purpose: 0 reasoning
+      // tokens with the field left out, and it thinks at "low". A model nobody
+      // measured gets the same omission.
       expect(effortFields("openrouter", "deepseek/deepseek-v4-flash", "none")).toEqual({});
     });
 
