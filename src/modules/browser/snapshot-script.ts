@@ -184,13 +184,18 @@ export function generateSnapshot(opts: SnapshotOptions): SnapshotResult {
     if (ti?.trim()) return ti.trim();
     const alt = el.getAttribute("alt");
     if (alt?.trim()) return alt.trim();
+    // `labels` holds both a <label for> and a label wrapped around the control
+    // (`<label>Name: <input></label>`, which had left whole forms unnamed); the
+    // for= query still names a custom widget, which `labels` never lists.
+    const labels: HTMLElement[] = [...((el as HTMLInputElement).labels ?? [])];
     if (el.id) {
       // The id is page data — unescaped, one quote in it throws and loses the whole snapshot.
       const lb = document.querySelector(`label[for="${CSS.escape(el.id)}"]`) as HTMLElement | null;
-      if (lb) {
-        const t = directText(lb);
-        if (t) return t;
-      }
+      if (lb) labels.push(lb);
+    }
+    for (const lb of labels) {
+      const t = directText(lb);
+      if (t) return t;
     }
     if (tag === "input") {
       // A submit button's value IS its visible label — any other input's value

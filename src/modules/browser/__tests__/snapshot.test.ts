@@ -110,7 +110,7 @@ describe("generateSnapshot", () => {
     `);
     const result = generateSnapshot({} as SnapshotOptions);
     expect(result.pageContent).toMatch(/checkbox \[ref=e\d+\]/);
-    expect(result.pageContent).toMatch(/radio \[ref=e\d+\]/);
+    expect(result.pageContent).toMatch(/radio "Large" \[ref=e\d+\]/);
     expect(result.pageContent).toMatch(/combobox "Blue" \[ref=e\d+\]/);
   });
 
@@ -150,6 +150,16 @@ describe("generateSnapshot", () => {
       value: "M",
     });
     expect(JSON.stringify(result)).not.toContain("hunter2");
+  });
+
+  it("names a control by the label wrapped around it", () => {
+    setupDOM(`
+      <label>Customer name: <input name="custname" /></label>
+      <label><input type="radio" name="size" value="large" /> Large</label>
+    `);
+    const { pageContent } = generateSnapshot({});
+    expect(pageContent).toMatch(/textbox "Customer name:" \[ref=e\d+\]/);
+    expect(pageContent).toMatch(/radio "Large" \[ref=e\d+\]/);
   });
 
   it("keeps file pickers out of the structured elements", () => {
