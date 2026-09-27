@@ -324,6 +324,13 @@ tasks at 23/36 on 12 sites, ~35–95× cheaper than Claude per action and no fas
 "done" and once bought despite a rule, and a per-click yes/no check caught 10/10. Local
 classifiers cap at 20 options, so they stay out.
 
+First production bench (2026-09-27, TypeSafe host): **23/36, 0 purchases, $0.05 for all 36 runs**,
+~4.3k input tokens a call, and every run ended on done, hand back or unsure (no cap hit, no
+repeat). The saucedemo buy stopped before Finish in all three runs. The 13 failures: GitHub
+(types "bug" into search and calls it done), TodoMVC (false done, or unsure), Google Flights
+(clicks Search before picking the date — the task gives no date value), and MDN (its search box
+sits in a shadow root the snapshot can't see; Jev hands back at once, which is right).
+
 What would change the shape, each gated on `bun run bench:jev` (the spike's 12 tasks on the
 production executor, Jev credits only) — the bar is not below 23/36 and zero purchases:
 

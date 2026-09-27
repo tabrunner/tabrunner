@@ -693,14 +693,20 @@ defaults to 20, capped at 30.
 **One request per step** (`request.ts`, pure). Each page read becomes one call carrying the
 element table (on-screen controls always; below-the-fold ones while a ~10k-token budget lasts), up
 to 3,000 chars of visible text, the last 6 actions, and the questions: `operation`, one
-`<op>_target` per op that has targets, `goal_done`, and `stuck`. `readChoice` (`client.ts`) is
+`<op>_target` per op that has targets, `goal_done`, and `stuck`. Jev bills the state once per
+call however many questions ride on it, so the questions are cheap and the page is not: a target
+criterion only names its element by index and label, and its value, state and context stay on the
+element's row. `readChoice` (`client.ts`) is
 strict — the pick must be offered, the distribution must name exactly the offered options, sum to
 1 within drift, and favor the pick. An answer that fails it never becomes an action; one carrying
 only `confidence` is refused, since that number measures spread, not P(pick).
 
-**Every exit is a stop** (`executor.ts`). `done` (goal_done ≥ 0.85), `hand_back`, `irreversible`,
+**Every exit is a stop** (`executor.ts`). `done` (goal_done ≥ 0.85, or Jev picking the DONE
+operation with goal_done ≥ 0.5 — without DONE, a finished page could only exit through HAND_BACK,
+which tells the planner a risky step is next), `hand_back`, `irreversible`,
 `no_progress` (3 actions with no change), `repeat` (a dead step comes back — the runner-up gets one
-try first), `unstable` (4 decisions discarded because the page moved), `unsure` (P < 0.2 twice),
+try first), `unstable` (4 decisions discarded because the page moved), `unsure` (P < 0.2 twice, or
+DONE that its own done check doubts),
 `stuck` (≥ 0.85 once 2 steps are in), `max_actions`, `max_calls` (2× actions), `timeout` (120 s),
 `new_tab`, `left_site`, `restricted`, `aborted`, `jev_error`. The report names the reason, the
 steps, and the spend; the prompt tells the planner not to re-delegate the same goal after a stop.

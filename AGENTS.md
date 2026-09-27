@@ -17,6 +17,7 @@ bun run i18n:check # locale parity + every static t() key resolves (--unused for
 bun run icons      # regenerate public/icon/* + docs/og.png from src/shared/logo.ts
 bun run shots      # store screenshots → docs/screenshots/ (+ site sync when ../site exists)
 bun run shots:ui   # light/dark UI previews → preview/ (gitignored)
+bun run bench:jev  # Jev executor on the 12 spike tasks, live sites (JEV_API_KEY; Jev credits only)
 bun run zip        # build + pack dist/tabrunner-<version>-chrome.zip (the one release artifact)
 bun run release    # bun run release <patch|minor|major> — gates, bump, commit, tag, zip
 bun run bridge     # run the MCP daemon by hand (clients spawn it themselves)
