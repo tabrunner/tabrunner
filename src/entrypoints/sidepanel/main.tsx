@@ -5,8 +5,9 @@ import { initUiI18n } from "@/i18n/ui";
 import { mark } from "./boot";
 import "./style.css";
 
-// Every chunk is fetched, parsed and evaluated by the time this line runs —
-// performance.now() is measured from navigation start, so it is that whole cost.
+// The app, started by shell.ts once the panel's first load is done. Every chunk
+// is fetched, parsed and evaluated by the time this line runs — performance.now()
+// is measured from navigation start, so it is that whole cost, shell included.
 mark("eval");
 
 initTheme();

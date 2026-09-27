@@ -77,4 +77,23 @@ export default tseslint.config(
     },
   },
   noReactOutsideUi,
+  {
+    // Everything this file imports statically joins the load Chromium waits on
+    // before it shows the panel at all. The app arrives by import() instead.
+    files: ["src/entrypoints/sidepanel/shell.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex: ".",
+              message:
+                "The panel stays hidden until this file's load finishes — import() the app after it (see shell.ts).",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

@@ -289,6 +289,11 @@ Quick invariants that bite often:
   whether a given module is reached depends on how that analysis bundle tree-shakes — so one sits
   dormant until an unrelated import change takes the build down. Register at attach
   (`wireSession` in `cdp-driver.ts`); `browser/__tests__/module-scope.test.ts` holds the line.
+- **The side panel's first load is the shell, never the app**: Chromium keeps an extension side
+  panel hidden until its document's first load finishes, and a hidden renderer runs at background
+  priority. `sidepanel/shell.ts` imports nothing (ESLint-enforced) and `import()`s the app after
+  `load`. Put app code back on that load and a busy machine shows minutes of empty gray. The
+  boot log's `shown` stamp is the check.
 - **Stop is not an error**: user abort ends a run with `done`, never a red bubble.
 - **No sampling params** (temperature/topP) on any provider — the only knob is `reasoningEffort`.
 - **A question in plain prose does not pause a run** — only the `ask_user` tool does.

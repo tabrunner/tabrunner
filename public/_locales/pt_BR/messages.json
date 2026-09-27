@@ -10,5 +10,29 @@
   "actionTitle": {
     "message": "Abrir o TabRunner",
     "description": "Toolbar action tooltip"
+  },
+  "bootSlow": {
+    "message": "Ainda abrindo…",
+    "description": "Side panel boot cover, under the logo, when opening takes more than 4 seconds"
+  },
+  "bootStuck": {
+    "message": "Está demorando mais que o normal.",
+    "description": "Side panel boot cover, when opening takes more than 15 seconds"
+  },
+  "bootStuckHint": {
+    "message": "Tentar de novo não interrompe uma tarefa em andamento.",
+    "description": "Under bootStuck: the retry button does not stop a running task"
+  },
+  "bootFailed": {
+    "message": "O TabRunner não abriu.",
+    "description": "Side panel boot cover, when the panel's code failed to load"
+  },
+  "bootFailedHint": {
+    "message": "Se tentar de novo não resolver, reinicie o navegador.",
+    "description": "Under bootFailed: what to do when the retry button does not help"
+  },
+  "bootRetry": {
+    "message": "Tentar de novo",
+    "description": "Button on the side panel boot cover that reloads the panel"
   }
 }
