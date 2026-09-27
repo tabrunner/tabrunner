@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createGeminiProvider, toCoreMessages } from "../gemini";
 import { listModels } from "../models";
-import { ProviderError, type ChatMessage, type ResolvedProviderConfig } from "../types";
+import {
+  ProviderError,
+  isRetryable,
+  type ChatMessage,
+  type ResolvedProviderConfig,
+} from "../types";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
@@ -142,6 +147,33 @@ describe("gemini bridge stream", () => {
     expect(err).toBeInstanceOf(ProviderError);
     expect(err.kind).toBe("auth");
     expect(err.message).toContain("rejected the API key");
+  });
+
+  it("keeps the server's `x-should-retry: false` that core read off the response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response('[{"error":{"code":503,"message":"The model is overloaded."}}]', {
+        status: 503,
+        headers: { "x-should-retry": "false" },
+      }),
+    );
+
+    const error = await (async () => {
+      try {
+        for await (const delta of createGeminiProvider(geminiConfig()).stream(
+          [],
+          [],
+          new AbortController().signal,
+        )) {
+          void delta;
+        }
+      } catch (e) {
+        return e;
+      }
+      throw new Error("expected the stream to throw");
+    })();
+
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(isRetryable(error)).toBe(false);
   });
 });
 

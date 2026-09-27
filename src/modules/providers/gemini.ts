@@ -229,10 +229,16 @@ function normalizeCoreError(config: ResolvedProviderConfig, e: unknown): unknown
     { id: config.id, name: config.name },
     status,
     e.body ?? e.message,
-    { detail: e.message },
+    { detail: e.message, shouldRetry: e.shouldRetry },
   );
   if (enveloped.retryAfterMs === undefined && e.retryAfterMs !== undefined) {
-    return new ProviderError(enveloped.message, status, enveloped.kind, e.retryAfterMs);
+    return new ProviderError(
+      enveloped.message,
+      status,
+      enveloped.kind,
+      e.retryAfterMs,
+      enveloped.shouldRetry,
+    );
   }
   return enveloped;
 }

@@ -267,6 +267,12 @@ export class ProviderError extends Error {
     public readonly kind?: ErrorKind,
     /** Server-requested wait (`retry-after`) — a long one means a usage window, not a blip. */
     public readonly retryAfterMs?: number,
+    /**
+     * The server's `x-should-retry: false` — it already knows the next attempt
+     * fails the same way. Only the refusal is kept: a `true` would retry kinds
+     * this file refuses on purpose, and nothing measured asks for that.
+     */
+    public readonly shouldRetry?: false,
   ) {
     super(message);
     this.name = "ProviderError";
@@ -310,6 +316,7 @@ const MAX_RETRY_WAIT_MS = 60_000;
  */
 export function isRetryable(e: unknown): boolean {
   if (e instanceof ProviderError) {
+    if (e.shouldRetry === false) return false;
     if (e.kind && NON_RETRYABLE_KINDS.includes(e.kind)) {
       // The one exception: a quota error carrying a SHORT server-directed
       // wait is a per-minute throttle, not an empty balance — Google's model

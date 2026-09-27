@@ -356,7 +356,14 @@ export function envelopeProviderError(
   provider: ProviderIdentity,
   status: number,
   text: string,
-  opts: { detail?: string; headers?: Headers; url?: string; unknownAs?: ErrorKind } = {},
+  opts: {
+    detail?: string;
+    headers?: Headers;
+    url?: string;
+    unknownAs?: ErrorKind;
+    /** `x-should-retry` as a caller already read it (core's transport, for Gemini). */
+    shouldRetry?: boolean;
+  } = {},
 ): ProviderError {
   const now = Date.now();
   // Headers are authoritative (Anthropic names the window); the body fills
@@ -399,7 +406,10 @@ export function envelopeProviderError(
   } else {
     log.error(`HTTP ${status} from ${where}: ${truncate(text)}`);
   }
-  return new ProviderError(message, status, kind, reset.retryAfterMs);
+  // The server's own verdict outranks the status: a 5xx it marks `false` fails
+  // the same way on every attempt.
+  const refused = opts.shouldRetry === false || opts.headers?.get("x-should-retry") === "false";
+  return new ProviderError(message, status, kind, reset.retryAfterMs, refused ? false : undefined);
 }
 
 /**

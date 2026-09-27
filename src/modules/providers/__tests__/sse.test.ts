@@ -702,3 +702,43 @@ describe("a failure reported inside a 200 stream", () => {
     vi.restoreAllMocks();
   });
 });
+
+/**
+ * The official Anthropic and OpenAI SDKs read `x-should-retry` before the
+ * status. A `false` means the server already knows the next attempt fails the
+ * same way, whatever the status says — a 5xx included.
+ */
+describe("the server's own retry verdict", () => {
+  async function failureWith(status: number, headers: Record<string, string>): Promise<unknown> {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response('{"error":{"type":"api_error","message":"Internal server error"}}', {
+        status,
+        headers,
+      }),
+    );
+    const config = makeConfig("anthropic", "https://api.anthropic.com");
+    try {
+      for await (const delta of createAnthropicProvider(config).stream(
+        [],
+        [],
+        new AbortController().signal,
+      )) {
+        void delta;
+      }
+    } catch (e) {
+      return e;
+    } finally {
+      vi.restoreAllMocks();
+    }
+    throw new Error("expected the stream to throw");
+  }
+
+  it("does not retry a 5xx the server says will not clear", async () => {
+    expect(isRetryable(await failureWith(500, { "x-should-retry": "false" }))).toBe(false);
+  });
+
+  it("still retries the same 5xx when the server says nothing, or says yes", async () => {
+    expect(isRetryable(await failureWith(500, {}))).toBe(true);
+    expect(isRetryable(await failureWith(500, { "x-should-retry": "true" }))).toBe(true);
+  });
+});
