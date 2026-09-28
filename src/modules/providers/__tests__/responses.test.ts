@@ -399,6 +399,37 @@ describe("ChatGPT provider SSE parsing", () => {
       "ChatGPT-Account-Id": "acct-1",
     });
   });
+
+  it("sends OpenCode Go's session header when Muse is routed to Responses", async () => {
+    const provider = createResponsesProvider(
+      makeConfig({
+        id: "opencode-go",
+        name: "OpenCode Go",
+        baseUrl: "https://opencode.ai/zen/go/v1",
+        apiKey: "go-key",
+        model: "muse-spark-1.3-contributor",
+        sessionId: "conv-1",
+        auth: undefined,
+      }),
+    );
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(sseStream([frame({ type: "response.completed", response: {} })]), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+
+    for await (const delta of provider.stream([], [], new AbortController().signal)) {
+      void delta;
+    }
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
+    expect(url).toBe("https://opencode.ai/zen/go/v1/responses");
+    expect(init.headers).toMatchObject({
+      Authorization: "Bearer go-key",
+      "x-opencode-session": "conv-1",
+    });
+  });
 });
 
 /**

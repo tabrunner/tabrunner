@@ -447,7 +447,14 @@ export const PRESETS: ProviderPreset[] = [
     name: "OpenCode Go",
     shape: "openai",
     baseUrl: "https://opencode.ai/zen/go/v1",
-    models: ["mimo-v2.6-flash", "glm-5.3", "kimi-k2.6", "qwen3.8-max", "mimo-v2.5"],
+    models: [
+      "mimo-v2.6-flash",
+      "muse-spark-1.3-contributor",
+      "glm-5.3",
+      "kimi-k2.6",
+      "qwen3.8-max",
+      "mimo-v2.5",
+    ],
     apiKeyUrl: "https://opencode.ai/auth",
     sessionHeader: true,
     // Per OpenCode's Go docs, with pi's correction: pi reroutes minimax-m2.7

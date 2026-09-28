@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { checkCredential, isKeyRejected, listModels, pickLatestModel, resolveProviderModel } from "../models";
+import {
+  checkCredential,
+  isKeyRejected,
+  listModels,
+  pickLatestModel,
+  resolveProviderModel,
+} from "../models";
 import { PRESETS } from "../presets";
 import { ProviderError } from "../types";
 import type { ProviderConfig } from "../types";
@@ -195,7 +201,8 @@ describe("auto naming agrees with the run's fallback", () => {
   });
 });
 
-describe("resolveProviderModel", () => {  it("returns the persisted model without fetching", async () => {
+describe("resolveProviderModel", () => {
+  it("returns the persisted model without fetching", async () => {
     const mock = stubFetch(200, { data: [] });
     const resolved = await resolveProviderModel({ ...anthropicConfig, model: "k3[1m]" });
     expect(resolved.model).toBe("k3[1m]");
@@ -267,7 +274,8 @@ describe("modelsTarget", () => {
   });
 });
 
-describe("listModels headers", () => {  it("sends GitHub Copilot's editor fingerprint — its /models route demands it", async () => {
+describe("listModels headers", () => {
+  it("sends GitHub Copilot's editor fingerprint — its /models route demands it", async () => {
     const mock = stubFetch(200, { data: [{ id: "gpt-6-astra" }] });
 
     await listModels({ ...openaiConfig, id: "github-copilot" });
@@ -342,7 +350,11 @@ describe("gateway model routing", () => {
     apiKey: "sk-test",
     createdAt: 0,
   };
-  const go: ProviderConfig = { ...zen, id: "opencode-go", baseUrl: "https://opencode.ai/zen/go/v1" };
+  const go: ProviderConfig = {
+    ...zen,
+    id: "opencode-go",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+  };
 
   it("routes Zen Claude models to Anthropic Messages one level up", async () => {
     const resolved = await resolveProviderModel({ ...zen, model: "claude-sonnet-5" });
@@ -367,7 +379,10 @@ describe("gateway model routing", () => {
     expect(resolved.baseUrl).toBe("https://opencode.ai/zen/v1");
   });
 
-  it("routes Go Qwen Max to Anthropic Messages and keeps GLM on completions", async () => {
+  it("routes Go Muse to Responses, Qwen Max to Messages, and keeps GLM on completions", async () => {
+    const muse = await resolveProviderModel({ ...go, model: "muse-spark-1.3-contributor" });
+    expect(muse.shape).toBe("responses");
+    expect(muse.baseUrl).toBe("https://opencode.ai/zen/go/v1");
     const qwen = await resolveProviderModel({ ...go, model: "qwen3.8-max" });
     expect(qwen.shape).toBe("anthropic");
     expect(qwen.baseUrl).toBe("https://opencode.ai/zen/go");
