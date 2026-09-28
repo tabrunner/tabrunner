@@ -71,6 +71,7 @@ describe("provider names", () => {
     const zen = PRESETS.find((p) => p.id === "opencode");
     expect(zen?.modelRoutes?.responses).toContain("muse-spark-1.3-contributor-free");
     const go = PRESETS.find((p) => p.id === "opencode-go");
+    expect(go?.models).toContain("muse-spark-1.3-contributor");
     expect(go?.modelRoutes?.responses).toContain("muse-spark-1.3-contributor");
   });
 
