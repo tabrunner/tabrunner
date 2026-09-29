@@ -10,7 +10,7 @@ import { overlayCard, overlayMotion } from "@/components/chrome";
 import { useStoredItem } from "@/components/useStoredItem";
 import { ThemeToggle } from "@/components/ThemeControl";
 import { LanguageToggle } from "@/components/LanguageToggle";
-import { Icon } from "@/components/Icon";
+import { ChevronRightIcon, Icon } from "@/components/Icon";
 import { widgetHidden } from "@/lib/prefs";
 import { jevSettingsItem, setJevEnabled } from "@/modules/jev/settings";
 import { newIssueUrl } from "@/lib/report";
@@ -46,7 +46,9 @@ export function SettingsMenu() {
   // Stored inverted ("hidden") so the default needs no write; shown here as
   // the positive toggle.
   const hidden = useStoredItem(widgetHidden);
-  // Only once a key is saved: a switch that can't turn anything on is a dead end.
+  // Always on screen: with a key it is the switch, without one it is the door
+  // to Providers where the key is added. A row that only appears after setup
+  // never tells anyone setup exists.
   const jev = useStoredItem(jevSettingsItem);
   // The same provider every other surface calls active — a report is only
   // reproducible if it names the one the run actually used.
@@ -99,7 +101,7 @@ export function SettingsMenu() {
                   ariaLabel={t("settings.showWidget")}
                 />
               </div>
-              {jev && (
+              {jev ? (
                 <div className="flex items-center justify-between gap-3 px-1 py-1.5">
                   <div className="min-w-0">
                     <div className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
@@ -115,6 +117,27 @@ export function SettingsMenu() {
                     ariaLabel={t("settings.jev.enable")}
                   />
                 </div>
+              ) : (
+                // No key: a switch would be a dead end, so the row is a door
+                // to Providers instead — same spot, same title, new hint.
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    void chrome.runtime.openOptionsPage();
+                  }}
+                  className="flex w-full items-center justify-between gap-3 px-1 py-1.5 text-left"
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
+                      {t("settings.jev.enable")}
+                    </div>
+                    <div className="mt-0.5 text-[11px] leading-snug text-neutral-500 dark:text-neutral-400">
+                      {t("settings.jev.setupHint")}
+                    </div>
+                  </div>
+                  <ChevronRightIcon className="shrink-0 text-neutral-400 dark:text-neutral-500" />
+                </button>
               )}
               <div className="mt-1 flex flex-col border-t border-neutral-100 pt-1 dark:border-neutral-800">
                 <Button

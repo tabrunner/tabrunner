@@ -88,6 +88,7 @@
       "help": "O Jev é um modelo barato que escolhe onde clicar. Com ele ligado, seu modelo principal pode passar para ele trechos simples de cliques e digitação, e depois confere o resultado. Antes de um clique que pareça pagar, enviar ou apagar algo, o Jev para e devolve a tarefa.",
       "enable": "Usar o Jev",
       "menuHint": "Cliques e digitação baratos para passos simples",
+      "setupHint": "Nenhuma chave salva. Adicione uma em Provedores para ativar.",
       "host": "Onde o Jev roda",
       "key": "Chave de API",
       "token": "Token de API",
