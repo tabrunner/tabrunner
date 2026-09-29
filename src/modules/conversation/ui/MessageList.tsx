@@ -596,8 +596,10 @@ function burstCountKey(tool: string | undefined): BurstCountKey {
  * A collapsed action run: one quiet line — "6m 40s · 5 clicks, 3 entries and
  * 2 page reads" — that expands back to the rows it replaces. Counts keep the
  * run's shape without truncation; the per-action hints live on the expanded
- * rows. Live bursts stay open (same rule as the plan card) and settle closed
- * when the run ends.
+ * rows. Live bursts stay open (same rule as the plan card); settled ones mount
+ * closed, except the transcript's tail — the newest burst mounts open, so the
+ * recent steps stay on screen instead of shrinking the whole run to its final
+ * bubble the moment it ends.
  *
  * The elapsed leads, and it is the line's only duration. Trailing, it landed
  * at a different x on every burst — a ragged gold rag down the transcript —
@@ -610,25 +612,29 @@ function burstCountKey(tool: string | undefined): BurstCountKey {
 const BurstCard = memo(function BurstCard({
   burst,
   onToggleReasoning,
+  defaultOpen,
 }: {
   burst: Burst;
   onToggleReasoning: () => void;
+  /** The transcript's newest burst — mounts open so the recent run reads as history. */
+  defaultOpen?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const now = useNow(burst.live);
   /**
    * `open` is set, not bound: forced true while the burst is live (the run in
-   * flight stays expanded), but never forced back to false on settle. A
-   * controlled `open={live}` would snap the details shut the instant the run
-   * ends — the transcript shrinks by the burst's height and the scroller reads
-   * that shrink as a cue to re-follow the bottom, yanking a scrolled-up reader
-   * to the end. Left uncontrolled after, the DOM keeps whatever the reader had.
+   * flight stays expanded) and once on mount for the tail burst, but never
+   * forced back to false on settle. A controlled `open={live}` would snap the
+   * details shut the instant the run ends — the transcript shrinks by the
+   * burst's height and the scroller reads that shrink as a cue to re-follow
+   * the bottom, yanking a scrolled-up reader to the end. Left uncontrolled
+   * after, the DOM keeps whatever the reader had.
    */
   const detailsRef = useCallback(
     (el: HTMLDetailsElement | null) => {
-      if (el && burst.live) el.open = true;
+      if (el && (burst.live || defaultOpen)) el.open = true;
     },
-    [burst.live],
+    [burst.live, defaultOpen],
   );
   const last = burst.items[burst.items.length - 1];
   const elapsed =
@@ -1352,6 +1358,14 @@ function Transcript() {
   const rendered = showReasoningOn
     ? shown.map((m) => ({ kind: "message" as const, msg: m }))
     : groupBursts(shown, live);
+  // The newest burst mounts open, so the recent run reads as history instead
+  // of one quiet line above its final bubble (which is usually the actual
+  // tail). Older bursts mount closed. Mount-only, like the live forcing —
+  // never re-closed, so no settle yank and the reader's toggles stick.
+  let lastBurst = -1;
+  rendered.forEach((item, i) => {
+    if (item.kind === "burst") lastBurst = i;
+  });
 
   return (
     <MessageScroller>
@@ -1380,7 +1394,11 @@ function Transcript() {
                 messageId={item.id}
                 className={i === rendered.length - 1 ? "arrive" : ""}
               >
-                <BurstCard burst={item} onToggleReasoning={toggleReasoning} />
+                <BurstCard
+                  burst={item}
+                  onToggleReasoning={toggleReasoning}
+                  defaultOpen={i === lastBurst}
+                />
               </MessageScrollerItem>
             ) : (
               <MessageScrollerItem

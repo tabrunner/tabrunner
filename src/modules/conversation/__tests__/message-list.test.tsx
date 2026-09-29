@@ -404,6 +404,43 @@ describe("transcript scroll when the run finishes", () => {
   });
 });
 
+describe("settled burst defaults", () => {
+  // Settled bursts used to mount all closed, so reopening the panel shrank
+  // every run to its final bubble no matter how short the transcript was.
+  // The newest burst mounts open instead — the recent steps read as history —
+  // while older ones stay one quiet line each.
+  const SEED: Message[] = [
+    { id: "u1", role: "user", content: "first task", timestamp: 0 },
+    { id: "r1", role: "reasoning", content: "hmm", timestamp: 1 },
+    { id: "s1", role: "step", tool: "click", content: "Clicked", timestamp: 2 },
+    { id: "a1", role: "assistant", content: "first done", timestamp: 3 },
+    { id: "u2", role: "user", content: "second task", timestamp: 4 },
+    { id: "r2", role: "reasoning", content: "hmm", timestamp: 5 },
+    { id: "s2", role: "step", tool: "click", content: "Clicked", timestamp: 6 },
+    { id: "a2", role: "assistant", content: "second done", timestamp: 7 },
+  ];
+
+  it("mounts the newest burst open and older ones closed", async () => {
+    useConversationStore.setState({
+      messages: SEED,
+      status: "idle",
+      streamingText: "",
+      reasoningText: "",
+    });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<MessageList />));
+    // No summary message in the seed, so every details is a burst card.
+    const bursts = [...container.querySelectorAll("details")];
+    expect(bursts).toHaveLength(2);
+    expect(bursts[0]?.open).toBe(false);
+    expect(bursts[1]?.open).toBe(true);
+    await act(async () => root.unmount());
+    container.remove();
+  });
+});
+
 /**
  * The bug-report affordance is opt-in and must stay that way: almost every
  * error in the catalog is an anticipated condition with its own cause and fix
