@@ -83,9 +83,10 @@ describe("a panel watching a run it did not start", () => {
     await cleanup();
   });
 
-  it("still settles the burst once no run owns the conversation", async () => {
+  it("settles the burst but leaves the newest one open as history", async () => {
     const { container, burst, cleanup } = await render({ queue: [] });
-    expect(burst?.open).toBe(false);
+    expect(burst?.open).toBe(true);
+    expect(container.textContent).toContain("Clicked Generate key");
     expect(container.querySelector('[aria-label="Working"]')).toBeNull();
     await cleanup();
   });

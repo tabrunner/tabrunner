@@ -36,7 +36,7 @@ interface HostInfo {
 export const JEV_HOSTS: Record<JevHost, HostInfo> = {
   typesafe: {
     label: "TypeSafe",
-    keyUrl: "https://console.typesafe.ai/settings/keys",
+    keyUrl: "https://console.typesafe.ai/keys",
     usageUrl: "https://console.typesafe.ai",
   },
   openrouter: {

@@ -88,6 +88,7 @@
       "help": "Jev es un modelo económico que elige dónde hacer clic. Con él activado, tu modelo principal puede pasarle tramos simples de clics y escritura, y después revisa el resultado. Antes de un clic que parezca pagar, enviar o borrar algo, Jev se detiene y devuelve la tarea.",
       "enable": "Usar Jev",
       "menuHint": "Clics y escritura económicos para pasos simples",
+      "setupHint": "Sin clave guardada. Añade una en Proveedores para activar.",
       "host": "Dónde se ejecuta Jev",
       "key": "Clave de API",
       "token": "Token de API",

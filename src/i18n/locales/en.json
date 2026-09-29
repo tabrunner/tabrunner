@@ -88,6 +88,7 @@
       "help": "Jev is a low-cost model that picks what to click. With it on, your main model can hand it simple runs of clicking and typing, then check the result. Before a click that looks like paying, sending or deleting, Jev stops and hands back.",
       "enable": "Use Jev",
       "menuHint": "Low-cost clicks and typing for simple steps",
+      "setupHint": "No key saved. Add one under Providers to turn it on.",
       "host": "Where Jev runs",
       "key": "API key",
       "token": "API token",
