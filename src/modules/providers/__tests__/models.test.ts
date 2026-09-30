@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   checkCredential,
+  effectiveEffort,
+  effortLevels,
   isKeyRejected,
   listModels,
   pickLatestModel,
   resolveProviderModel,
 } from "../models";
 import { PRESETS } from "../presets";
-import { ProviderError } from "../types";
+import { ProviderError, REASONING_EFFORTS } from "../types";
 import type { ProviderConfig } from "../types";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
@@ -395,5 +397,64 @@ describe("gateway model routing", () => {
     const resolved = await resolveProviderModel({ ...openaiConfig, model: "gpt-5" });
     expect(resolved.shape).toBe("openai");
     expect(resolved.baseUrl).toBe("https://api.openai.com/v1");
+  });
+});
+
+describe("effort levels per model", () => {
+  const anthropic: ProviderConfig = {
+    id: "anthropic",
+    name: "Anthropic",
+    shape: "anthropic",
+    baseUrl: "https://api.anthropic.com",
+    apiKey: "sk-test",
+    createdAt: 0,
+  };
+  const zen: ProviderConfig = {
+    ...anthropic,
+    id: "opencode",
+    name: "OpenCode Zen",
+    shape: "openai",
+    baseUrl: "https://opencode.ai/zen/v1",
+  };
+
+  it("offers every level to the adaptive Claude models and none to Haiku 4.5", () => {
+    for (const model of ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5"]) {
+      expect(effortLevels(anthropic, model), model).toEqual(REASONING_EFFORTS);
+    }
+    expect(effortLevels(anthropic, "claude-haiku-4-5-20251001")).toEqual([]);
+    expect(effortLevels({ ...anthropic, id: "claude" }, "claude-haiku-4-5-20251001")).toEqual([]);
+  });
+
+  it("reads the wire a gateway routes the model to, not the preset's", () => {
+    expect(effortLevels(zen, "claude-haiku-4-5")).toEqual([]);
+    expect(effortLevels(zen, "claude-sonnet-5")).toEqual(REASONING_EFFORTS);
+    expect(effortLevels(zen, "gpt-5.4")).toEqual(REASONING_EFFORTS);
+    expect(effortLevels(zen, "mimo-v2.5-free")).toEqual(REASONING_EFFORTS);
+  });
+
+  it("offers every level on other wires, and while the model is not known", () => {
+    expect(effortLevels(openaiConfig, "gpt-5")).toEqual(REASONING_EFFORTS);
+    expect(effortLevels(anthropic, undefined)).toEqual(REASONING_EFFORTS);
+  });
+
+  it("keeps a stored level only where the model takes it", () => {
+    const high: ProviderConfig = { ...anthropic, reasoningEffort: "high" };
+    expect(effectiveEffort(high, "claude-opus-5-5")).toBe("high");
+    expect(effectiveEffort(high, "claude-haiku-4-5-20251001")).toBeUndefined();
+  });
+
+  it("runs at the model's default rather than sending a level it does not take", async () => {
+    const haiku = await resolveProviderModel({
+      ...anthropic,
+      model: "claude-haiku-4-5-20251001",
+      reasoningEffort: "high",
+    });
+    expect(haiku.reasoningEffort).toBeUndefined();
+    const opus = await resolveProviderModel({
+      ...anthropic,
+      model: "claude-opus-5-5",
+      reasoningEffort: "high",
+    });
+    expect(opus.reasoningEffort).toBe("high");
   });
 });

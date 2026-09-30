@@ -6,6 +6,7 @@ import { ProviderError } from "./types";
 import type { ProviderConfig } from "./types";
 import { createLogger, truncate } from "@/lib/logger";
 import { i18n } from "@/i18n";
+import { isRecord } from "@/shared/types";
 
 const log = createLogger("usage");
 
@@ -51,9 +52,6 @@ const USAGE_URLS: Record<string, string> = {
 export function supportsUsage(providerId: string): boolean {
   return providerId in USAGE_URLS;
 }
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
 
 function percent(used: number | undefined, limit: number | undefined): number | undefined {
   if (used === undefined || limit === undefined || limit <= 0) return undefined;

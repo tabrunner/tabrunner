@@ -118,6 +118,23 @@ describe("executeSlash", () => {
     expect(lastNote()).toContain("default");
   });
 
+  it("offers only Default on a model with no effort setting, and says why", () => {
+    // Haiku 4.5 takes no effort (anthropic.ts), so a stored "high" is not what
+    // runs, and neither the list nor a note may say it is.
+    useProvidersStore.setState({
+      providers: [{ ...PROVIDER, model: "claude-haiku-4-5-20251001", reasoningEffort: "high" }],
+    });
+    const items = slashItems("/effort")?.items;
+    expect(items?.map((i) => i.key)).toEqual(["default"]);
+    expect(items?.find((i) => i.current)?.key).toBe("default");
+    executeSlash("/effort high");
+    expect(lastNote()).toBe(
+      "claude-haiku-4-5-20251001 has no reasoning effort setting, so it always runs at its default.",
+    );
+    executeSlash("/effort");
+    expect(lastNote()).toContain("has no reasoning effort setting");
+  });
+
   it("answers an unknown command with the way forward", () => {
     expect(executeSlash("/frobnicate")).toBe("executed");
     expect(lastNote()).toContain("/frobnicate");

@@ -47,12 +47,6 @@ export function declineResponse(id: number | string): string {
 
 export type MessageKind = "response" | "request" | "notification" | "invalid";
 
-/** Wire-narrowing guards shared by every module that reads untyped envelopes
- *  (client, results) — one definition so the guards cannot drift apart. */
-export function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
-
 export function str(v: unknown): string {
   return typeof v === "string" ? v : "";
 }

@@ -1,4 +1,12 @@
-import type { ChatProvider, ChatMessage, Delta, ResolvedProviderConfig, ToolDef } from "./types";
+import type {
+  ChatProvider,
+  ChatMessage,
+  Delta,
+  ReasoningEffort,
+  ResolvedProviderConfig,
+  ToolDef,
+} from "./types";
+import { REASONING_EFFORTS } from "./types";
 import { apiUrl, parseToolArgs } from "@providerkit/core";
 import {
   anthropicHeaders,
@@ -147,25 +155,66 @@ export function createAnthropicProvider(config: ResolvedProviderConfig): ChatPro
   };
 }
 
-const MAX_THINKING_OUTPUT_TOKENS = 65536;
+/** How this adapter drives one model's thinking. */
+interface ClaudeThinking {
+  /** Takes `thinking: {type: "adaptive"}`. Where it does not, the request
+   *  carries no thinking field and no effort (see buildAnthropicBody). */
+  adaptive: boolean;
+  /** `max_tokens` for every request to it. */
+  maxTokens: number;
+}
 
 /**
- * Claude ids that know only manual extended thinking. Documented (Anthropic
- * per-model table, read 2026-09-27): Opus 4.5, Sonnet 4.5 and Haiku 4.5 reject
+ * Every model without a row. Every Claude from 4.6 on takes adaptive, the ones
+ * the app offers included (Fable 5.1, Opus 5.5, Sonnet 5.5). The other vendors
+ * on this wire (Kimi, GLM, Qwen) get it too, as they always have; not every one
+ * of them was measured with it. Thinking tokens count against
+ * max_tokens, and thinking is always on here, so the cap does not depend on
+ * effort: it must exceed the budget the provider assigns (coding-plan gateways
+ * reject the request otherwise — seen: 32768) and still leave room for the
+ * answer.
+ */
+const ADAPTIVE: ClaudeThinking = { adaptive: true, maxTokens: 65536 };
+
+/**
+ * Extended thinking only. Documented (Anthropic's per-model thinking table,
+ * read 2026-09-30): Opus 4.5, Sonnet 4.5 and Haiku 4.5 answer
  * `{type: "adaptive"}` with a 400 ("adaptive thinking is not supported on this
- * model") and default to thinking off. Matched on the model id rather than the
- * preset, because OpenCode routes these same ids through this adapter; a dated
- * snapshot (claude-haiku-4-5-20251001) is the same model.
+ * model") and default to thinking off. Their output cap is "64K tokens" on
+ * each model's page, which gives no exact integer, so this takes the smaller
+ * reading: 65536 is over the cap if "64K" means 64,000.
  */
-const EXTENDED_THINKING_ONLY = /^claude-(opus|sonnet|haiku)-4-5(-\d{8})?$/;
+const EXTENDED_ONLY: ClaudeThinking = { adaptive: false, maxTokens: 64000 };
 
 /**
- * Their output cap. Documented (Anthropic's models overview and each model's
- * page, read 2026-09-27): "Max output: 64K tokens" for all three. The pages
- * give no exact integer, so this takes the smaller reading — 65536 is over the
- * cap if "64K" means 64,000.
+ * The models that differ from ADAPTIVE, by id without its date (a dated
+ * snapshot like claude-haiku-4-5-20251001 is its family). Keyed on the model
+ * rather than the preset, because OpenCode routes these same ids through this
+ * adapter. A new exception is a new row.
+ *
+ * Opus 4, Opus 4.1 and Sonnet 4 were extended-only too and have no row: all
+ * three are retired (Anthropic's model deprecations page, read 2026-09-30), so
+ * a request to them fails whatever it carries.
  */
-const EXTENDED_ONLY_MAX_OUTPUT_TOKENS = 64000;
+const CLAUDE_THINKING: ReadonlyMap<string, ClaudeThinking> = new Map([
+  ["claude-opus-4-5", EXTENDED_ONLY],
+  ["claude-sonnet-4-5", EXTENDED_ONLY],
+  ["claude-haiku-4-5", EXTENDED_ONLY],
+]);
+
+function claudeThinking(model: string): ClaudeThinking {
+  return CLAUDE_THINKING.get(model.replace(/-\d{8}$/, "")) ?? ADAPTIVE;
+}
+
+/**
+ * The effort levels this adapter sends `model`, read from the same table: all
+ * of them where it takes adaptive thinking, none where it does not, because
+ * buildAnthropicBody drops effort there. The pickers offer only these. A model
+ * that takes adaptive thinking but only some levels needs a list in its row.
+ */
+export function claudeEffortLevels(model: string): readonly ReasoningEffort[] {
+  return claudeThinking(model).adaptive ? REASONING_EFFORTS : [];
+}
 
 /** A `system` entry. Anthropic takes a bare string too, but only the block form carries a marker. */
 interface SystemBlock {
@@ -192,16 +241,11 @@ export function buildAnthropicBody(
   // all pass none and answer in a single shot, so a marker on those would bill
   // a 1.25x write against a cache nothing will ever read.
   const cacheable = tools.length > 0;
-  const extendedOnly = EXTENDED_THINKING_ONLY.test(config.model);
+  const modelThinking = claudeThinking(config.model);
 
   const body: Record<string, unknown> = {
     model: config.model,
-    // Thinking tokens count against max_tokens, and thinking is always on here
-    // (except on the extended-only ids, which get their own ceiling), so the
-    // cap does not depend on effort: it must exceed the budget the provider
-    // assigns (coding-plan gateways reject the request otherwise — seen: 32768)
-    // and still leave room for the answer.
-    max_tokens: extendedOnly ? EXTENDED_ONLY_MAX_OUTPUT_TOKENS : MAX_THINKING_OUTPUT_TOKENS,
+    max_tokens: modelThinking.maxTokens,
     stream: true,
     // tool_results and an injected mid-run message both serialize as user
     // messages, and can land back to back — merge them, Anthropic rejects
@@ -254,7 +298,7 @@ export function buildAnthropicBody(
   // replays none, so a tool loop would 400 from its second request. Effort goes
   // too: Haiku and Sonnet 4.5 list no effort support, and Opus 4.5 has no "max".
   // So the picked level does nothing on these three.
-  if (extendedOnly) return body;
+  if (!modelThinking.adaptive) return body;
 
   // Everywhere else adaptive thinking is this shape's floor, not an opt-in.
   // Sending no thinking field at all — what an unpinned effort used to do — is

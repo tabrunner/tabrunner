@@ -525,6 +525,7 @@
     "freeTextPlaceholder": "model id — empty = auto",
     "noModelListHint": "The endpoint didn't return a model list — type an id, or leave empty to auto-pick at run time.",
     "effortHint": "Reasoning effort for the next task — an unsupported level fails with a clear provider error in chat.",
+    "effortUnavailable": "Not available on this model",
     "effort": {
       "default": "Default",
       "none": "None",
@@ -697,7 +698,8 @@
       "description": "Set reasoning effort — none, low, medium, high, max, or default",
       "current": "Reasoning effort: {{effort}} ({{provider}}) — /effort <level> to change.",
       "set": "Reasoning effort → {{effort}} ({{provider}})",
-      "invalid": "No effort \"{{value}}\" — pick one: {{options}}."
+      "invalid": "No effort \"{{value}}\" — pick one: {{options}}.",
+      "unavailable": "{{model}} has no reasoning effort setting, so it always runs at its default."
     },
     "model": {
       "description": "Pin the model for this chat — auto undoes it",

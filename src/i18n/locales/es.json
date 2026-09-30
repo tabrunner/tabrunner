@@ -525,6 +525,7 @@
     "freeTextPlaceholder": "id del modelo — vacío = auto",
     "noModelListHint": "El endpoint no devolvió una lista de modelos — escribe un id o deja vacío para elegir automáticamente al ejecutar.",
     "effortHint": "Esfuerzo de razonamiento para la próxima tarea — un nivel no soportado falla con un error claro del proveedor en el chat.",
+    "effortUnavailable": "No disponible en este modelo",
     "effort": {
       "default": "Por defecto",
       "none": "Ninguno",
@@ -697,7 +698,8 @@
       "description": "Fija el esfuerzo de razonamiento — none, low, medium, high, max o default",
       "current": "Esfuerzo de razonamiento: {{effort}} ({{provider}}) — /effort <nivel> para cambiar.",
       "set": "Esfuerzo de razonamiento → {{effort}} ({{provider}})",
-      "invalid": "El esfuerzo \"{{value}}\" no existe — elige uno: {{options}}."
+      "invalid": "El esfuerzo \"{{value}}\" no existe — elige uno: {{options}}.",
+      "unavailable": "{{model}} no tiene ajuste de esfuerzo de razonamiento, así que siempre usa el valor por defecto."
     },
     "model": {
       "description": "Fija el modelo de este chat — auto lo deshace",

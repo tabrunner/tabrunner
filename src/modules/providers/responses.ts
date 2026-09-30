@@ -7,8 +7,9 @@ import type {
   ToolResult,
 } from "./types";
 import { apiUrl, openRouterCostUsd, parseToolArgs } from "@providerkit/core";
-import { isRec, logCacheUsage, sessionHeaders, streamFrameError, streamSse } from "./http";
+import { logCacheUsage, sessionHeaders, streamFrameError, streamSse } from "./http";
 import { PRESETS } from "./presets";
+import { isRecord } from "@/shared/types";
 
 /**
  * Responses-shape adapter — `POST {base}/responses`, for endpoints that serve
@@ -104,7 +105,7 @@ export function createResponsesProvider(config: ResolvedProviderConfig): ChatPro
             break;
 
           case "response.output_item.added": {
-            const item = isRec(frame.item) ? frame.item : undefined;
+            const item = isRecord(frame.item) ? frame.item : undefined;
             if (!item || item.type !== "function_call") break;
             sawToolUse = true;
             const itemId = str(item.id);
@@ -128,7 +129,7 @@ export function createResponsesProvider(config: ResolvedProviderConfig): ChatPro
           }
 
           case "response.output_item.done": {
-            const item = isRec(frame.item) ? frame.item : undefined;
+            const item = isRecord(frame.item) ? frame.item : undefined;
             if (!item || item.type !== "function_call") break;
             sawToolUse = true;
             const itemId = str(item.id);
@@ -154,8 +155,8 @@ export function createResponsesProvider(config: ResolvedProviderConfig): ChatPro
             // The terminal frame may arrive before a pending call's done event —
             // flush it so the loop still runs the tool it decided to call.
             for (const d of flushPending()) yield d;
-            const usage = isRec(frame.response) ? frame.response.usage : undefined;
-            if (isRec(usage)) yield usageDelta(usage);
+            const usage = isRecord(frame.response) ? frame.response.usage : undefined;
+            if (isRecord(usage)) yield usageDelta(usage);
             yield { type: "finish", reason: sawToolUse ? "tool_use" : "stop" };
             yield { type: "done" };
             return;
@@ -163,13 +164,13 @@ export function createResponsesProvider(config: ResolvedProviderConfig): ChatPro
 
           case "response.incomplete": {
             for (const d of flushPending()) yield d;
-            const response = isRec(frame.response) ? frame.response : undefined;
-            const details = isRec(response?.incomplete_details)
+            const response = isRecord(frame.response) ? frame.response : undefined;
+            const details = isRecord(response?.incomplete_details)
               ? response.incomplete_details
               : undefined;
             const reason = details?.reason === "max_output_tokens" ? "length" : "unknown";
             const usage = response?.usage;
-            if (isRec(usage)) yield usageDelta(usage);
+            if (isRecord(usage)) yield usageDelta(usage);
             yield { type: "finish", reason };
             yield { type: "done" };
             return;
@@ -178,13 +179,13 @@ export function createResponsesProvider(config: ResolvedProviderConfig): ChatPro
           // A failure after the 200 went out — classified, and retried when it
           // is transient, like the other shapes' (see streamFrameError).
           case "response.failed": {
-            const response = isRec(frame.response) ? frame.response : frame;
+            const response = isRecord(frame.response) ? frame.response : frame;
             throw streamFrameError(config, response.error ?? response);
           }
 
           case "error":
           case "response.error":
-            throw streamFrameError(config, isRec(frame.error) ? frame.error : frame);
+            throw streamFrameError(config, isRecord(frame.error) ? frame.error : frame);
         }
       }
 
@@ -350,7 +351,7 @@ const num = (v: unknown): number | undefined =>
  */
 function usageDelta(usage: Record<string, unknown>): Delta {
   const input = num(usage.input_tokens) ?? 0;
-  const details = isRec(usage.input_tokens_details) ? usage.input_tokens_details : undefined;
+  const details = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : undefined;
   const cached = num(details?.cached_tokens) ?? 0;
   logCacheUsage(input, cached);
   // OpenRouter's `/responses` names its bill as chat does, so the kit prices
@@ -359,7 +360,7 @@ function usageDelta(usage: Record<string, unknown>): Delta {
   const cost = openRouterCostUsd({
     cost: usage.cost,
     is_byok: usage.is_byok === true,
-    cost_details: isRec(usage.cost_details) ? usage.cost_details : null,
+    cost_details: isRecord(usage.cost_details) ? usage.cost_details : null,
   });
   return {
     type: "usage",

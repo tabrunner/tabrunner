@@ -64,12 +64,17 @@ The load-bearing details of talking to each provider shape. Read this when a tas
   verbatim `reasoning_effort` on OpenAI-shape; `thinking: {type:"adaptive"}` +
   `output_config: {effort}` on Anthropic-shape (`none` = adaptive only: Claude Fable 5
   400s an explicit `{type:"disabled"}`, and Opus 5 with thinking off writes tool calls into
-  its text). Unsupported levels come back as a clean provider 400, surfaced in chat. One model
-  name is matched, because there the floor itself 400s on every turn and no level could fix
-  it: Claude Opus, Sonnet and Haiku 4.5 reject adaptive, so their ids (dated or not) get no
-  thinking field, no effort and `max_tokens` 64000. Documented (Anthropic per-model table
-  and models overview, read 2026-09-27). Two exceptions ride on preset fields,
-  for endpoints that spell "off" their own way: `effortDialect` sends OpenRouter's and
+  its text). Models whose floor itself 400s on every turn, where no level could fix it, get
+  a row in `CLAUDE_THINKING` (`anthropic.ts`), keyed by id without its date: Claude Opus,
+  Sonnet and Haiku 4.5 reject adaptive, so they get no thinking field, no effort and
+  `max_tokens` 64000. Documented (Anthropic per-model thinking table and model pages, read
+  2026-09-30). Opus 4, Opus 4.1 and Sonnet 4 were extended-only too, and are retired. The same
+  table decides which levels the picker and `/effort` offer on the Anthropic wire
+  (`effortLevels` in `models.ts`, which follows a gateway's routing): none on those three.
+  A stored level the model does not take is dropped at run start, not sent, and stays stored
+  for the next model. On the other wires an unsupported level comes back as a clean provider
+  400, surfaced in chat. Two exceptions ride on
+  preset fields, for endpoints that spell "off" their own way: `effortDialect` sends OpenRouter's and
   DeepSeek's effort through `effortParams` from `@providerkit/core` (OpenRouter's own
   `reasoning: {effort}`; DeepSeek's `thinking: {type:"disabled"}` for none), and
   `explicitNone` sends Z.ai `thinking: {type:"disabled"}` for none. The measurements behind
