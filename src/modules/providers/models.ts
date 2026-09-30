@@ -1,5 +1,6 @@
-import type { ModelInfo, ProviderConfig, ResolvedProviderConfig } from "./types";
-import { ProviderError } from "./types";
+import type { ModelInfo, ProviderConfig, ReasoningEffort, ResolvedProviderConfig } from "./types";
+import { ProviderError, REASONING_EFFORTS } from "./types";
+import { claudeEffortLevels } from "./anthropic";
 import { PRESETS } from "./presets";
 import type { ProviderPreset } from "./presets";
 import { apiUrl, classifyHttp } from "@providerkit/core";
@@ -212,6 +213,9 @@ export function pickLatestModel(models: ModelInfo[]): ModelInfo | undefined {
  * endpoints, so the resolution also carries the model's own shape and base —
  * see routeModel. The stored config keeps the preset's shape; only the
  * run-time resolution is rerouted.
+ *
+ * The effort is the stored one only when the resolved model takes it (see
+ * effectiveEffort). The stored choice is never rewritten here.
  */
 export async function resolveProviderModel(
   config: ProviderConfig,
@@ -222,7 +226,43 @@ export async function resolveProviderModel(
   const supportsImages = preset?.supportsImages ?? true;
 
   const model = await resolveModelId(config, preset);
-  return { ...config, model, supportsImages, ...routeModel(preset, config.baseUrl, model) };
+  return {
+    ...config,
+    model,
+    supportsImages,
+    reasoningEffort: effectiveEffort(config, model),
+    ...routeModel(preset, config.baseUrl, model),
+  };
+}
+
+/**
+ * The effort levels `model` takes on this provider, read on the wire it runs
+ * on: a gateway sends some models over Anthropic Messages (routeModel), and
+ * there anthropic.ts's per-model table decides. Every other wire, and a model
+ * not known yet, offers every level as before. A level such a model rejects
+ * still comes back as a provider 400, shown in chat.
+ */
+export function effortLevels(
+  p: ProviderConfig,
+  model: string | undefined,
+): readonly ReasoningEffort[] {
+  if (model === undefined) return REASONING_EFFORTS;
+  const preset = PRESETS.find((pr) => pr.id === p.id);
+  const shape = routeModel(preset, p.baseUrl, model)?.shape ?? p.shape;
+  return shape === "anthropic" ? claudeEffortLevels(model) : REASONING_EFFORTS;
+}
+
+/**
+ * The stored effort, when `model` takes it. Otherwise undefined: nothing is
+ * sent, and the model runs at its own default. The stored choice stays, so a
+ * switch back to a model that takes it brings it back.
+ */
+export function effectiveEffort(
+  p: ProviderConfig,
+  model: string | undefined,
+): ReasoningEffort | undefined {
+  const effort = p.reasoningEffort;
+  return effort && effortLevels(p, model).includes(effort) ? effort : undefined;
 }
 
 /** The model id, before routing: persisted choice, else newest listed, else preset fallback. */

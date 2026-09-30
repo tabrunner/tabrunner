@@ -525,6 +525,7 @@
     "freeTextPlaceholder": "id do modelo — vazio = auto",
     "noModelListHint": "O endpoint não retornou uma lista de modelos — digite um id ou deixe vazio para escolher automaticamente na execução.",
     "effortHint": "Esforço de raciocínio para a próxima tarefa — um nível não suportado falha com um erro claro do provedor na conversa.",
+    "effortUnavailable": "Indisponível neste modelo",
     "effort": {
       "default": "Padrão",
       "none": "Nenhum",
@@ -697,7 +698,8 @@
       "description": "Define o esforço de raciocínio — none, low, medium, high, max ou default",
       "current": "Esforço de raciocínio: {{effort}} ({{provider}}) — /effort <nível> para mudar.",
       "set": "Esforço de raciocínio → {{effort}} ({{provider}})",
-      "invalid": "O esforço \"{{value}}\" não existe — escolha um: {{options}}."
+      "invalid": "O esforço \"{{value}}\" não existe — escolha um: {{options}}.",
+      "unavailable": "{{model}} não tem ajuste de esforço de raciocínio, então sempre usa o padrão."
     },
     "model": {
       "description": "Fixa o modelo desta conversa — auto desfaz",

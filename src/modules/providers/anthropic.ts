@@ -1,4 +1,12 @@
-import type { ChatProvider, ChatMessage, Delta, ResolvedProviderConfig, ToolDef } from "./types";
+import type {
+  ChatProvider,
+  ChatMessage,
+  Delta,
+  ReasoningEffort,
+  ResolvedProviderConfig,
+  ToolDef,
+} from "./types";
+import { REASONING_EFFORTS } from "./types";
 import { apiUrl, parseToolArgs } from "@providerkit/core";
 import {
   anthropicHeaders,
@@ -196,6 +204,16 @@ const CLAUDE_THINKING: ReadonlyMap<string, ClaudeThinking> = new Map([
 
 function claudeThinking(model: string): ClaudeThinking {
   return CLAUDE_THINKING.get(model.replace(/-\d{8}$/, "")) ?? ADAPTIVE;
+}
+
+/**
+ * The effort levels this adapter sends `model`, read from the same table: all
+ * of them where it takes adaptive thinking, none where it does not, because
+ * buildAnthropicBody drops effort there. The pickers offer only these. A model
+ * that takes adaptive thinking but only some levels needs a list in its row.
+ */
+export function claudeEffortLevels(model: string): readonly ReasoningEffort[] {
+  return claudeThinking(model).adaptive ? REASONING_EFFORTS : [];
 }
 
 /** A `system` entry. Anthropic takes a bare string too, but only the block form carries a marker. */

@@ -1,10 +1,15 @@
 import { i18n } from "@/i18n";
 import { listMcpServers, mcpStatusItem } from "@/modules/mcp/store";
-import { knownModels, pickLatestModel } from "@/modules/providers/models";
+import {
+  effectiveEffort,
+  effortLevels,
+  knownModels,
+  pickLatestModel,
+} from "@/modules/providers/models";
 import { providerDisplayName } from "@/modules/providers/presets";
 import { formatResetRelative } from "@/modules/providers/rate-limit";
 import { EFFORT_LABEL_KEYS, isEffort, REASONING_EFFORTS } from "@/modules/providers/types";
-import type { ConversationEngine } from "@/modules/providers/types";
+import type { ConversationEngine, ProviderConfig } from "@/modules/providers/types";
 import { fetchProviderUsage, supportsUsage } from "@/modules/providers/usage";
 import type { UsageWindow } from "@/modules/providers/usage";
 import { useProvidersStore } from "@/modules/providers/ui";
@@ -143,8 +148,17 @@ function nextTaskSuffix(): string {
   return runsHere(useConversationStore.getState()) ? ` ${i18n.t("commands.nextTask")}` : "";
 }
 
-/** The effort picker's full set, as typable tokens — never translated. */
-const EFFORT_OPTIONS = ["default", ...REASONING_EFFORTS].join(", ");
+/** What /effort reads: the levels the model in force takes (the picker's list),
+ *  the one in effect, and the model's name for a note. */
+function effortContext(provider: ProviderConfig) {
+  const known = knownModels(provider);
+  const id = provider.model ?? pickLatestModel(known)?.id;
+  return {
+    levels: effortLevels(provider, id),
+    effort: effectiveEffort(provider, id),
+    modelName: known.find((m) => m.id === id)?.name ?? id ?? "",
+  };
+}
 
 /** One usage window as a line: "5-hour window: 42% used · resets in 1h 12m". */
 function windowLine(label: string, window: UsageWindow): string {
@@ -222,29 +236,43 @@ export const COMMANDS: readonly SlashCommand[] = [
     name: "effort",
     descriptionKey: "commands.effort.description",
     takesArg: true,
-    candidates: () => [
-      { value: "default", label: i18n.t("modelPicker.effort.default") },
-      ...REASONING_EFFORTS.map((value) => ({ value, label: i18n.t(EFFORT_LABEL_KEYS[value]) })),
-    ],
-    current: () => activeProvider()?.reasoningEffort ?? "default",
+    candidates: () => {
+      const provider = activeProvider();
+      const levels = provider ? effortContext(provider).levels : REASONING_EFFORTS;
+      return [
+        { value: "default", label: i18n.t("modelPicker.effort.default") },
+        ...levels.map((value) => ({ value, label: i18n.t(EFFORT_LABEL_KEYS[value]) })),
+      ];
+    },
+    current: () => {
+      const provider = activeProvider();
+      return (provider && effortContext(provider).effort) ?? "default";
+    },
     run: (arg, thisChatOnly = false) => {
       const provider = activeProvider();
       // Unreachable — the panel onboards instead of showing a composer when
       // no provider exists — but a note-less crash is worse than a guard.
       if (!provider) return;
       const name = providerDisplayName(provider);
-      if (!arg) {
+      const { levels, effort, modelName } = effortContext(provider);
+      const level = arg?.toLowerCase();
+      // A model with no levels: "default" is the only thing to set, so any
+      // other ask (or none) gets the reason rather than a list of one.
+      if (levels.length === 0 && level !== "default") {
+        note(i18n.t("commands.effort.unavailable", { model: modelName }));
+        return;
+      }
+      if (!level) {
         note(
-          i18n.t("commands.effort.current", {
-            effort: provider.reasoningEffort ?? "default",
-            provider: name,
-          }) + nextTaskSuffix(),
+          i18n.t("commands.effort.current", { effort: effort ?? "default", provider: name }) +
+            nextTaskSuffix(),
         );
         return;
       }
-      const level = arg.toLowerCase();
-      if (level !== "default" && !isEffort(level)) {
-        note(i18n.t("commands.effort.invalid", { value: arg, options: EFFORT_OPTIONS }));
+      if (level !== "default" && !(isEffort(level) && levels.includes(level))) {
+        // The typable tokens, never translated.
+        const options = ["default", ...levels].join(", ");
+        note(i18n.t("commands.effort.invalid", { value: arg, options }));
         return;
       }
       setEngine({ effort: level === "default" ? undefined : level }, thisChatOnly);

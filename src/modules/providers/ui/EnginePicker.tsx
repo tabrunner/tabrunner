@@ -8,6 +8,8 @@ import { ProviderMark } from "./ProviderIcon";
 import { AddProviderDialog } from "./AddProviderDialog";
 import { UsageSection } from "./UsageSection";
 import {
+  effectiveEffort,
+  effortLevels,
   knownModels,
   listStoredModels,
   modelsTarget,
@@ -17,7 +19,7 @@ import {
 } from "../models";
 import { PRESETS, providerDisplayName } from "../presets";
 import { supportsUsage } from "../usage";
-import { EFFORT_LABEL_KEYS, isEffort, REASONING_EFFORTS } from "../types";
+import { EFFORT_LABEL_KEYS, isEffort } from "../types";
 import type { ConversationEngine, ModelInfo, ProviderConfig } from "../types";
 import { Popover } from "@/components/Popover";
 import { Select } from "@/components/Select";
@@ -377,15 +379,18 @@ export function EnginePicker({
   // must never be the price of painting the composer.
   const known = knownModels(active);
   const autoTarget = pickLatestModel(known);
+  // Only the levels this model takes. A stored level it does not take reads as
+  // Default here, because that is what the run sends (resolveProviderModel).
+  const modelId = active.model ?? autoTarget?.id;
+  const efforts = effortLevels(active, modelId);
+  const effort = effectiveEffort(active, modelId);
   const label = engineLabel({
     auto: active.model === undefined,
     modelName: active.model
       ? (known.find((m) => m.id === active.model)?.name ?? active.model)
       : (autoTarget?.name ?? autoTarget?.id),
     autoText: t("modelPicker.auto"),
-    ...(active.reasoningEffort
-      ? { effortLabel: t(EFFORT_LABEL_KEYS[active.reasoningEffort]) }
-      : {}),
+    ...(effort ? { effortLabel: t(EFFORT_LABEL_KEYS[effort]) } : {}),
   });
 
   // Picking a model is the commit-and-close; everything else leaves the popover
@@ -398,7 +403,7 @@ export function EnginePicker({
   // The extra "default" option means "don't send the knob at all".
   const effortOptions = [
     { value: "default", label: t("modelPicker.effort.default") },
-    ...REASONING_EFFORTS.map((effort) => ({ value: effort, label: t(EFFORT_LABEL_KEYS[effort]) })),
+    ...efforts.map((level) => ({ value: level, label: t(EFFORT_LABEL_KEYS[level]) })),
   ];
 
   return (
@@ -449,16 +454,24 @@ export function EnginePicker({
             <span className="shrink-0 text-xs font-medium text-neutral-500 dark:text-neutral-400">
               {t("modelPicker.reasoningEffort")}
             </span>
-            <Select
-              size="sm"
-              variant="quiet"
-              className="min-w-0"
-              ariaLabel={t("modelPicker.reasoningEffort")}
-              title={t("modelPicker.effortHint")}
-              value={active.reasoningEffort ?? "default"}
-              onChange={(v) => onPick({ effort: isEffort(v) ? v : undefined }, alt.current)}
-              options={effortOptions}
-            />
+            {efforts.length > 0 ? (
+              <Select
+                size="sm"
+                variant="quiet"
+                className="min-w-0"
+                ariaLabel={t("modelPicker.reasoningEffort")}
+                title={t("modelPicker.effortHint")}
+                value={effort ?? "default"}
+                onChange={(v) => onPick({ effort: isEffort(v) ? v : undefined }, alt.current)}
+                options={effortOptions}
+              />
+            ) : (
+              // A Select with only Default in it is a control that does nothing.
+              // Saying so keeps the row, so the setting does not seem to vanish.
+              <span className="min-w-0 px-2 py-1 text-right text-xs text-neutral-500 dark:text-neutral-400">
+                {t("modelPicker.effortUnavailable")}
+              </span>
+            )}
           </div>
 
           {supportsUsage(active.id) && (
