@@ -279,40 +279,53 @@ describe("buildAnthropicBody", () => {
     expect(body.output_config).toEqual({ effort: "high" });
   });
 
-  it("sends the 4.5 ids no thinking at any level, and 5.x adaptive", () => {
-    // Documented (Anthropic per-model table, read 2026-09-27): the 4.5 ids 400 on
-    // adaptive and default to off, 5.x is adaptive only. Matched on the model,
-    // since OpenCode sends these same ids here.
+  it("sends every served Claude id the thinking its model takes, at every level", () => {
+    // Documented (Anthropic's per-model thinking table and model deprecations
+    // page, read 2026-09-30). Matched on the model, since OpenCode sends these
+    // same ids here, and a dated snapshot is its family.
     const wire = (model: string, reasoningEffort?: ReasoningEffort) => {
       const config = { ...anthropicBase, model, ...(reasoningEffort ? { reasoningEffort } : {}) };
       const { thinking, output_config, max_tokens } = buildAnthropicBody(config, messages, []);
       return { thinking, output_config, max_tokens };
     };
+    const adaptive = [
+      "claude-fable-5-1",
+      "claude-opus-5-5",
+      "claude-sonnet-5-5",
+      "claude-fable-5",
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "claude-opus-4-8",
+      "claude-opus-4-7",
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+    ];
+    for (const model of adaptive) {
+      for (const effort of [undefined, ...REASONING_EFFORTS]) {
+        // "none" stays adaptive, not `disabled`: Fable 5.1 and Opus 5.5 answer
+        // `disabled` with a 400, and Opus 5 with thinking off leaks tool calls
+        // into its text on tool-heavy work (same docs).
+        const pinned = effort && effort !== "none" ? { output_config: { effort } } : {};
+        expect(wire(model, effort), `${model} ${effort}`).toEqual({
+          thinking: { type: "adaptive" },
+          ...pinned,
+          max_tokens: 65536,
+        });
+      }
+    }
     const extendedOnly = [
       "claude-haiku-4-5-20251001",
       "claude-haiku-4-5",
       "claude-sonnet-4-5",
+      "claude-sonnet-4-5-20250929",
       "claude-opus-4-5",
+      "claude-opus-4-5-20251101",
     ];
     for (const model of extendedOnly) {
       for (const effort of [undefined, ...REASONING_EFFORTS]) {
         // 64000: "Max output: 64K tokens", read at its smaller value.
         expect(wire(model, effort), `${model} ${effort}`).toEqual({ max_tokens: 64000 });
       }
-    }
-    // 4.6 is the boundary: it takes adaptive, so it must not match.
-    for (const model of ["claude-sonnet-5", "claude-opus-5", "claude-sonnet-4-6"]) {
-      expect(wire(model, "high"), model).toEqual({
-        thinking: { type: "adaptive" },
-        output_config: { effort: "high" },
-        max_tokens: 65536,
-      });
-      // "none" stays adaptive, not `disabled`: Opus 5 with thinking off leaks
-      // tool calls into its text on tool-heavy work (same docs).
-      expect(wire(model, "none"), model).toEqual({
-        thinking: { type: "adaptive" },
-        max_tokens: 65536,
-      });
     }
   });
 
