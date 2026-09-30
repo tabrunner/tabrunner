@@ -20,9 +20,9 @@ import { TextField } from "@/components/TextField";
 import { useStoredItem } from "@/components/useStoredItem";
 import { ThemeToggle } from "@/components/ThemeControl";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { ReportDialog } from "@/components/ReportDialog";
 import { defaultStartUrl, tipsEnabled, walkthroughsEnabled, widgetHidden } from "@/lib/prefs";
 import { LINKS } from "@/lib/links";
-import { newIssueUrl } from "@/lib/report";
 import { StatusStrip } from "./StatusStrip";
 import { McpPane } from "./McpPane";
 
@@ -146,15 +146,16 @@ function GeneralPane() {
           </a>
           {/* Browsing issues and filing one are different errands — the first
               is how you find out it's known, the second how it becomes known.
-              This one arrives pre-filled with the version and provider. */}
-          <a
-            href={newIssueUrl({ provider })}
-            target="_blank"
-            rel="noreferrer"
-            className={linkClass}
-          >
-            {t("settings.reportIssue")}
-          </a>
+              This one opens pre-filled with the version and provider, for
+              review before anything reaches GitHub. */}
+          <ReportDialog
+            provider={provider}
+            trigger={
+              <button type="button" className={`cursor-pointer ${linkClass}`}>
+                {t("settings.reportIssue")}
+              </button>
+            }
+          />
           <a href={LINKS.site} target="_blank" rel="noreferrer" className={linkClass}>
             tabrunner.app
           </a>

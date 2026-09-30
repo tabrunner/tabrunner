@@ -12,13 +12,13 @@ import type { Message } from "../types";
 import { splitErrorDetail } from "../error-detail";
 import type { ErrorKind } from "@providerkit/core";
 import { formatDuration, formatTokens, hostnameOf } from "@/lib/format";
-import { newIssueUrl } from "@/lib/report";
 import { showReasoning } from "@/lib/prefs";
 import { AddProviderDialog } from "@/modules/providers/ui";
 import type { ProviderConfig } from "@/modules/providers/types";
 import { dataPolicyConsentUrl } from "@/modules/providers/http";
 import { Button, buttonClasses } from "@/components/Button";
 import { CometPose } from "@/components/CometPose";
+import { ReportDialog } from "@/components/ReportDialog";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -1030,22 +1030,19 @@ const MessageBubble = memo(function MessageBubble({
               />
             )}
             {reportable(msg, hint?.key) && !consentUrl && (
-              // A real anchor, wearing the button's classes: this action leaves
-              // the extension, and Base UI's Button would stamp `type="button"`
-              // onto the <a>. The summary leads so it becomes the issue title;
-              // the raw body follows so the report carries what Details is
-              // hiding — the one thing a maintainer cannot ask a user to retype.
-              <a
-                href={newIssueUrl({
-                  provider: activeProvider,
-                  error: detail ? `${summary}\n\n${detail}` : msg.content,
-                })}
-                target="_blank"
-                rel="noreferrer"
-                className={`inline-block ${buttonClasses("ghost", "sm")} ${ERROR_ACTION_CLASSES}`}
-              >
-                {t("chat.report")}
-              </a>
+              // The summary leads so it becomes the issue title; the raw body
+              // follows so the report carries what Details is hiding — the one
+              // thing a maintainer cannot ask a user to retype. The dialog
+              // scrubs it and shows it before anything reaches GitHub.
+              <ReportDialog
+                provider={activeProvider}
+                error={detail ? `${summary}\n\n${detail}` : msg.content}
+                trigger={
+                  <Button variant="ghost" size="sm" className={ERROR_ACTION_CLASSES}>
+                    {t("chat.report")}
+                  </Button>
+                }
+              />
             )}
           </div>
         </Bubble>

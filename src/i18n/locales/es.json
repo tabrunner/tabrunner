@@ -28,7 +28,7 @@
     "addProvider": "Añadir proveedor",
     "menuTitle": "Configuración",
     "allSettings": "Toda la configuración →",
-    "reportIssue": "Reportar un problema →",
+    "reportIssue": "Reportar un problema",
     "defaultStartUrl": "Página de inicio alternativa",
     "defaultStartUrlHint": "Una tarea empieza en la página que estás viendo. Cuando Chrome bloquea esa página — chrome:// o la Web Store — se abre aquí.",
     "showWidget": "Widget flotante de estado",
@@ -777,6 +777,16 @@
       "open": "Abrir ayuda y atajos — el campo de texto debe estar vacío"
     },
     "docs": "Guías y descarga — tabrunner.app →"
+  },
+  "report": {
+    "title": "Reportar un problema",
+    "description": "GitHub recibe este texto cuando haces clic en Abrir GitHub. Solo se convierte en un issue público si lo envías allí.",
+    "issueTitle": "Título",
+    "titlePlaceholder": "Qué salió mal, en pocas palabras",
+    "details": "Detalles",
+    "detailsHint": "Tu versión, navegador, proveedor y el error. Ocultamos lo que parece una clave, un correo o una ruta de archivo, pero léelo antes de enviarlo.",
+    "include": "Incluir detalles",
+    "open": "Abrir GitHub"
   },
   "compact": {
     "folded": "Se plegaron {{count}} turnos anteriores en un resumen para liberar contexto",

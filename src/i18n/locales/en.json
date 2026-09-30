@@ -28,7 +28,7 @@
     "addProvider": "Add provider",
     "menuTitle": "Settings",
     "allSettings": "All settings →",
-    "reportIssue": "Report an issue →",
+    "reportIssue": "Report an issue",
     "defaultStartUrl": "Fallback start page",
     "defaultStartUrlHint": "A task starts on the page you're looking at. When Chrome blocks that page — chrome:// or the Web Store — it opens here instead.",
     "showWidget": "Floating status widget",
@@ -777,6 +777,16 @@
       "open": "Open help & shortcuts — the composer must be empty"
     },
     "docs": "Guides & download — tabrunner.app →"
+  },
+  "report": {
+    "title": "Report an issue",
+    "description": "GitHub gets this text when you press Open GitHub. It becomes a public issue only if you submit it there.",
+    "issueTitle": "Title",
+    "titlePlaceholder": "What went wrong, in a few words",
+    "details": "Details",
+    "detailsHint": "Your version, browser, provider and the error. We hide what looks like a key, an email or a file path, but read it before you send.",
+    "include": "Include details",
+    "open": "Open GitHub"
   },
   "compact": {
     "folded": "Folded {{count}} earlier turns into a summary to free up context",

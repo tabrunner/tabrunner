@@ -2,8 +2,8 @@ import { Dialog } from "@base-ui-components/react";
 import { useTranslation } from "react-i18next";
 import { overlayCard, overlayMotion, scrim, scrimMotion } from "@/components/chrome";
 import { XIcon } from "@/components/Icon";
+import { ReportDialog } from "@/components/ReportDialog";
 import { LINKS } from "@/lib/links";
-import { newIssueUrl } from "@/lib/report";
 import { activeProviderOf, useProvidersStore } from "@/modules/providers/ui";
 import { setHelpOpen, useHelpOpen } from "./help-open";
 import { COMMANDS, commandDescription } from "./slash-commands";
@@ -18,7 +18,7 @@ import { COMMANDS, commandDescription } from "./slash-commands";
 export function HelpDialog() {
   const { t } = useTranslation();
   const open = useHelpOpen();
-  // The same provider every surface calls active — the report URL names it.
+  // The same provider every surface calls active — the report names it.
   const provider = useProvidersStore(activeProviderOf);
 
   const shortcuts: { chord: string; label: string }[] = [
@@ -90,14 +90,17 @@ export function HelpDialog() {
             >
               {t("help.docs")}
             </a>
-            <a
-              href={newIssueUrl({ provider })}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded px-1 py-1 text-xs text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-            >
-              {t("settings.reportIssue")}
-            </a>
+            <ReportDialog
+              provider={provider}
+              trigger={
+                <button
+                  type="button"
+                  className="cursor-pointer rounded px-1 py-1 text-left text-xs text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                >
+                  {t("settings.reportIssue")}
+                </button>
+              }
+            />
           </div>
         </Dialog.Popup>
       </Dialog.Portal>
