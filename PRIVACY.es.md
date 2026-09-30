@@ -1,6 +1,6 @@
 # Política de privacidad de TabRunner
 
-_Última actualización: 2026-09-27 · Se aplica a TabRunner para navegadores Chromium (Chrome, Brave,
+_Última actualización: 2026-09-30 · Se aplica a TabRunner para navegadores Chromium (Chrome, Brave,
 Edge, Arc, Opera, Vivaldi)._
 
 Este documento también existe en [inglés](PRIVACY.md). Si la traducción y el texto en inglés
@@ -12,7 +12,8 @@ tu dispositivo, en el almacenamiento local de tu navegador. Los únicos destinos
 el proveedor de IA que **tú** hayas configurado, (2) los sitios web en los que le pidas a TabRunner
 que actúe y, solo si los usas, (3) un puente MCP local en tu propio equipo, (4) la dirección
 desde la que importes una habilidad, (5) el servicio de Jev que elijas, (6) los servidores MCP
-remotos que añadas y (7) las direcciones de tus webhooks.
+remotos que añadas, (7) las direcciones de tus webhooks y (8) GitHub, cuando reportes un
+problema.
 
 ---
 
@@ -102,6 +103,16 @@ en la red:
    evento, la hora, el id del chat y el texto de la tarea y, según el evento, el resumen y cómo
    terminó la tarea, la pregunta y sus opciones, o el mensaje de error. Cada texto se corta a los
    2000 caracteres. Se envía una sola vez, sin reintentos. Sin webhooks, no se envía nada.
+8. **GitHub, solo cuando reportas un problema**: "Reportar un problema", o "Reportar en GitHub"
+   debajo de un error, te muestra antes el texto: un título y los detalles, con la versión y el
+   idioma de TabRunner, el user-agent de tu navegador, el nombre, el formato de la API y el modelo
+   del proveedor, el host de su dirección y el error, si lo hay. Aparte del error, TabRunner no
+   añade nada del chat ni de la página, y nunca tu clave de API. En el error, cambia por `[hidden]`
+   lo que parece una clave, un correo o la ruta de un archivo tuyo, pero se le puede escapar algo,
+   así que lee el texto antes. Puedes editarlo o dejar fuera los detalles. Cuando haces clic en
+   "Abrir GitHub", el texto va a GitHub dentro de la dirección de su página de nuevo issue: GitHub
+   lo recibe y el historial de tu navegador guarda esa dirección, aunque nunca envíes el issue. El
+   texto solo se convierte en un issue público si lo envías allí.
 
 Nadie más (ni servidores intermedios, ni proxies, ni servicios de analítica, ni servidores de los
 desarrolladores) recibe nunca tus datos.

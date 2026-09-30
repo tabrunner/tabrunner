@@ -467,12 +467,12 @@ describe("error bubble report affordance", () => {
     return { container, root };
   }
 
-  const reportLink = (c: HTMLElement) =>
-    [...c.querySelectorAll("a")].find((a) => a.textContent === "Report on GitHub");
+  const reportButton = (c: HTMLElement) =>
+    [...c.querySelectorAll("button")].find((b) => b.textContent === "Report on GitHub");
 
   it("stays away from an anticipated condition", async () => {
     const view = await renderError({ content: RESTRICTED });
-    expect(reportLink(view.container)).toBeUndefined();
+    expect(reportButton(view.container)).toBeUndefined();
     await unmount(view);
   });
 
@@ -481,26 +481,42 @@ describe("error bubble report affordance", () => {
       content: "Anthropic is rate-limiting requests — try again in a moment",
       kind: "rate",
     });
-    expect(reportLink(view.container)).toBeUndefined();
+    expect(reportButton(view.container)).toBeUndefined();
     await unmount(view);
   });
 
-  it("offers a pre-filled issue for text nobody wrote copy for", async () => {
+  it("offers a pre-filled issue for text nobody wrote copy for, reviewed first", async () => {
+    const secret = "sk-ant-api03-Synthetic0Secret1Value2For3Tests4Only";
     const view = await renderError({
-      content: "Cannot read properties of undefined (reading 'targetId')",
+      content: `Cannot read properties of undefined (reading 'targetId') ${secret} /Users/janedoe/notes.txt`,
       unexpected: true,
     });
-    const link = reportLink(view.container);
+    const button = reportButton(view.container);
+    expect(button).toBeDefined();
+    // Nothing points at GitHub until the review dialog is open.
+    expect(view.container.querySelector('a[href*="issues/new"]')).toBeNull();
+    await act(async () => button!.click());
+
+    // The dialog portals to <body>: what it shows, and where Open GitHub goes.
+    const shown = document.body.querySelector("textarea")?.value ?? "";
+    const link = [...document.body.querySelectorAll("a")].find(
+      (a) => a.textContent === "Open GitHub",
+    );
+    expect(shown).toContain("Cannot read properties");
     expect(link).toBeDefined();
     const url = new URL(link!.href);
     expect(url.pathname).toBe("/tabrunner/tabrunner/issues/new");
     expect(url.searchParams.get("title")).toContain("Cannot read properties");
+    for (const leak of [secret, "janedoe"]) {
+      expect(shown).not.toContain(leak);
+      expect(decodeURIComponent(link!.href)).not.toContain(leak);
+    }
     await unmount(view);
   });
 
   it("yields to a hint even when unexpected — connectivity advice beats a bug report", async () => {
     const view = await renderError({ content: "Failed to fetch", unexpected: true });
-    expect(reportLink(view.container)).toBeUndefined();
+    expect(reportButton(view.container)).toBeUndefined();
     await unmount(view);
   });
 });

@@ -1,6 +1,6 @@
 # Política de privacidade do TabRunner
 
-_Última atualização: 2026-09-27 · Aplica-se ao TabRunner para navegadores Chromium (Chrome, Brave,
+_Última atualização: 2026-09-30 · Aplica-se ao TabRunner para navegadores Chromium (Chrome, Brave,
 Edge, Arc, Opera, Vivaldi)._
 
 Este documento também existe em [inglês](PRIVACY.md). Se a tradução e o texto em inglês divergirem,
@@ -12,7 +12,7 @@ dispositivo, no armazenamento local do navegador. Os seus dados só vão para (1
 **você** configurou, (2) os sites em que você pede para o TabRunner agir e, só se você usar esses
 recursos, (3) uma ponte MCP local na sua própria máquina, (4) o endereço de onde você importar uma
 habilidade, (5) o serviço do Jev que você escolher, (6) os servidores MCP remotos que você
-adicionar e (7) os endereços dos seus webhooks.
+adicionar, (7) os endereços dos seus webhooks e (8) o GitHub, quando você relatar um problema.
 
 ---
 
@@ -103,6 +103,16 @@ destinatários na rede:
    o resumo e como a tarefa terminou, a pergunta e as opções dela, ou a mensagem de erro. Cada
    texto é cortado em 2 mil caracteres. O envio acontece uma vez só, sem novas tentativas. Sem
    webhooks, nada é enviado.
+8. **O GitHub, só quando você relatar um problema**: "Relatar um problema", ou "Reportar no GitHub"
+   abaixo de um erro, mostra o texto antes: um título e os detalhes, com a versão e o idioma do
+   TabRunner, o user-agent do seu navegador, o nome, o formato da API e o modelo do provedor, o host
+   do endereço dele e o erro, se houver. Fora o erro, o TabRunner não inclui nada da conversa nem da
+   página, e nunca a sua chave de API. No erro, ele troca por `[hidden]` o que parece chave, e-mail
+   ou o caminho de um arquivo seu, mas algo pode escapar, então leia o texto antes. Você pode editar
+   o texto ou deixar os detalhes de fora. Quando você clica em "Abrir o GitHub", o texto vai para o
+   GitHub dentro do endereço da página de nova issue: o GitHub recebe o texto e o histórico do
+   navegador guarda esse endereço, mesmo que você nunca envie a issue. O texto só vira uma issue
+   pública se você enviar por lá.
 
 Mais ninguém (nenhum servidor intermediário, nenhum proxy, nenhum serviço de analytics, nenhum
 servidor dos desenvolvedores) recebe os seus dados, em momento algum.

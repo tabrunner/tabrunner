@@ -4,7 +4,7 @@ import { Popover } from "@base-ui-components/react";
 import { useTranslation } from "react-i18next";
 import { AddProviderDialog, useProvidersStore, activeProviderOf } from "@/modules/providers/ui";
 import { openHelp } from "@/modules/conversation/ui";
-import { Button, buttonClasses } from "@/components/Button";
+import { Button } from "@/components/Button";
 import { Switch } from "@/components/Switch";
 import { overlayCard, overlayMotion } from "@/components/chrome";
 import { useStoredItem } from "@/components/useStoredItem";
@@ -13,7 +13,7 @@ import { LanguageToggle } from "@/components/LanguageToggle";
 import { ChevronRightIcon, Icon } from "@/components/Icon";
 import { widgetHidden } from "@/lib/prefs";
 import { jevSettingsItem, setJevEnabled } from "@/modules/jev/settings";
-import { newIssueUrl } from "@/lib/report";
+import { ReportDialog } from "@/components/ReportDialog";
 
 function GearIcon() {
   return (
@@ -43,6 +43,7 @@ export function SettingsMenu() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [addProviderOpen, setAddProviderOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   // Stored inverted ("hidden") so the default needs no write; shown here as
   // the positive toggle.
   const hidden = useStoredItem(widgetHidden);
@@ -170,15 +171,17 @@ export function SettingsMenu() {
                     "it broke"; the report worth the most — "it did the wrong
                     thing" — ends a run green, with no red bubble to click, so
                     it needs a door that is open at all times. */}
-                <a
-                  href={newIssueUrl({ provider })}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => setOpen(false)}
-                  className={`block text-left ${buttonClasses("ghost", "sm")}`}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start text-left"
+                  onClick={() => {
+                    setOpen(false);
+                    setReportOpen(true);
+                  }}
                 >
                   {t("settings.reportIssue")}
-                </a>
+                </Button>
                 {/* The escape hatch sits last, where "the rest lives here" is
                     read after every door this menu opens directly — the same
                     convention as the browser's own Settings row. */}
@@ -199,6 +202,7 @@ export function SettingsMenu() {
         </Popover.Portal>
       </Popover.Root>
       <AddProviderDialog open={addProviderOpen} onOpenChange={setAddProviderOpen} />
+      <ReportDialog provider={provider} open={reportOpen} onOpenChange={setReportOpen} />
     </>
   );
 }
