@@ -1,6 +1,6 @@
 # TabRunner Privacy Policy
 
-_Last updated: 2026-09-27 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
+_Last updated: 2026-09-30 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
 Opera, Vivaldi)._
 
 TabRunner also publishes this document in Portuguese and Spanish. If a translation and this
@@ -11,7 +11,8 @@ account, no telemetry, and no analytics. Everything you type or configure stays 
 your browser's local storage. The only places your data ever goes are (1) the AI provider **you**
 configured, (2) the websites you ask TabRunner to act on, and, only if you use them, (3) a local
 MCP bridge on your own machine, (4) the address you import a skill from, (5) the Jev host you
-pick, (6) remote MCP servers you add, and (7) your own webhook addresses.
+pick, (6) remote MCP servers you add, (7) your own webhook addresses, and (8) GitHub, when you
+report a problem.
 
 ---
 
@@ -96,6 +97,15 @@ inside a task whose plan you approved.
    time, the chat's id and the task text, plus, depending on the event, the summary and how the
    task ended, the question and its choices, or the error message. Each text is cut at 2,000
    characters. It is sent once and never retried. With no webhook added, nothing is sent.
+8. **GitHub, only when you report a problem** — "Report an issue", or "Report on GitHub" under an
+   error, first shows you the text: a title, and details with your TabRunner version and language,
+   your browser's user-agent string, the provider's name, API shape and model, the host of its
+   address, and the error, if there is one. Apart from the error, TabRunner adds nothing from the
+   chat or the page, and never your API key. In the error, it replaces what looks like a key, an
+   email or a path to your files with `[hidden]`, but it can miss one, so read the text first. You
+   can edit it or leave the details out. When you press "Open GitHub", the text goes to GitHub
+   inside the address of its new-issue page: GitHub receives it, and your browser history keeps it,
+   even if you never submit the issue. The text becomes a public issue only if you submit it there.
 
 No other party — no relay, no proxy, no analytics, no developer-owned server — ever receives your
 data.
