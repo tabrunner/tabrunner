@@ -1,4 +1,5 @@
-import { str, isRecord } from "./jsonrpc";
+import { str } from "./jsonrpc";
+import { isRecord } from "@/shared/types";
 import { MAX_MCP_RESULT_CHARS, MAX_MCP_RESULT_IMAGES, type McpCallResult } from "./types";
 
 /**

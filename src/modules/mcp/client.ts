@@ -1,9 +1,9 @@
 import { createLogger, truncate } from "@/lib/logger";
+import { isRecord } from "@/shared/types";
 import {
   SseFrameReader,
   classifyMessage,
   declineResponse,
-  isRecord,
   methodNotFoundResponse,
   notification,
   request,

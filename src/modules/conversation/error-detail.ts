@@ -1,4 +1,5 @@
 import { truncate } from "@/lib/logger";
+import { isRecord } from "@/shared/types";
 
 /**
  * Split a provider error line into a human summary and a raw JSON detail blob.
@@ -90,8 +91,5 @@ function embeddedJson(text: string): unknown {
     return undefined;
   }
 }
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
 
 const isString = (v: unknown): v is string => typeof v === "string";

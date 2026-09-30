@@ -13,6 +13,7 @@ import { formatResetRelative } from "./rate-limit";
 import { PRESETS, providerDisplayName } from "./presets";
 import { createLogger, truncate } from "@/lib/logger";
 import { i18n } from "@/i18n";
+import { isRecord } from "@/shared/types";
 
 const log = createLogger("providers");
 
@@ -427,7 +428,7 @@ export function envelopeProviderError(
  * `streamError` puts under its own adapters.
  */
 export function streamFrameError(provider: ProviderIdentity, error: unknown): ProviderError {
-  const code = isRec(error) ? error.code : undefined;
+  const code = isRecord(error) ? error.code : undefined;
   const status = typeof code === "number" && code >= 400 ? code : 200;
   return envelopeProviderError(provider, status, JSON.stringify(error) ?? "", {
     unknownAs: "overload",
@@ -487,9 +488,4 @@ export async function* streamSse(opts: {
   if (!res.body) throw new Error(i18n.t("errors.noResponseBody"));
 
   yield* parseSseStream(res.body);
-}
-
-/** An untyped wire value narrowed to an object whose fields can be read. */
-export function isRec(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
 }
