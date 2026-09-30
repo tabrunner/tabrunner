@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { issueDraft, issueUrl, type ReportProvider } from "../report";
+import { issueDraft, issueUrl, type IssueDraft, type ReportProvider } from "../report";
 
 /** The manifest is the only chrome surface report.ts touches. */
 beforeEach(() => {
@@ -22,6 +22,17 @@ const config = {
 /** What the review dialog would send untouched: the draft, straight into the URL. */
 const urlFor = (opts: Parameters<typeof issueDraft>[0] = {}) => issueUrl(issueDraft(opts));
 const bodyOf = (url: string) => new URL(url).searchParams.get("body") ?? "";
+
+/** Gone from what the dialog shows, and from the address Open GitHub sends, decoded or not. */
+function expectHidden(draft: IssueDraft, leaks: string[]) {
+  const shown = `${draft.title}\n${draft.details}`;
+  const url = issueUrl(draft);
+  const sent = `${url}\n${[...new URL(url).searchParams.values()].join("\n")}`;
+  for (const leak of leaks) {
+    expect(shown, leak).not.toContain(leak);
+    expect(sent, leak).not.toContain(leak);
+  }
+}
 
 describe("issueDraft and issueUrl", () => {
   it("opens a new issue on the project repo", () => {
@@ -104,11 +115,7 @@ describe("issueDraft and issueUrl", () => {
     };
 
     const draft = issueDraft({ provider, error });
-    const shown = `${draft.title}\n${draft.details}`;
-    const url = issueUrl(draft);
-    const sent = `${url}\n${[...new URL(url).searchParams.values()].join("\n")}`;
-
-    for (const leak of [
+    expectHidden(draft, [
       secret,
       "Synthetic0Secret",
       "jane.doe@example.com",
@@ -120,14 +127,58 @@ describe("issueDraft and issueUrl", () => {
       "7f3c9e1d2b4a",
       "hunter2",
       "tok_Synthetic9Endpoint",
-    ]) {
-      expect(shown, leak).not.toContain(leak);
-      expect(sent, leak).not.toContain(leak);
-    }
+    ]);
     // Still a report worth reading: the status, which host failed, and that
     // the endpoint was the problem.
     expect(draft.title).toContain("Anthropic API error 401");
     expect(draft.details).toContain("https://gateway.corp.internal/[hidden]");
     expect(draft.details).toContain("- Endpoint: `not a valid URL`");
+  });
+
+  // The error bubble reports `${summary}\n\n${detail}`, and the detail is the
+  // provider's raw JSON body: every backslash doubled, a `/` sometimes sent as
+  // `\/`, and a gateway that wraps the upstream body escapes all of it again.
+  it("hides a path, a URL and a secret field inside a raw JSON body", () => {
+    const secret = "sk-ant-api03-Synthetic0Secret1Value2For3Tests4Only";
+    const windows = "C:\\Users\\JaneDoe\\AppData\\Local\\AcmeCorp\\models\\blob";
+    const upstream = JSON.stringify({
+      error: `open ${windows}: The system cannot find the file specified.`,
+    });
+    const gateway = JSON.stringify({
+      message: JSON.stringify({
+        error: { message: `load ${windows}`, password: "hunter2hunter2" },
+      }),
+    });
+    const phpSlashes = JSON.stringify({
+      url: `https://gateway.corp.internal/tenant/acme-corp?key=${secret}`,
+    }).replace(/\//g, "\\/");
+    const error = [
+      `Ollama API error 500 — open ${windows}: The system cannot find the file specified.`,
+      "",
+      upstream,
+      gateway,
+      phpSlashes,
+      "reading /Users/janedoe/Library/Application Support/AcmeCorp/brief.pdf failed",
+      "reading C:\\Users\\Jane Doe\\Documents\\AcmeCorp\\brief.pdf failed",
+      "reading /Volumes/JaneDoe/AcmeCorp/brief.pdf and /media/janedoe/AcmeCorp/brief.pdf",
+    ].join("\n");
+
+    const draft = issueDraft({ error });
+    expectHidden(draft, [
+      secret,
+      "Synthetic0Secret",
+      "JaneDoe",
+      "janedoe",
+      "Doe",
+      "AcmeCorp",
+      "acme-corp",
+      "hunter2",
+    ]);
+    // The diagnosis survives: what went wrong, which host, and the words
+    // after a path, which a person reads as the reason.
+    expect(draft.title).toContain("The system cannot find the file specified.");
+    expect(draft.details).toContain("The system cannot find the file specified.");
+    expect(draft.details).toContain("https://gateway.corp.internal/[hidden]");
+    expect(draft.details.match(/ failed/g)).toHaveLength(2);
   });
 });

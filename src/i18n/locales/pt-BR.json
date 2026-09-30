@@ -784,7 +784,7 @@
     "issueTitle": "Título",
     "titlePlaceholder": "O que deu errado, em poucas palavras",
     "details": "Detalhes",
-    "detailsHint": "Sua versão, navegador, provedor e o erro. Escondemos o que parece chave, e-mail ou caminho de arquivo, mas leia antes de enviar.",
+    "detailsHint": "Sua versão, navegador, provedor e o erro. Escondemos o que parece chave, e-mail ou o caminho de um arquivo seu, mas leia antes de enviar.",
     "include": "Incluir detalhes",
     "open": "Abrir o GitHub"
   },

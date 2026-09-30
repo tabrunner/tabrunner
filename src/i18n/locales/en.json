@@ -784,7 +784,7 @@
     "issueTitle": "Title",
     "titlePlaceholder": "What went wrong, in a few words",
     "details": "Details",
-    "detailsHint": "Your version, browser, provider and the error. We hide what looks like a key, an email or a file path, but read it before you send.",
+    "detailsHint": "Your version, browser, provider and the error. We hide what looks like a key, an email or a path to your files, but read it before you send.",
     "include": "Include details",
     "open": "Open GitHub"
   },

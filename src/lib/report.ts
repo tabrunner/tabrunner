@@ -94,23 +94,39 @@ export function issueUrl({ title, details }: IssueDraft): string {
 /**
  * Strip what a raw error can carry that a public issue must not. Provider
  * bodies echo request URLs (Gemini authenticates with `?key=` in the query),
- * account emails, and the occasional credential; a crash can name a file in
- * someone's home folder. Blocking beats leaking: a false positive costs the
- * maintainer one detail, and the person sees `[hidden]` in the review and
- * can put the fact back by hand.
+ * account emails, and the occasional credential; a local server can name a
+ * file in someone's home folder or on their drive. Blocking beats leaking: a
+ * false positive costs the maintainer one detail, and the person sees
+ * `[hidden]` in the review and can put the fact back by hand.
  */
 function scrub(text: string): string {
   return (
     text
-      // A URL keeps its origin — which host failed IS the diagnosis — and loses
-      // the rest: userinfo, path, query and fragment can each hold a secret.
       // Every pattern that opens on a character run starts only where the run
       // does (the lookbehinds): starting at each position inside it re-scans
       // the rest, and a 50 KB provider body turns that into a hang.
+      //
+      // Read a JSON body the way a person would. It doubles every backslash,
+      // may send `/` as `\/`, and a gateway that wraps the upstream body
+      // escapes all of it again — so `C:\\Users\\Jane` and `https:\/\/`
+      // would slip past every pattern below. Undone first, at any depth.
+      // ponytail: `\u002f`-style escapes are not decoded. Decode them here
+      // if a provider body ever arrives with one.
+      .replace(/(?<!\\)\\+(?=[/"])/g, "")
+      .replace(/\\{2,}/g, "\\")
+      // A URL keeps its origin — which host failed IS the diagnosis — and loses
+      // the rest: userinfo, path, query and fragment can each hold a secret.
       .replace(/(?<![\w+.-])[a-z][\w+.-]*:\/\/[^\s"'`<>]+/gi, originOnly)
       .replace(/(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, HIDDEN)
-      // A home folder is named after its owner, and so is what sits inside it.
-      .replace(/(?:\/(?:Users|home)\/|\b[a-z]:\\Users\\)[^\s"'`<>]+/gi, `~/${HIDDEN}`)
+      // A home folder is named after its owner, a drive by whoever plugged it
+      // in, and so is what sits inside them. A folder name can hold a space,
+      // so the path runs on while the next word still has a `/` or `\` in it.
+      // ponytail: a space in the LAST name still ends it — `Acme Corp.pdf`
+      // leaves `Corp.pdf` — since nothing tells that word from the prose after.
+      .replace(
+        /(\/(?:Users|home|Volumes|media)\/|\b[a-z]:\\Users\\)[^\s"'`<>]+(?: (?=[^\s"'`<>]*[/\\])[^\s"'`<>]+)*/gi,
+        `$1${HIDDEN}`,
+      )
       .replace(/\b(Bearer|Basic)\s+[\w.~+/=-]+/gi, `$1 ${HIDDEN}`)
       .replace(
         /\b((?:x-)?(?:api[_-]?key|(?:access|refresh|id)[_-]?token|token|secret|password|authorization)["']?\s*[:=]\s*["']?)[^\s"'&,;}]+/gi,

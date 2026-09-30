@@ -784,7 +784,7 @@
     "issueTitle": "Título",
     "titlePlaceholder": "Qué salió mal, en pocas palabras",
     "details": "Detalles",
-    "detailsHint": "Tu versión, navegador, proveedor y el error. Ocultamos lo que parece una clave, un correo o una ruta de archivo, pero léelo antes de enviarlo.",
+    "detailsHint": "Tu versión, navegador, proveedor y el error. Ocultamos lo que parece una clave, un correo o la ruta de un archivo tuyo, pero léelo antes de enviarlo.",
     "include": "Incluir detalles",
     "open": "Abrir GitHub"
   },
