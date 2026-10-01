@@ -6,7 +6,7 @@ import type {
   ToolDef,
   ToolResult,
 } from "./types";
-import { apiUrl, openRouterCostUsd, parseToolArgs } from "@providerkit/core";
+import { apiUrl, openRouterCostUsd, parseToolArgs, withoutPatterns } from "@providerkit/core";
 import { logCacheUsage, sessionHeaders, streamFrameError, streamSse } from "./http";
 import { PRESETS } from "./presets";
 import { isRecord } from "@/shared/types";
@@ -208,8 +208,9 @@ export function buildResponsesBody(
   const systemMsg = messages.find((m) => m.role === "system");
   const conversation = messages.filter((m) => m.role !== "system");
 
+  const preset = PRESETS.find((p) => p.id === config.id);
   // codex-rs takes a tool result's images inline; the published shape does not.
-  const inlineToolImages = PRESETS.find((p) => p.id === config.id)?.inlineToolImages === true;
+  const inlineToolImages = preset?.inlineToolImages === true;
 
   const body: Record<string, unknown> = {
     model: config.model,
@@ -219,6 +220,8 @@ export function buildResponsesBody(
   };
   if (systemMsg) body.instructions = systemMsg.content;
   if (tools.length > 0) body.tools = tools.map(toResponsesTool);
+  // The same conversation id the `session-id` header carries (sessionHeaders).
+  if (preset?.responsesCacheKey && config.sessionId) body.prompt_cache_key = config.sessionId;
 
   // The ChatGPT backend has no off switch for reasoning — `none` omits the
   // knob entirely; the rest map to the standard Responses effort config.
@@ -324,7 +327,10 @@ function toResponsesTool(tool: ToolDef): Record<string, unknown> {
     type: "function",
     name: tool.name,
     description: tool.description,
-    parameters: tool.params,
+    // The ChatGPT backend compiles `pattern` in its own regex dialect and 400s
+    // the whole request on one it can't read. Our own tools carry none; a
+    // remote MCP server's schema can carry any.
+    parameters: withoutPatterns(tool.params),
   };
 }
 
