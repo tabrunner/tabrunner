@@ -400,6 +400,64 @@ describe("ChatGPT provider SSE parsing", () => {
     });
   });
 
+  it("keys ChatGPT's prompt cache on the conversation, in the header and the body alike", async () => {
+    // The backend shards its cache by session. Without the key a conversation's
+    // turns land on different shards, and the prefix they re-send misses.
+    const provider = createResponsesProvider(makeConfig({ sessionId: "conv-1" }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(sseStream([frame({ type: "response.completed", response: {} })]), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+
+    for await (const delta of provider.stream([], [], new AbortController().signal)) {
+      void delta;
+    }
+
+    const [, init] = fetchMock.mock.calls[0] as [
+      string,
+      { headers: Record<string, string>; body: string },
+    ];
+    expect(init.headers["session-id"]).toBe("conv-1");
+    expect((JSON.parse(init.body) as { prompt_cache_key?: string }).prompt_cache_key).toBe(
+      "conv-1",
+    );
+  });
+
+  it("strips every `pattern` from a tool schema before it goes out", async () => {
+    // The ChatGPT backend 400s the WHOLE request on a regex it cannot compile,
+    // and a remote MCP server's tool schema can carry any regex it likes.
+    const provider = createResponsesProvider(makeConfig());
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(sseStream([frame({ type: "response.completed", response: {} })]), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+    const tool = {
+      name: "mcp__docs__create",
+      description: "Create a document",
+      params: {
+        type: "object" as const,
+        properties: {
+          meta: {
+            type: "object",
+            properties: { slug: { type: "string", pattern: "^(?<slug>[a-z]+)$" } },
+          },
+        },
+      },
+    };
+
+    for await (const delta of provider.stream([], [tool], new AbortController().signal)) {
+      void delta;
+    }
+
+    const [, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(init.body).toContain('"slug":{"type":"string"}');
+    expect(init.body).not.toContain("pattern");
+  });
+
   it("sends OpenCode Go's session header when Muse is routed to Responses", async () => {
     const provider = createResponsesProvider(
       makeConfig({

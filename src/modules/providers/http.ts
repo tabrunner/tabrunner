@@ -241,17 +241,18 @@ export function providerHeaders(id: string, messages?: ChatMessage[]): Record<st
 }
 
 /**
- * OpenCode's per-conversation routing header (`x-opencode-session`), sent on
- * chat turns for the presets that ask for it — both Zen rows. It is what
- * marks the call as coming from inside a client session: without it the free
- * tier answers `FreeTierError`. The value is the conversation id, the same
- * granularity pi sends its own session id at. Absent when the preset doesn't
- * ask or the run carries no conversation (a probe outside any chat).
+ * The per-conversation header, sent on chat turns for the presets that name
+ * one: OpenCode's routing header (`x-opencode-session`, both Zen rows — without
+ * it the free tier answers `FreeTierError`) and the ChatGPT backend's
+ * `session-id`, which its prompt cache is keyed on. The value is the
+ * conversation id, the same granularity pi sends its own session id at.
+ * Absent when the preset doesn't ask or the run carries no conversation (a
+ * probe outside any chat).
  */
 export function sessionHeaders(id: string, sessionId?: string): Record<string, string> {
-  const wants = PRESETS.find((preset) => preset.id === id)?.sessionHeader;
-  if (!wants || !sessionId) return {};
-  return { "x-opencode-session": sessionId };
+  const name = PRESETS.find((preset) => preset.id === id)?.sessionHeader;
+  if (!name || !sessionId) return {};
+  return { [name]: sessionId };
 }
 
 /**

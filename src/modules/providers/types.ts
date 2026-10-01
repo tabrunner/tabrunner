@@ -115,8 +115,9 @@ export interface ResolvedProviderConfig extends ProviderConfig {
   model: string;
   /**
    * The conversation this run answers in. Only sent where a preset asks for
-   * it (`sessionHeader`) — OpenCode's gateway wants its per-conversation
-   * routing header on Zen turns. Run-scoped, never stored.
+   * it (`sessionHeader`, `responsesCacheKey`) — OpenCode's gateway wants its
+   * per-conversation routing header on Zen turns, and the ChatGPT backend keys
+   * its prompt cache on it. Run-scoped, never stored.
    */
   sessionId?: string;
   /**

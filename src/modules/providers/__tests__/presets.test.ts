@@ -46,11 +46,15 @@ describe("provider names", () => {
     expect(gemini?.models[0]).toBe("gemini-3.5-flash");
   });
 
-  it("asks for the session header only on the OpenCode gateway rows", () => {
-    // The free tier answers FreeTierError without the per-conversation routing
-    // header; no other endpoint wants it.
-    const flagged = PRESETS.filter((p) => p.sessionHeader).map((p) => p.id);
-    expect(flagged).toEqual(["opencode", "opencode-go"]);
+  it("names a session header only where the endpoint reads one", () => {
+    // OpenCode's free tier answers FreeTierError without its routing header;
+    // the ChatGPT backend keys its prompt cache on `session-id`.
+    const flagged = PRESETS.filter((p) => p.sessionHeader).map((p) => [p.id, p.sessionHeader]);
+    expect(flagged).toEqual([
+      ["chatgpt", "session-id"],
+      ["opencode", "x-opencode-session"],
+      ["opencode-go", "x-opencode-session"],
+    ]);
   });
 
   it("never advertises a retired Zen id as fallback", () => {

@@ -13,6 +13,10 @@ describe("sessionHeaders", () => {
     expect(sessionHeaders("opencode-go", "conv-1")).toEqual({ "x-opencode-session": "conv-1" });
   });
 
+  it("sends the ChatGPT backend its own name for the same id", () => {
+    expect(sessionHeaders("chatgpt", "conv-1")).toEqual({ "session-id": "conv-1" });
+  });
+
   it("sends nothing without a conversation — a probe outside any chat", () => {
     expect(sessionHeaders("opencode", undefined)).toEqual({});
   });

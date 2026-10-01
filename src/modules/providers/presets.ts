@@ -84,8 +84,10 @@ export interface ProviderPreset {
    */
   explicitNone?: true;
   /**
-   * OpenCode's gateway wants its per-conversation routing header on every chat
-   * turn (`x-opencode-session`, the conversation id) — the same header pi's
+   * The header that names the conversation on every chat turn, for the
+   * endpoints that key something on it. Its value is the conversation id.
+   *
+   * OpenCode's gateway reads `x-opencode-session` — the same header pi's
    * opencode providers send. Without it the free tier answers
    * `FreeTierError: can only be used from within OpenCode`. Both Zen rows,
    * which share the one backend and the one key.
@@ -96,8 +98,20 @@ export interface ProviderPreset {
    * `x-opencode-project` (opencode's own user/project identities, which a
    * pasted key doesn't carry). The session header is the one the free-tier
    * gate reads.
+   *
+   * The ChatGPT backend reads `session-id`, and keys its prompt cache on it
+   * (with `responsesCacheKey`). @providerkit/core's chatgpt preset sends the
+   * same pair (0.16.0).
    */
-  sessionHeader?: true;
+  sessionHeader?: "x-opencode-session" | "session-id";
+  /**
+   * Responses-shape only: the conversation id also goes out as
+   * `prompt_cache_key`. The ChatGPT backend shards its prompt cache by it, so
+   * without it a conversation's turns land on different shards and the prefix
+   * they re-send misses. Only ChatGPT: OpenCode's Responses shelf was never
+   * checked with it.
+   */
+  responsesCacheKey?: true;
   /**
    * Models on this endpoint that don't speak the preset's own shape. OpenCode's
    * gateway serves each model family on its own wire endpoint — GPT/Grok/
@@ -179,6 +193,8 @@ export const PRESETS: ProviderPreset[] = [
     auth: "oauth",
     paired: true,
     inlineToolImages: true,
+    sessionHeader: "session-id",
+    responsesCacheKey: true,
     color: "#10A37F",
     icon: "openai",
   },
@@ -379,7 +395,7 @@ export const PRESETS: ProviderPreset[] = [
       "gpt-5.4",
     ],
     apiKeyUrl: "https://opencode.ai/auth",
-    sessionHeader: true,
+    sessionHeader: "x-opencode-session",
     // Per OpenCode's Zen docs: GPT/Grok/Muse-Spark live on /responses,
     // Claude/Qwen on /messages. (Gemini lives on its own Google endpoint,
     // which this extension has no adapter for — those ids stay on chat
@@ -456,7 +472,7 @@ export const PRESETS: ProviderPreset[] = [
       "mimo-v2.5",
     ],
     apiKeyUrl: "https://opencode.ai/auth",
-    sessionHeader: true,
+    sessionHeader: "x-opencode-session",
     // Per OpenCode's Go docs, with pi's correction: pi reroutes minimax-m2.7
     // and qwen3.5/3.6-plus to chat completions (their Go endpoints want Bearer
     // on /chat/completions despite what models.dev claims), so only the ids

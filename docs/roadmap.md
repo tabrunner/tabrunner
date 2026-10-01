@@ -356,13 +356,6 @@ element — a real diff, on every guarded call, and a much bigger hammer than th
 The exposure is narrow (batching a click on a virtualized row inside one turn) and predates the
 guard. Revisit if a real run gets bitten.
 
-**`prompt_cache_key` on the responses shape** — codex-rs sends its thread id as a routing hint so a
-conversation keeps landing on the machine holding its cache. We have no conversation id at the
-adapter (`ChatProvider.stream` takes messages, tools, signal), so it would cost either an interface
-change across all three shapes or a hash of the system prompt standing in for one. Automatic prefix
-caching already works without it, the gain is affinity at the margin, and we have no way to A/B it —
-so: only if the cache telemetry shows ChatGPT-shape hit rates lagging the Anthropic ones.
-
 **OAuth 2.1 for remote MCP servers** — the client half takes static per-server headers today; the
 spec-complete flow (dynamic client registration + PKCE + refresh) slots in behind the same storage
 shape when someone points TabRunner at a server that demands it.
