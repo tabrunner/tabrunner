@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { dataPolicyConsentUrl, googleRetryAfterMs, sessionHeaders } from "../http";
+import {
+  dataPolicyConsentUrl,
+  envelopeProviderError,
+  googleRetryAfterMs,
+  sessionHeaders,
+} from "../http";
+import { isRetryable } from "../types";
 
 describe("sessionHeaders", () => {
   it("sends OpenCode's routing header on Zen turns carrying a conversation", () => {
@@ -61,5 +67,32 @@ describe("googleRetryAfterMs", () => {
   it("names no wait when the body carries none", () => {
     expect(googleRetryAfterMs('{"error":{"message":"boom"}}')).toBeUndefined();
     expect(googleRetryAfterMs("not json")).toBeUndefined();
+  });
+});
+
+describe("envelopeProviderError", () => {
+  it("tells a spent ChatGPT window when it resets, now that it reads as quota", () => {
+    // The codex backend's 429 for a spent plan window. @providerkit/core 0.16
+    // names it `quota` (it was `rate` by status before), and the generic quota
+    // line has no reset time — the one thing a subscriber needs to hear.
+    const body = JSON.stringify({
+      error: {
+        type: "usage_limit_reached",
+        message: "The usage limit has been reached",
+        resets_in_seconds: 2 * 3600,
+      },
+    });
+    const error = envelopeProviderError({ id: "chatgpt", name: "ChatGPT" }, 429, body);
+    expect(error.kind).toBe("quota");
+    expect(error.message).toContain("hit your 5-hour usage limit — it resets in 2 hours");
+    expect(isRetryable(error)).toBe(false);
+  });
+
+  it("keeps the plain quota line when no window names a reset", () => {
+    const body =
+      '{"error":{"message":"You exceeded your current quota","type":"insufficient_quota"}}';
+    const error = envelopeProviderError({ id: "openai", name: "OpenAI" }, 429, body);
+    expect(error.kind).toBe("quota");
+    expect(error.message).toContain("is out of usage");
   });
 });

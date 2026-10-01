@@ -1096,6 +1096,7 @@
     "kindNetworkOffline": "You're offline — the request to {{provider}} never left this machine. Reconnect, then Retry",
     "kindNetworkHost": "Couldn't reach {{provider}} at {{host}} — the request never left this machine. Check your connection, any VPN or blocker in the way, and the base URL",
     "kindNetwork": "Couldn't reach {{provider}} — the request never left this machine. Check your connection, and any VPN or blocker in the way",
+    "kindStreamCut": "{{provider}} stopped partway through its reply — the connection closed before the answer was done. Retry, or pick another model if it keeps happening",
     "compactEmpty": "The model returned an empty summary, so nothing was compacted. Try again, or start a new chat to reset the context.",
     "oauthRefreshExpired": "Your {{name}} sign-in expired and couldn't be renewed — sign in again in Settings.",
     "signInFailed": "Sign-in didn't go through — {{detail}}",

@@ -1096,6 +1096,7 @@
     "kindNetworkOffline": "Estás sin conexión — la petición a {{provider}} ni salió de este equipo. Reconéctate y reintenta",
     "kindNetworkHost": "No se pudo conectar con {{provider}} ({{host}}) — la petición ni salió de este equipo. Revisa la conexión, alguna VPN o bloqueador de por medio, y la URL base",
     "kindNetwork": "No se pudo conectar con {{provider}} — la petición ni salió de este equipo. Revisa la conexión y cualquier VPN o bloqueador de por medio",
+    "kindStreamCut": "{{provider}} dejó la respuesta a medias — la conexión se cerró antes de terminar. Inténtalo de nuevo o elige otro modelo si sigue pasando",
     "compactEmpty": "El modelo devolvió un resumen vacío, así que no se compactó nada. Inténtalo otra vez, o empieza un chat nuevo para reiniciar el contexto.",
     "oauthRefreshExpired": "Tu sesión de {{name}} caducó y no se pudo renovar — inicia sesión de nuevo en Configuración.",
     "signInFailed": "El inicio de sesión no salió bien — {{detail}}",

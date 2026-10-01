@@ -76,12 +76,22 @@ export function dataPolicyConsentUrl(text: string): string | undefined {
 }
 
 /**
- * The rate-limit lead line. "Try again in a moment" is only honest for a
- * per-minute throttle — when the response names a subscription window (Claude
- * OAuth 5-hour/weekly via headers, ChatGPT via the body) or any reset time,
- * say when it actually resets.
+ * The lead line for a rate or quota answer. "Try again in a moment" is only
+ * honest for a per-minute throttle — when the response names a subscription
+ * window (Claude OAuth 5-hour/weekly via headers, ChatGPT via its `x-codex-*`
+ * headers and the body) or any reset time, say when it actually resets.
+ *
+ * A spent window is as often `quota` as `rate`: the classifier names ChatGPT's
+ * `usage_limit_reached` 429 a quota, and that is the answer whose reset time a
+ * subscriber most needs. Without a window the quota line stands — a drained
+ * balance has no reset to name.
  */
-function rateLimitLine(label: string, reset: RateLimitReset, now: number): string {
+function limitLine(
+  label: string,
+  kind: "rate" | "quota",
+  reset: RateLimitReset,
+  now: number,
+): string {
   if (reset.window && reset.resetAtMs !== undefined) {
     return i18n.t("errors.kindRateWindow", {
       provider: label,
@@ -89,6 +99,7 @@ function rateLimitLine(label: string, reset: RateLimitReset, now: number): strin
       reset: formatResetRelative(reset.resetAtMs, now),
     });
   }
+  if (kind === "quota") return i18n.t(ERROR_KIND_KEYS.quota, { provider: label });
   if (reset.resetAtMs !== undefined) {
     return i18n.t("errors.kindRateRetry", {
       provider: label,
@@ -145,8 +156,8 @@ function providerErrorMessage(
   const key = ERROR_KIND_KEYS[kind];
   if (key) {
     const line =
-      kind === "rate"
-        ? rateLimitLine(label, reset, now)
+      kind === "rate" || kind === "quota"
+        ? limitLine(label, kind, reset, now)
         : i18n.t(kind === "auth" && provider.auth ? "errors.kindAuthSignedIn" : key, {
             provider: label,
           });
@@ -186,6 +197,20 @@ export function networkError(provider: ProviderIdentity, url?: string): Provider
         ? i18n.t("errors.kindNetworkHost", { provider: label, host })
         : i18n.t("errors.kindNetwork", { provider: label });
   return new ProviderError(message, 0, "network");
+}
+
+/**
+ * A reply that stopped before its end: the stream closed without the signal
+ * that says the turn is over (@providerkit/core's `streamCut`). Still
+ * `network`, so the loop retries it while nothing has been shown, but with a
+ * line of its own — the request did leave, which is what the network lines deny.
+ */
+export function streamCutError(provider: ProviderIdentity): ProviderError {
+  return new ProviderError(
+    i18n.t("errors.kindStreamCut", { provider: providerDisplayName(provider) }),
+    0,
+    "network",
+  );
 }
 
 /** The host worth naming, or nothing — a URL we can't parse says nothing useful. */
