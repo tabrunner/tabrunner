@@ -1,7 +1,11 @@
 import { createLogger } from "@/lib/logger";
 import { truncateTo } from "@/lib/format";
 import { createProvider } from "@/modules/providers/factory";
-import type { ChatMessage, ResolvedProviderConfig } from "@/modules/providers/types";
+import {
+  ProviderError,
+  type ChatMessage,
+  type ResolvedProviderConfig,
+} from "@/modules/providers/types";
 import {
   conversationTitle,
   isPartialTitle,
@@ -75,13 +79,21 @@ export async function maybeAutoTitle(
     for await (const delta of titler.stream(messages, [], bounded)) {
       if (delta.type === "text") title += delta.text;
     }
-    if (!title.trim()) return;
+    // A reply that only thought is no title — keep the heuristic one, but say so.
+    if (!title.trim()) {
+      log.warn("auto-title came back empty — keeping the derived title");
+      return;
+    }
 
     await retitleIfDerived(conversationId, derived, title);
     log.info("auto-titled:", truncateTo(title.trim(), 60));
   } catch (e) {
     // A failed title is a null event — the heuristic title stays, and nothing
-    // about the run or the conversation should notice. Log and move on.
-    log.debug("auto-title skipped:", e instanceof Error ? e.message : String(e));
+    // about the run or the conversation should notice. But it is logged at
+    // warn, kind included: at debug a broken titler is invisible.
+    const message = e instanceof Error ? e.message : String(e);
+    const kind = e instanceof ProviderError && e.kind ? ` (${e.kind})` : "";
+    if (signal.aborted) log.debug("auto-title aborted:", message);
+    else log.warn(`auto-title failed${kind}:`, message);
   }
 }
