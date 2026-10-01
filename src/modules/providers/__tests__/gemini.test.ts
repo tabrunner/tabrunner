@@ -175,6 +175,56 @@ describe("gemini bridge stream", () => {
     expect(error).toBeInstanceOf(ProviderError);
     expect(isRetryable(error)).toBe(false);
   });
+
+  it("retries a stream core saw cut off before Gemini's finish reason", async () => {
+    // From @providerkit/core 0.16 a stream that closes without a finish throws
+    // `network`. That kind has no status and no body, so re-deriving it here
+    // landed on `unknown`: a bare "answered 0", never retried.
+    stubStream(200, nativeStream([{ candidates: [{ content: { parts: [{ text: "Half" }] } }] }]));
+
+    const error = await (async () => {
+      try {
+        for await (const delta of createGeminiProvider(geminiConfig()).stream(
+          [],
+          [],
+          new AbortController().signal,
+        )) {
+          void delta;
+        }
+      } catch (e) {
+        return e;
+      }
+      throw new Error("expected the stream to throw");
+    })();
+
+    expect(error).toBeInstanceOf(ProviderError);
+    expect((error as ProviderError).kind).toBe("network");
+    expect((error as ProviderError).message).toContain("stopped partway");
+    expect(isRetryable(error)).toBe(true);
+  });
+
+  it("names a request that never reached Gemini as a network failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    const error = await (async () => {
+      try {
+        for await (const delta of createGeminiProvider(geminiConfig()).stream(
+          [],
+          [],
+          new AbortController().signal,
+        )) {
+          void delta;
+        }
+      } catch (e) {
+        return e;
+      }
+      throw new Error("expected the stream to throw");
+    })();
+
+    expect((error as ProviderError).kind).toBe("network");
+    expect((error as ProviderError).message).toContain("generativelanguage.googleapis.com");
+    expect(isRetryable(error)).toBe(true);
+  });
 });
 
 describe("toCoreMessages", () => {

@@ -2,6 +2,7 @@ import type { ChatProvider, ChatMessage, ToolDef, Delta, ResolvedProviderConfig 
 import {
   createGeminiProvider as createCoreGeminiProvider,
   ProviderError as CoreProviderError,
+  isTransportFailure,
   parseToolArgs,
   toGeminiToolSchema,
   type ChatMessage as CoreMessage,
@@ -9,7 +10,7 @@ import {
   type ImagePart,
   type ToolDefinition as CoreTool,
 } from "@providerkit/core";
-import { envelopeProviderError, logCacheUsage } from "./http";
+import { envelopeProviderError, logCacheUsage, networkError, streamCutError } from "./http";
 import { ProviderError } from "./types";
 
 /**
@@ -224,12 +225,19 @@ export function createGeminiProvider(config: ResolvedProviderConfig): ChatProvid
  */
 function normalizeCoreError(config: ResolvedProviderConfig, e: unknown): unknown {
   if (!(e instanceof CoreProviderError)) return e;
+  // Core's kind stands wherever the envelope can't re-derive one. A `network`
+  // failure has no status and no body: read again from status 0 it lands on
+  // `unknown`, which is never retried. Core throws two — a request that never
+  // left, and (from 0.16) a stream that closed before Gemini's finish reason.
+  if (e.kind === "network") {
+    return isTransportFailure(e) ? networkError(config, config.baseUrl) : streamCutError(config);
+  }
   const status = e.status ?? 0;
   const enveloped = envelopeProviderError(
     { id: config.id, name: config.name },
     status,
     e.body ?? e.message,
-    { detail: e.message, shouldRetry: e.shouldRetry },
+    { detail: e.message, shouldRetry: e.shouldRetry, unknownAs: e.kind },
   );
   if (enveloped.retryAfterMs === undefined && e.retryAfterMs !== undefined) {
     return new ProviderError(
