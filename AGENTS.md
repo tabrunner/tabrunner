@@ -105,9 +105,10 @@ never reach the service-worker bundle.
   `pricing.ts`, see docs/agent/providers.md), storage, config UI. Adding a
   **keyed** provider is a data change in `presets.ts` and nothing else — its wire quirks
   ride on preset fields (`headers`, `inlineToolImages`, `supportsImages`, `effortDialect`,
-  `explicitNone`), never on an adapter branch. A **signed-in** one also gets its own `<vendor>-oauth.ts` and one entry in
-  `OAUTH_FLOWS`; that pair is the whole seam, and the registry is what stops a provider
-  being signable but not refreshable.
+  `explicitNone`), never on an adapter branch. A **signed-in** one is a `createAuthFlow` id from
+  `@providerkit/core/auth` (plus its `auth: "oauth"` preset) and one line in `CORE_FLOW` in
+  `oauth-flows.ts`; Claude is the one flow kept here (`claude-oauth.ts`). That map is the
+  whole seam, and it is what stops a provider being signable but not refreshable.
   **The vendor-neutral half lives in [`@providerkit/core`](https://providerkit.dev)** — error
   classification (`classifyHttp`, `isTransportFailure`), tool-argument salvage
   (`parseToolArgs`), rate-limit window parsing, SSE framing (`parseSseStream`), `apiUrl`.

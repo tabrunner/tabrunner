@@ -3,9 +3,10 @@ import {
   dataPolicyConsentUrl,
   envelopeProviderError,
   googleRetryAfterMs,
+  providerHeaders,
   sessionHeaders,
 } from "../http";
-import { isRetryable } from "../types";
+import { isRetryable, type ChatMessage } from "../types";
 
 describe("sessionHeaders", () => {
   it("sends OpenCode's routing header on Zen turns carrying a conversation", () => {
@@ -98,5 +99,19 @@ describe("envelopeProviderError", () => {
     const error = envelopeProviderError({ id: "openai", name: "OpenAI" }, 429, body);
     expect(error.kind).toBe("quota");
     expect(error.message).toContain("is out of usage");
+  });
+});
+
+describe("providerHeaders", () => {
+  it("bills a typed turn to the user and a tool-result turn to the agent on Copilot", () => {
+    // One premium request per user turn; the run's own follow-ups ride free.
+    const typed: ChatMessage[] = [{ role: "user", content: "hi" }];
+    const followUp: ChatMessage[] = [
+      ...typed,
+      { role: "tool_results", content: "", toolResults: [] },
+    ];
+    expect(providerHeaders("github-copilot", typed)["X-Initiator"]).toBe("user");
+    expect(providerHeaders("github-copilot", followUp)["X-Initiator"]).toBe("agent");
+    expect(providerHeaders("github-copilot", typed)["Editor-Version"]).toBe("TabRunner/0.0.0-test");
   });
 });

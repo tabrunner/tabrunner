@@ -9,6 +9,7 @@ import type {
 import { apiUrl, openRouterCostUsd, parseToolArgs, withoutPatterns } from "@providerkit/core";
 import { logCacheUsage, sessionHeaders, streamFrameError, streamSse } from "./http";
 import { PRESETS } from "./presets";
+import { ensureProviderCredential } from "./credential";
 import { isRecord } from "@/shared/types";
 
 /**
@@ -31,9 +32,11 @@ import { isRecord } from "@/shared/types";
  * The one genuine fork is what a tool result does with its images — see
  * `inlineToolImages` on the preset.
  */
-export function createResponsesProvider(config: ResolvedProviderConfig): ChatProvider {
+export function createResponsesProvider(base: ResolvedProviderConfig): ChatProvider {
   return {
     async *stream(messages, tools, signal): AsyncIterable<Delta> {
+      // Per request, not per run: a token that expires mid-run is renewed on the next turn.
+      const config = await ensureProviderCredential(base);
       const headers: Record<string, string> = {
         Authorization: `Bearer ${config.apiKey}`,
         // Gateway rows routed here (OpenCode Zen/Go GPT models) carry the

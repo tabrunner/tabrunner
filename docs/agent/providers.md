@@ -107,7 +107,7 @@ The load-bearing details of talking to each provider shape. Read this when a tas
   `POST {base}/responses`: the ChatGPT subscription backend, which exposes no
   chat-completions surface, and Meta Muse. Auth is a Bearer token either way; ChatGPT adds
   the `ChatGPT-Account-Id` header (extracted from the JWT at sign-in as
-  `OAuthCredential.chatgptAccountId`; re-extracted on refresh, so it never goes stale) and
+  `Credential.chatgptAccountId`; re-extracted on refresh, so it never goes stale) and
   nobody else carries one. Reasoning (`reasoning_summary_text`/`reasoning_text` deltas) is
   displayed but NEVER replayed — the ChatGPT backend requires it blanked, and the published
   shape makes reasoning items optional, so omitting them is correct at both ends.
@@ -121,7 +121,7 @@ The load-bearing details of talking to each provider shape. Read this when a tas
   for a browser agent is most turns.
 - **A credential can pin its own endpoint and its own headers.** Two things no preset can
   state up front, both added for GitHub Copilot and both generic:
-  `OAuthCredential.baseUrl` is the host a token is good for when the vendor picks one per
+  `Credential.baseUrl` is the host a token is good for when the vendor picks one per
   account (Copilot names it in the minted token and refuses that token anywhere else);
   `ensureProviderCredential` applies it alongside the bearer, so no adapter learns the base
   URL can move. `ProviderPreset.headers(turn)` builds the vendor's extra request headers

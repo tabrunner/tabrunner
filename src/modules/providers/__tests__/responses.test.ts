@@ -4,6 +4,11 @@ import { ProviderError, isRetryable, type ResolvedProviderConfig } from "../type
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
+// The seam is tested in credential.test.ts; here the config is already resolved.
+vi.mock("../credential", () => ({
+  ensureProviderCredential: (config: unknown) => Promise.resolve(config),
+}));
+
 function makeConfig(over: Partial<ResolvedProviderConfig> = {}): ResolvedProviderConfig {
   return {
     id: "chatgpt",

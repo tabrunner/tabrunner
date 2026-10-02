@@ -7,7 +7,8 @@ import { OAuthSignIn, SIGN_IN_DONE_MS } from "./OAuthSignIn";
 import { PRESETS, providerName } from "../presets";
 import { checkCredential, writeModelsCache } from "../models";
 import { splitErrorDetail } from "@/modules/conversation/error-detail";
-import type { OAuthCredential, ProviderConfig, ProviderShape } from "../types";
+import type { ProviderConfig, ProviderShape } from "../types";
+import type { Credential } from "@providerkit/core/auth";
 import { Select } from "@/components/Select";
 import { TextField } from "@/components/TextField";
 import { PasswordField } from "@/components/PasswordField";
@@ -80,7 +81,7 @@ export function ProviderForm({
    * Write the provider row. Throws — the sign-in card and the submit button
    * each word their own failure.
    */
-  const save = async (authOverride?: OAuthCredential): Promise<string> => {
+  const save = async (authOverride?: Credential): Promise<string> => {
     return add({
       // Unseeded custom → undefined → the store assigns custom-<ts>.
       id: preset?.id ?? existing?.id,
@@ -103,7 +104,7 @@ export function ProviderForm({
    * moment before the dialog closes over it. Shared by both sign-in paths —
    * the subscription rows, and the keyed row that can mint its own key.
    */
-  const finishSignIn = async (credential: OAuthCredential) => {
+  const finishSignIn = async (credential: Credential) => {
     const id = await save(credential);
     setTimeout(() => onSaved?.(id), SIGN_IN_DONE_MS);
   };

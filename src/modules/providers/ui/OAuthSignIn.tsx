@@ -2,12 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/Button";
 import { ProviderIcon } from "./ProviderIcon";
-import { OAUTH_FLOWS } from "../oauth-flows";
+import { authFlowFor, signInErrorMessage } from "../oauth-flows";
 import type { SignInPrompt } from "../oauth-flows";
 import { providerName } from "../presets";
 import type { ProviderPreset } from "../presets";
-import { SignInError } from "../types";
-import type { OAuthCredential, SignInFailure } from "../types";
+import { SignInError, type Credential, type SignInFailure } from "@providerkit/core/auth";
 import { splitErrorDetail } from "@/modules/conversation/error-detail";
 
 /**
@@ -26,7 +25,7 @@ type Phase =
   | { step: "error"; message: string };
 
 /**
- * Sign-in card for any provider with a flow in OAUTH_FLOWS. TabRunner opens the
+ * Sign-in card for any provider with a flow in `authFlowFor`. TabRunner opens the
  * vendor's approval page, captures the answer, and saves the credential the
  * moment it arrives — approving that page is the whole flow.
  *
@@ -47,9 +46,9 @@ export function OAuthSignIn({
   /** The preset being connected — names the copy, and marks the connected card. */
   preset: ProviderPreset;
   /** Existing credential — the button then offers re-authenticating. */
-  signedIn?: OAuthCredential;
+  signedIn?: Credential;
   /** Persists the credential; a rejection is shown as the sign-in's failure. */
-  onSignedIn: (credential: OAuthCredential) => Promise<void>;
+  onSignedIn: (credential: Credential) => Promise<void>;
   /**
    * Replaces the line under the button. The default says the sign-in spends a
    * subscription, which is true of every `auth: "oauth"` row and false of a
@@ -70,7 +69,7 @@ export function OAuthSignIn({
   useEffect(() => () => abort.current?.abort(), []);
 
   const start = useCallback(async () => {
-    const flow = OAUTH_FLOWS[presetId];
+    const flow = authFlowFor(presetId);
     if (!flow) return; // Unreachable: only `auth`/`signIn` presets render this card.
     abort.current?.abort();
     const controller = new AbortController();
@@ -92,7 +91,7 @@ export function OAuthSignIn({
         else setPhase({ step: "failed", reason: e.reason });
         return;
       }
-      setPhase({ step: "error", message: e instanceof Error ? e.message : String(e) });
+      setPhase({ step: "error", message: signInErrorMessage(e) });
     }
   }, [presetId, onSignedIn]);
 

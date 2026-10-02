@@ -1,16 +1,15 @@
-import type { OAuthCredential } from "./types";
 import {
   accountFromToken,
-  captureRedirect,
+  asRecord,
   generatePKCE,
   postToken,
   randomState,
   str,
   toCredential,
-} from "./oauth";
-import { createLogger } from "@/lib/logger";
-
-const log = createLogger("claude-oauth");
+  type AuthFlow,
+  type AuthHost,
+  type Credential,
+} from "@providerkit/core/auth";
 
 /**
  * Anthropic's Claude Code OAuth surface, all of it. The client id is the one
@@ -60,72 +59,54 @@ export function buildAuthorizeUrl(challenge: string, state: string): string {
 }
 
 /**
- * Full sign-in, start to finish: open the approval page, capture the localhost
- * redirect, exchange the code for tokens. `onPending` hands the UI the
- * authorize URL so it can offer a manual link if the tab never opened.
+ * Claude's sign-in and renewal. Not in `createAuthFlow`: the package ships the
+ * other vendors' flows, and this one stays here.
  */
-export async function signInWithClaude(
-  signal: AbortSignal,
-  onPending?: (authorizeUrl: string) => void,
-): Promise<OAuthCredential> {
-  const { verifier, challenge } = await generatePKCE();
-  // Its own random value, never the PKCE verifier: the verifier is the secret
-  // half of the exchange, and a state rides through the URL bar, browser
-  // history, and any extension watching the tab. (Anthropic's own extension
-  // sends a base64url state to this same endpoint, so the charset was never
-  // what broke an earlier attempt — the cause of that "Invalid request format"
-  // is still unknown, and hex simply avoids the question.)
-  const state = randomState();
-  const authorizeUrl = buildAuthorizeUrl(challenge, state);
-  onPending?.(authorizeUrl);
+export function claudeFlow(host: AuthHost): AuthFlow {
+  const token = (params: Record<string, string>, fallbackRefresh?: string) =>
+    postToken(host, CLAUDE_OAUTH.tokenUrl, params, { encode: "json" }).then((body) =>
+      withAccount(body, fallbackRefresh),
+    );
 
-  const code = await captureRedirect({
-    authorizeUrl,
-    redirectUri: CLAUDE_OAUTH.redirectUri,
-    state,
-    signal,
-  });
-  return exchangeCode(code, state, verifier);
-}
-
-/** Trade the authorization code for a token pair. */
-export async function exchangeCode(
-  code: string,
-  state: string,
-  verifier: string,
-): Promise<OAuthCredential> {
-  const body = await postToken(
-    CLAUDE_OAUTH.tokenUrl,
-    {
-      grant_type: "authorization_code",
-      client_id: CLAUDE_OAUTH.clientId,
-      code,
-      state,
-      redirect_uri: CLAUDE_OAUTH.redirectUri,
-      code_verifier: verifier,
+  return {
+    async signIn(signal, onPrompt) {
+      const { verifier, challenge } = await generatePKCE();
+      // Its own random value, never the PKCE verifier: the verifier is the secret
+      // half of the exchange, and a state rides through the URL bar, browser
+      // history, and any extension watching the tab.
+      const state = randomState();
+      const authorizeUrl = buildAuthorizeUrl(challenge, state);
+      onPrompt({ url: authorizeUrl });
+      const code = await host.captureRedirect({
+        authorizeUrl,
+        redirectUri: CLAUDE_OAUTH.redirectUri,
+        state,
+        signal,
+      });
+      return token({
+        grant_type: "authorization_code",
+        client_id: CLAUDE_OAUTH.clientId,
+        code,
+        state,
+        redirect_uri: CLAUDE_OAUTH.redirectUri,
+        code_verifier: verifier,
+      });
     },
-    { encode: "json" },
-  );
-  return withAccount(body);
-}
-
-/** Trade a refresh token for a fresh pair. Anthropic rotates the access token; keep the old refresh when it omits one. */
-export async function refreshCredential(credential: OAuthCredential): Promise<OAuthCredential> {
-  const body = await postToken(
-    CLAUDE_OAUTH.tokenUrl,
-    {
-      grant_type: "refresh_token",
-      client_id: CLAUDE_OAUTH.clientId,
-      refresh_token: credential.refreshToken,
-    },
-    { encode: "json" },
-  );
-  log.info("token refreshed");
-  return withAccount(body, credential.refreshToken);
+    // Anthropic rotates the access token; keep the old refresh when it omits one.
+    refresh: (credential) =>
+      token(
+        {
+          grant_type: "refresh_token",
+          client_id: CLAUDE_OAUTH.clientId,
+          refresh_token: credential.refreshToken,
+        },
+        credential.refreshToken,
+      ),
+  };
 }
 
 /** The credential a token response describes, named after the account it belongs to. */
-function withAccount(body: Record<string, unknown>, fallbackRefresh?: string): OAuthCredential {
+function withAccount(body: Record<string, unknown>, fallbackRefresh?: string): Credential {
   const credential = toCredential(body, fallbackRefresh);
   const account =
     accountFromResponse(body) ?? accountFromToken(credential.accessToken, "email", "sub");
@@ -134,8 +115,6 @@ function withAccount(body: Record<string, unknown>, fallbackRefresh?: string): O
 
 /** The account the token response itself names, if any. */
 function accountFromResponse(body: Record<string, unknown>): string | undefined {
-  const account = body.account;
-  if (typeof account !== "object" || account === null) return undefined;
-  const record = account as Record<string, unknown>;
-  return str(record.email_address)?.toLowerCase() ?? str(record.uuid);
+  const account = asRecord(body.account);
+  return str(account.email_address)?.toLowerCase() ?? str(account.uuid);
 }

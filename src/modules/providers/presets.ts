@@ -1,6 +1,7 @@
 import type { EffortDialect } from "@providerkit/core";
 import type { ProviderShape } from "./types";
-import { copilotHeaders } from "./github-oauth";
+import { copilotHeaders } from "@providerkit/core/auth";
+import { appName } from "./oauth";
 import { i18n } from "@/i18n";
 
 /** Preset provider — just data, no code. Adding a provider starts here. */
@@ -243,7 +244,7 @@ export const PRESETS: ProviderPreset[] = [
   {
     // Muse, reached with the Meta subscription. Two hops: an identity token
     // from the device flow, then a Model API key minted from it — see
-    // meta-oauth.ts. Responses shape, but the published one, not codex's.
+    // the Meta flow in @providerkit/core/auth. Responses shape, but the published one, not codex's.
     id: "meta",
     name: "Meta Muse",
     shape: "responses",
@@ -255,7 +256,7 @@ export const PRESETS: ProviderPreset[] = [
   },
   {
     // Copilot, reached with the GitHub subscription. Two hops to a credential
-    // and a base URL the account's own plan names — see github-oauth.ts. The
+    // and a base URL the account's own plan names — see the Copilot flow in @providerkit/core/auth. The
     // model list is live (`GET /models`), filtered to what the account can
     // actually serve (see models.ts) — so these are only the cold start, and
     // every one must be servable over chat completions: the GPT models that
@@ -267,7 +268,7 @@ export const PRESETS: ProviderPreset[] = [
     baseUrl: "https://api.individual.githubcopilot.com",
     models: ["gpt-5.5", "gpt-5.4-mini", "gpt-5.3-codex", "claude-sonnet-5", "claude-opus-4.8"],
     auth: "oauth",
-    headers: copilotHeaders,
+    headers: (turn) => copilotHeaders(appName(), turn),
     color: "#24292F",
     icon: "github",
   },
@@ -372,7 +373,7 @@ export const PRESETS: ProviderPreset[] = [
     apiKeyUrl: "https://openrouter.ai/settings/keys",
     // Signing in mints a key on the same account, billed from the same
     // credits — a shortcut past the console, not a second way to pay, so it
-    // stays one row. See openrouter-oauth.ts.
+    // stays one row. See the OpenRouter flow in @providerkit/core/auth.
     signIn: true,
     effortDialect: "openrouter",
     // App attribution for OpenRouter's rankings — public, not secret. Rides

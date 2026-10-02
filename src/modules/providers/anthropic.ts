@@ -7,6 +7,7 @@ import type {
   ToolDef,
 } from "./types";
 import { REASONING_EFFORTS } from "./types";
+import { ensureProviderCredential } from "./credential";
 import { apiUrl, parseToolArgs } from "@providerkit/core";
 import {
   anthropicHeaders,
@@ -28,9 +29,11 @@ const CLAUDE_IDENTITY = "You are a Claude agent, built on Anthropic's Claude Age
 const TOOL_PREFIX = "custom_";
 
 /** Anthropic-shape adapter — streams SSE from POST /v1/messages. */
-export function createAnthropicProvider(config: ResolvedProviderConfig): ChatProvider {
+export function createAnthropicProvider(base: ResolvedProviderConfig): ChatProvider {
   return {
     async *stream(messages, tools, signal): AsyncIterable<Delta> {
+      // Per request, not per run: a token that expires mid-run is renewed on the next turn.
+      const config = await ensureProviderCredential(base);
       let toolCallBuffer: { id: string; name: string; args: string } | null = null;
       let freshInput = 0;
       let cacheRead = 0;
