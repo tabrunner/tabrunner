@@ -433,12 +433,20 @@ the composer's engine picker, first-run onboarding). Adding a provider is a data
   entry is the add form's default, so the subscription rows lead: a plan the user already
   pays for beats sending them to a billing console before their first task.
 
-Sign-in is shared too: `oauth.ts` owns PKCE, the redirect capture, and the token POST; the
-per-vendor files own only client ids, authorize params, and which claim names the account;
-`oauth-flows.ts` is the ONE registry (`signIn` + `refresh` per preset id) that both the
-sign-in card and the credential seam read, so a provider can't be half-wired;
-`ui/OAuthSignIn` is the one card for all of them, its copy parameterized on the display
-name and the vendor's host. **A token in the body — not a 2xx — is what makes a sign-in
+Sign-in is shared too, and lives in `@providerkit/core/auth`: the protocol (PKCE, the token
+POST, device codes, each vendor's client id and authorize params, the account claim) and
+`tokenSource`, which refreshes once however many callers ask. What stays here is what the
+package cannot do in a browser: `oauth.ts` holds `captureRedirect` (a `tabs.onUpdated`
+watcher, because an MV3 worker can't listen on a port), and `oauth-flows.ts` wires the
+package to Chrome (`openUrl` = `chrome.tabs.create`, `appName` = `TabRunner/<version>`) and
+is the ONE lookup (`authFlowFor`: `signIn` + `refresh` per preset id) that both the sign-in
+card and the credential seam read, so a provider can't be half-wired. `credential.ts` makes
+one `tokenSource` per provider whose `load` reads storage on every call: a cached copy would
+spend a refresh token that has already rotated. The adapters call `ensureProviderCredential`
+per request, so a token that expires mid-run (Copilot's lasts 25 minutes) is renewed on the
+next turn. Package error codes map onto our `errors.signIn*` and `oauthRefreshExpired` copy
+(`signInErrorMessage`, `credential.ts`). `ui/OAuthSignIn` is the one card for all of them, its
+copy parameterized on the display name and the vendor's host. **A token in the body — not a 2xx — is what makes a sign-in
 successful**: vendors answer 429 with a usable credential (a plan over its usage limit),
 and discarding it would force a pointless re-login. A pasted key is verified before it's
 stored (`isKeyRejected`, one model listing); only a flat rejection blocks the save, since

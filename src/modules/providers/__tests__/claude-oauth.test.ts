@@ -1,12 +1,26 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { buildAuthorizeUrl, exchangeCode, refreshCredential } from "../claude-oauth";
-
-// Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
+import { describe, it, expect } from "vitest";
+import type { AuthHost } from "@providerkit/core/auth";
+import { buildAuthorizeUrl, claudeFlow } from "../claude-oauth";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-afterEach(() => vi.restoreAllMocks());
+/** A host whose fetch answers once and records the request. */
+function hostAnswering(body: unknown) {
+  const calls: { url: string; body: Record<string, string> }[] = [];
+  const host: AuthHost = {
+    appName: "TabRunner/test",
+    openUrl: () => {},
+    captureRedirect: () => Promise.resolve("code-1"),
+    fetchImpl: (url, init) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return Promise.resolve(json(body));
+    },
+  };
+  return { host, calls };
+}
+
+const TOKENS = { access_token: "at", refresh_token: "rt", expires_in: 3600 };
 
 describe("buildAuthorizeUrl", () => {
   it("carries the OAuth + PKCE params on the claude.ai authorize endpoint", () => {
@@ -27,55 +41,27 @@ describe("buildAuthorizeUrl", () => {
   });
 });
 
-describe("exchangeCode", () => {
-  it("posts to the API host, not the console frontend", async () => {
+describe("claudeFlow", () => {
+  it("signs in against the API host and names the account from the response", async () => {
     // platform.claude.com is a web frontend behind bot protection: an extension
-    // fetch lands there with a chrome-extension:// Origin and comes back 429
-    // with nothing wrong on the account. Every current client uses this host.
-    const mock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(json({ access_token: "at", refresh_token: "rt", expires_in: 3600 }));
-    await exchangeCode("code-1", "state-y", "verifier-x");
-    expect(mock.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/oauth/token");
-  });
-
-  it("trades a code for a credential with the refresh skew baked in", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      json({ access_token: "at", refresh_token: "rt", expires_in: 3600 }),
+    // fetch lands there with a chrome-extension:// Origin and comes back 429.
+    const { host, calls } = hostAnswering({
+      ...TOKENS,
+      account: { email_address: "Gus@Example.com" },
+    });
+    const prompts: string[] = [];
+    const credential = await claudeFlow(host).signIn(new AbortController().signal, ({ url }) =>
+      prompts.push(url),
     );
-    const before = Date.now();
-    const credential = await exchangeCode("code-1", "state-y", "verifier-x");
-    expect(credential).toMatchObject({ accessToken: "at", refreshToken: "rt" });
-    // 1h lifetime, 5min skew → ~55min out, never the raw hour.
-    expect(credential.expiresAt).toBeGreaterThan(before + 54 * 60_000);
-    expect(credential.expiresAt).toBeLessThan(before + 56 * 60_000);
+    expect(calls[0]?.url).toBe("https://api.anthropic.com/v1/oauth/token");
+    expect(calls[0]?.body).toMatchObject({ grant_type: "authorization_code", code: "code-1" });
+    expect(prompts[0]).toContain("https://claude.ai/oauth/authorize");
+    expect(credential).toMatchObject({ accessToken: "at", account: "gus@example.com" });
   });
 
-  it("reads the account name from the token response", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      json({
-        access_token: "at",
-        refresh_token: "rt",
-        expires_in: 3600,
-        account: { email_address: "Gus@Example.com" },
-      }),
-    );
-    const credential = await exchangeCode("code-1", "s", "v");
-    expect(credential.account).toBe("gus@example.com");
-  });
-
-  it("throws on an incomplete token response instead of a half-built credential", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ access_token: "at" }));
-    await expect(exchangeCode("c", "s", "v")).rejects.toThrow();
-  });
-});
-
-describe("refreshCredential", () => {
-  it("keeps the old refresh token when the response omits a new one", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      json({ access_token: "at-2", expires_in: 3600 }),
-    );
-    const next = await refreshCredential({
+  it("keeps the old refresh token when the refresh response omits a new one", async () => {
+    const { host } = hostAnswering({ access_token: "at-2", expires_in: 3600 });
+    const next = await claudeFlow(host).refresh({
       accessToken: "at-1",
       refreshToken: "rt-1",
       expiresAt: 0,

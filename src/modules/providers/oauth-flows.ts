@@ -1,107 +1,58 @@
-import type { OAuthCredential } from "./types";
-import type { DeviceEndpoint } from "./device-code";
-import { pollDeviceToken, requestDeviceCode } from "./device-code";
-import { refreshCredential as refreshClaude, signInWithClaude } from "./claude-oauth";
-import { refreshCredential as refreshChatGPT, signInWithChatGPT } from "./chatgpt-oauth";
 import {
-  KIMI_DEVICE,
-  refreshCredential as refreshKimi,
-  withAccount as kimiCredential,
-} from "./kimi-oauth";
-import {
-  XAI_DEVICE,
-  refreshCredential as refreshXai,
-  withAccount as xaiCredential,
-} from "./xai-oauth";
-import {
-  GITHUB_DEVICE,
-  refreshCredential as refreshCopilot,
-  withAccount as copilotCredential,
-} from "./github-oauth";
-import {
-  META_DEVICE,
-  refreshCredential as refreshMeta,
-  withAccount as metaCredential,
-} from "./meta-oauth";
-import { refreshCredential as refreshOpenRouter, signInWithOpenRouter } from "./openrouter-oauth";
+  createAuthFlow,
+  type AuthFlow,
+  type AuthFlowId,
+  type AuthHost,
+} from "@providerkit/core/auth";
+import { ProviderError } from "@providerkit/core";
+import { i18n } from "@/i18n";
+import { claudeFlow } from "./claude-oauth";
+import { appName, captureRedirect } from "./oauth";
 
-/** What the user must do on the vendor's page to finish signing in. */
-export interface SignInPrompt {
-  /** The approval page — opened in a tab, and offered as a link if that was blocked. */
-  url: string;
-  /** Device-code flows only: the code that page asks for. */
-  userCode?: string;
-}
+export type { SignInPrompt } from "@providerkit/core/auth";
 
-/** A signed-in provider's two operations — sign in once, then renew forever. */
-export interface OAuthFlow {
-  signIn: (
-    signal: AbortSignal,
-    onPrompt: (prompt: SignInPrompt) => void,
-  ) => Promise<OAuthCredential>;
-  refresh: (credential: OAuthCredential) => Promise<OAuthCredential>;
-}
+/** What the package asks of the browser: open a page, catch a redirect. */
+const HOST: AuthHost = {
+  get appName() {
+    return appName();
+  },
+  openUrl: (url) => void chrome.tabs.create({ url }),
+  captureRedirect,
+};
 
-/**
- * A device-code sign-in, start to finish: ask for the code, show it, open the
- * approval page, poll until the user approves. The protocol is in
- * device-code.ts; `toCredential` is the only vendor-specific half, and it earns
- * being a hook — GitHub and Meta both have another hop after the poll before
- * there is anything a request can carry.
- */
-function deviceSignIn(
-  endpoint: DeviceEndpoint,
-  toCredential: (body: Record<string, unknown>) => OAuthCredential | Promise<OAuthCredential>,
-): OAuthFlow["signIn"] {
-  return async (signal, onPrompt) => {
-    const prompt = await requestDeviceCode(endpoint);
-    onPrompt({ url: prompt.verificationUrl, userCode: prompt.userCode });
-    // The approval page, opened for them. If the browser blocks it, the code
-    // stays on screen as the fallback — that's why it's shown while we wait.
-    void chrome.tabs.create({ url: prompt.verificationUrl });
-    return toCredential(await pollDeviceToken(endpoint, prompt, signal));
-  };
-}
-
-/**
- * Every OAuth preset's flow, keyed by preset id. One registry, read by both the
- * sign-in card and the credential seam, so a provider can never be half-wired —
- * signable but not refreshable, or the reverse. Adding one is a single entry
- * here plus its `auth: "oauth"` preset.
- *
- * The vendor differences end up being exactly two: how the approval page is
- * reached, and whether it also shows a code.
- */
-export const OAUTH_FLOWS: Record<string, OAuthFlow> = {
-  claude: {
-    signIn: (signal, onPrompt) => signInWithClaude(signal, (url) => onPrompt({ url })),
-    refresh: refreshClaude,
-  },
-  chatgpt: {
-    signIn: (signal, onPrompt) => signInWithChatGPT(signal, (url) => onPrompt({ url })),
-    refresh: refreshChatGPT,
-  },
-  "kimi-plan": {
-    signIn: deviceSignIn(KIMI_DEVICE, (body) => kimiCredential(body)),
-    refresh: refreshKimi,
-  },
-  "xai-plan": {
-    signIn: deviceSignIn(XAI_DEVICE, (body) => xaiCredential(body)),
-    refresh: refreshXai,
-  },
-  "github-copilot": {
-    signIn: deviceSignIn(GITHUB_DEVICE, (body) => copilotCredential(body)),
-    refresh: refreshCopilot,
-  },
-  meta: {
-    signIn: deviceSignIn(META_DEVICE, (body) => metaCredential(body)),
-    refresh: refreshMeta,
-  },
+/** The package's id for each preset it signs in; `claude` is ours, see below. */
+const CORE_FLOW: Record<string, AuthFlowId> = {
+  chatgpt: "chatgpt",
+  "kimi-plan": "kimi-plan",
+  "xai-plan": "grok",
+  "github-copilot": "github-copilot",
+  meta: "meta",
   // Not a subscription row — OpenRouter's sign-in mints an ordinary API key on
   // the user's own account. It sits on the keyed preset as a second way to get
   // that key, which is why `openrouter` has no `auth: "oauth"`.
-  openrouter: {
-    signIn: (signal, onPrompt) => signInWithOpenRouter(signal, (url) => onPrompt({ url })),
-    refresh: refreshOpenRouter,
-  },
+  openrouter: "openrouter",
 };
+
+/**
+ * A preset's sign-in and renewal, or undefined for one that has none. The sign-in
+ * card and the credential seam both read it, so a provider can never be
+ * signable but not refreshable.
+ */
+export function authFlowFor(presetId: string): AuthFlow | undefined {
+  if (presetId === "claude") return claudeFlow(HOST);
+  const id = CORE_FLOW[presetId];
+  return id && createAuthFlow(id, HOST);
+}
+
+/**
+ * What to tell the user about a sign-in that failed. The package's own
+ * messages are English-only, so the ones with a fix get our translated copy;
+ * a refusal's message already carries the server's reason.
+ */
+export function signInErrorMessage(e: unknown): string {
+  if (!(e instanceof ProviderError)) return e instanceof Error ? e.message : String(e);
+  if (e.code === "token_incomplete") return i18n.t("errors.signInTokenResponse");
+  if (e.code === "device_response_invalid") return i18n.t("errors.signInDeviceResponse");
+  if (e.code === "token_refused" && e.status === 429) return i18n.t("errors.signInRateLimited");
+  return e.message;
+}

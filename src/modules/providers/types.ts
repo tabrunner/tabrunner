@@ -1,4 +1,5 @@
 import { isTransportFailure, type ErrorKind } from "@providerkit/core";
+import type { Credential } from "@providerkit/core/auth";
 
 /** Provider shape — determines wire format for API calls. */
 export type ProviderShape = "openai" | "anthropic" | "responses" | "gemini";
@@ -34,48 +35,6 @@ export const EFFORT_LABEL_KEYS = {
   max: "modelPicker.effort.max",
 } as const satisfies Record<ReasoningEffort, string>;
 
-/**
- * Tokens from a provider's OAuth sign-in, in place of a pasted key. Both
- * tokens rotate on every refresh, so a refresh always persists both.
- */
-export interface OAuthCredential {
-  accessToken: string;
-  refreshToken: string;
-  /**
-   * Epoch ms, already skewed early by REFRESH_SKEW_MS — treat it as "refresh
-   * at or after this", not as the server's true expiry.
-   */
-  expiresAt: number;
-  /** Display only, decoded from the token — names the signed-in account in the UI. */
-  account?: string;
-  /**
-   * The ChatGPT account the token belongs to, extracted from the JWT at sign-in.
-   * The Codex backend requires it as the `ChatGPT-Account-Id` header on every
-   * request; re-extracted on refresh (and kept from the old credential when the
-   * new token omits it), so the header can never go stale.
-   */
-  chatgptAccountId?: string;
-  /**
-   * The endpoint this credential is good for, when the vendor pins one per
-   * account instead of serving everyone from the preset's host. GitHub Copilot
-   * does: a token names the host of the plan that issued it, and the same
-   * token is refused anywhere else. Applied by the credential seam, so no
-   * adapter learns the base URL can move.
-   */
-  baseUrl?: string;
-}
-
-/** Why a sign-in ended without a credential — each wording is a different fix. */
-export type SignInFailure = "expired" | "denied" | "cancelled";
-
-/** Thrown by the per-vendor sign-in flows (device code, callback capture) so the UI can word each ending. */
-export class SignInError extends Error {
-  constructor(public readonly reason: SignInFailure) {
-    super(reason);
-    this.name = "SignInError";
-  }
-}
-
 /** A configured provider instance (stored in chrome.storage). */
 export interface ProviderConfig {
   id: string;
@@ -85,7 +44,7 @@ export interface ProviderConfig {
   /** Empty when the provider signs in instead — `auth` carries the credential. */
   apiKey: string;
   /** Present only for OAuth providers; absent means the apiKey is the credential. */
-  auth?: OAuthCredential;
+  auth?: Credential;
   /** Absent = auto — resolveProviderModel picks the newest model the endpoint serves. */
   model?: string;
   reasoningEffort?: ReasoningEffort;

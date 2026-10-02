@@ -1,6 +1,6 @@
 import { ensureProviderCredential } from "./credential";
 import { classifyHttp } from "@providerkit/core";
-import { str } from "./oauth";
+import { str } from "@providerkit/core/auth";
 import { providerDisplayName } from "./presets";
 import { ProviderError } from "./types";
 import type { ProviderConfig } from "./types";

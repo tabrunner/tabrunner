@@ -1,4 +1,5 @@
 import type { ChatProvider, ChatMessage, ToolDef, Delta, ResolvedProviderConfig } from "./types";
+import { ensureProviderCredential } from "./credential";
 import {
   apiUrl,
   effortParams,
@@ -20,9 +21,11 @@ import { PRESETS } from "./presets";
  * OpenAI-shape adapter — works with any OpenAI-compatible endpoint.
  * Streams SSE from POST /chat/completions.
  */
-export function createOpenAIProvider(config: ResolvedProviderConfig): ChatProvider {
+export function createOpenAIProvider(base: ResolvedProviderConfig): ChatProvider {
   return {
     async *stream(messages, tools, signal): AsyncIterable<Delta> {
+      // Per request, not per run: a token that expires mid-run is renewed on the next turn.
+      const config = await ensureProviderCredential(base);
       // Accumulate tool call args across chunks (OpenAI streams them in pieces)
       const toolCallAccumulators = new Map<number, { id: string; name: string; args: string }>();
 
