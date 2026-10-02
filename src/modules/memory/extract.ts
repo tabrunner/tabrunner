@@ -1,4 +1,8 @@
-import type { ChatMessage, ResolvedProviderConfig } from "@/modules/providers/types";
+import {
+  ProviderError,
+  type ChatMessage,
+  type ResolvedProviderConfig,
+} from "@/modules/providers/types";
 import { createProvider } from "@/modules/providers";
 import { createLogger, truncate } from "@/lib/logger";
 import {
@@ -171,6 +175,8 @@ export async function extractAndRemember(
     for await (const delta of extraction.stream(messages, [], bounded)) {
       if (delta.type === "text") reply += delta.text;
     }
+    // "none" is the expected answer; nothing at all (a reply that only thought) is not.
+    if (!reply.trim()) log.warn("extraction came back empty — nothing remembered");
 
     for (const fact of parseExtractedFacts(reply)) {
       const stored = await remember(fact.text, fact.site);
@@ -179,7 +185,8 @@ export async function extractAndRemember(
     }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    const kind = e instanceof ProviderError && e.kind ? ` (${e.kind})` : "";
     if (signal.aborted) log.debug("extraction aborted:", message);
-    else log.warn("extraction failed:", message);
+    else log.warn(`extraction failed${kind}:`, message);
   }
 }
