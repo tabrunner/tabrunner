@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   gates:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     # The ceiling is for a hang, not for a slow runner.
     timeout-minutes: 15
     steps:
