@@ -625,24 +625,24 @@
     "attachmentAlt": "Imagem anexada {{number}}",
     "enlargeTitle": "Ampliar imagem",
     "removeAttachment": "Remover {{token}}",
-    "attachFailed": "Não foi possível ler essa imagem — o formato pode não ser compatível. Copie novamente como PNG ou JPEG e cole outra vez.",
+    "attachFailed": "Não foi possível ler essa imagem. O formato pode não ser compatível. Copie de novo como PNG ou JPEG e cole outra vez.",
     "queue": "Enfileirar",
     "queueTitle": "Entra entre as próximas chamadas de ferramenta",
     "queuePlaceholder": "Adicione à tarefa em andamento…",
-    "queuedSteerTitle": "Na fila para a tarefa em andamento — entra entre as próximas chamadas de ferramenta. ↑ para editar.",
+    "queuedSteerTitle": "Na fila para a tarefa em andamento. Será recebida entre as próximas chamadas de ferramenta. ↑ para editar.",
     "queuedSteer": "Aguardando envio",
     "queuedSteerPosition": "Aguardando envio · nº {{position}}",
     "unqueueAria": "Descartar mensagem enfileirada",
-    "queueNoImages": "Imagens não podem entrar numa tarefa em andamento — enfileire o texto agora e cole a imagem na próxima tarefa.",
+    "queueNoImages": "Não é possível adicionar imagens a uma tarefa em andamento. Coloque o texto na fila agora e cole a imagem na próxima tarefa.",
     "pasteToken": "{{count}} linhas coladas",
-    "pasteHint": "Texto longo colado vira uma nota para manter o campo organizado — o texto completo ainda é enviado. Backspace apaga.",
-    "restrictedPageHint": "O Chrome bloqueia extensões nesta página — sua tarefa vai rodar em uma aba própria.",
+    "pasteHint": "Um texto longo colado aparece como uma nota para não ocupar o campo inteiro. O texto completo ainda é enviado. Backspace apaga.",
+    "restrictedPageHint": "O Chrome bloqueia extensões nesta página. Sua tarefa vai rodar em uma aba própria.",
     "askUserHint": "Escolha uma opção ou escreva a sua",
     "askUserOpenHint": "Escreva a sua resposta abaixo",
     "answerPlaceholder": "Escreva a sua resposta…",
     "planPlaceholder": "Aprove o plano acima, ou escreva o que deve mudar…",
     "planSendTitle": "Devolver o plano com a sua observação",
-    "planNoImages": "Imagens não acompanham a nota do plano — escreva o que deve mudar e cole a imagem quando a tarefa estiver andando.",
+    "planNoImages": "Não é possível anexar imagens à nota do plano. Escreva o que deve mudar e cole a imagem quando a tarefa estiver em andamento.",
     "thinkingFor": "Pensando · {{duration}}",
     "thoughtFor": "Pensou por {{duration}}",
     "reasoningToggle": "Mostrar ou ocultar o raciocínio do modelo (vale para todas as conversas)",
@@ -673,62 +673,62 @@
   "commands": {
     "menuAria": "Comandos",
     "current": "Atual",
-    "unknown": "O comando /{{name}} não existe — digite / para ver a lista.",
+    "unknown": "O comando /{{name}} não existe. Digite / para ver a lista.",
     "nextTask": "Vale para a próxima tarefa, não para a que está rodando.",
-    "thisChatOnly": "Só nesta conversa — novas conversas mantêm o padrão.",
+    "thisChatOnly": "Só nesta conversa. Novas conversas mantêm o padrão.",
     "deferred": {
       "chip": "Depois da tarefa",
-      "title": "Esperando a tarefa terminar — dispara assim que nada estiver rodando aqui",
+      "title": "Esperando a tarefa terminar. Será executado assim que não houver nada em andamento aqui.",
       "cancelAria": "Descartar o comando em espera"
     },
     "stop": {
       "description": "Para a tarefa em execução",
-      "none": "Nada rodando aqui — não há tarefa para parar.",
-      "elsewhere": "Nada rodando nesta conversa — a tarefa em andamento é de outra.",
-      "cancelledQueued": "Tirei sua tarefa da fila — nada chegou a começar."
+      "none": "Não há nenhuma tarefa em andamento aqui para parar.",
+      "elsewhere": "Não há tarefa em andamento nesta conversa. A tarefa atual é de outra conversa.",
+      "cancelledQueued": "Sua tarefa foi removida da fila. Nada chegou a começar."
     },
     "background": {
       "description": "Alterna se a próxima tarefa roda em primeiro ou em segundo plano",
       "current": "A próxima tarefa roda: {{mode}}.",
-      "invalid": "Não existe uma opção chamada “{{value}}” — escolha on ou off.",
-      "nowBackground": "A próxima tarefa roda em segundo plano — o painel fecha quando você aprova o plano, e nada mexe na sua tela depois disso. Mesma aba, de todo jeito.",
-      "nowForeground": "A próxima tarefa roda em primeiro plano — o painel fica aberto e a tarefa traz para a frente a aba que ela abrir."
+      "invalid": "Não existe uma opção chamada “{{value}}”. Escolha on ou off.",
+      "nowBackground": "A próxima tarefa roda em segundo plano. O painel fecha quando você aprova o plano, e nada mexe na sua tela depois disso. A tarefa usa a mesma aba nos dois modos.",
+      "nowForeground": "A próxima tarefa roda em primeiro plano. O painel fica aberto e traz para a frente as abas para as quais a tarefa mudar."
     },
     "effort": {
-      "description": "Define o esforço de raciocínio — none, low, medium, high, max ou default",
-      "current": "Esforço de raciocínio: {{effort}} ({{provider}}) — /effort <nível> para mudar.",
+      "description": "Defina o esforço de raciocínio: none, low, medium, high, max ou default",
+      "current": "Esforço de raciocínio: {{effort}} ({{provider}}). Use /effort <nível> para mudar.",
       "set": "Esforço de raciocínio → {{effort}} ({{provider}})",
-      "invalid": "O esforço \"{{value}}\" não existe — escolha um: {{options}}.",
+      "invalid": "O nível de esforço \"{{value}}\" não existe. Escolha um: {{options}}.",
       "unavailable": "{{model}} não tem ajuste de esforço de raciocínio, então sempre usa o padrão."
     },
     "model": {
-      "description": "Fixa o modelo desta conversa — auto desfaz",
-      "current": "Modelo: {{model}} ({{provider}}) — /model <id> para fixar, /model auto para o mais novo do endpoint.",
+      "description": "Fixe o modelo desta conversa. Use auto para desfazer.",
+      "current": "Modelo: {{model}} ({{provider}}). Use /model <id> para fixar um ou /model auto para o mais recente do endpoint.",
       "set": "Modelo → {{model}} ({{provider}})",
-      "auto": "Modelo → auto ({{provider}}) — o mais novo do endpoint."
+      "auto": "Modelo → auto ({{provider}}), o mais recente do endpoint."
     },
     "provider": {
       "description": "Troca o provedor desta conversa",
-      "current": "Provedor: {{name}} — também configurados: {{others}}. /provider <nome> para trocar.",
-      "currentOnly": "Provedor: {{name}} — o único configurado.",
+      "current": "Provedor: {{name}}. Também configurados: {{others}}. Use /provider <nome> para trocar.",
+      "currentOnly": "Provedor: {{name}} (o único configurado).",
       "set": "Provedor → {{name}}",
-      "unknown": "O provedor \"{{value}}\" não existe — configurados: {{list}}."
+      "unknown": "O provedor \"{{value}}\" não existe. Escolha um dos configurados: {{list}}."
     },
     "rename": {
-      "description": "Nomeia esta conversa — sem argumento, mostra o nome atual",
-      "current": "Esta conversa é “{{title}}” — /rename <nome> para mudar.",
-      "none": "Envie uma tarefa primeiro — uma conversa sem mensagens não tem o que nomear.",
+      "description": "Nomeie esta conversa. Sem argumento, mostra o nome atual.",
+      "current": "Esta conversa se chama “{{title}}”. Use /rename <nome> para mudar.",
+      "none": "Envie uma tarefa primeiro. Uma conversa sem mensagens não tem o que nomear.",
       "set": "Conversa → “{{title}}”"
     },
     "new": {
       "description": "Começa uma nova conversa"
     },
     "skills": {
-      "description": "Gerencie as habilidades salvas — listar, ativar, importar, editar"
+      "description": "Gerencie habilidades salvas: ative, edite ou importe"
     },
     "usage": {
       "description": "Mostra as janelas de uso da assinatura ativa",
-      "unsupported": "{{provider}} usa uma chave de API — janelas de uso só existem nos provedores por assinatura (Claude, ChatGPT, Kimi)."
+      "unsupported": "{{provider}} usa uma chave de API. As janelas de uso só estão disponíveis com login por assinatura (Claude, ChatGPT, Kimi)."
     },
     "mcp": {
       "description": "Servidores MCP remotos: o que está conectado",
@@ -739,28 +739,28 @@
     "document": {
       "description": "Executa uma tarefa e gera um passo a passo compartilhável",
       "task": "{{task}}\n\nDocumente este processo como um passo a passo que eu possa compartilhar.",
-      "hint": "Escreva a tarefa depois de /document — ou acrescente “e documente isso” a qualquer tarefa."
+      "hint": "Escreva a tarefa depois de /document ou acrescente “e documente isso” a qualquer tarefa."
     },
     "skill": {
-      "description": "Executa uma habilidade salva — /skill new transforma esta conversa em uma",
+      "description": "Execute uma habilidade salva. /skill new cria uma a partir desta conversa.",
       "newLabel": "Nova habilidade desta conversa…",
-      "none": "Nenhuma habilidade ainda — /skill new transforma esta conversa em uma, ou importe em Configurações → Habilidades.",
+      "none": "Nenhuma habilidade ainda. Use /skill new para criar uma a partir desta conversa ou importe em Configurações → Habilidades.",
       "list": "Habilidades: {{list}}. \"/skill <nome>\" executa uma.",
       "unknown": "Nenhuma habilidade chamada \"{{name}}\". Você tem: {{list}}",
-      "disabled": "\"{{name}}\" está desativada — ative com /skills.",
-      "emptyConversation": "Nada aqui para virar habilidade ainda — execute uma tarefa primeiro.",
+      "disabled": "\"{{name}}\" está desativada. Ative com /skills.",
+      "emptyConversation": "Ainda não há nada aqui para transformar em habilidade. Execute uma tarefa primeiro.",
       "task": "Use a habilidade \"{{name}}\".",
       "taskWithArgs": "Use a habilidade \"{{name}}\" para esta tarefa: {{args}}"
     },
     "compact": {
       "description": "Resume esta conversa até aqui, para liberar contexto",
       "running": "Compactando a conversa…",
-      "nothing": "Nada para compactar ainda — esta conversa ainda cabe inteira no replay.",
-      "busy": "Uma tarefa está em andamento — compacte quando ela terminar.",
-      "failed": "Não deu para compactar — {{message}}",
+      "nothing": "Ainda não há nada para resumir. Esta conversa ainda é curta o bastante para ser enviada inteira.",
+      "busy": "Uma tarefa está em andamento. Resuma a conversa quando ela terminar.",
+      "failed": "Não foi possível resumir a conversa: {{message}}. Tente de novo.",
       "cancel": "Cancelar",
-      "cancelHint": "Parar de resumir — Esc",
-      "cancelled": "Compactação cancelada — nada foi resumido."
+      "cancelHint": "Parar de resumir (Esc)",
+      "cancelled": "Resumo cancelado. Nada foi resumido."
     },
     "help": {
       "description": "Mostra todos os atalhos e comandos"
@@ -776,7 +776,7 @@
       "stop": "Interromper a tarefa em execução",
       "recall": "Percorrer o que você já enviou",
       "plan": "Expandir ou recolher todos os planos",
-      "open": "Abrir ajuda e atalhos — o campo de texto precisa estar vazio"
+      "open": "Abrir ajuda e atalhos (o campo de texto precisa estar vazio)"
     },
     "docs": "Guias e download — tabrunner.app →"
   },

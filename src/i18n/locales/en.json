@@ -625,24 +625,24 @@
     "attachmentAlt": "Attached image {{number}}",
     "enlargeTitle": "Enlarge image",
     "removeAttachment": "Remove {{token}}",
-    "attachFailed": "Couldn't read that image — the format may be unsupported. Copy it again as PNG or JPEG and paste once more.",
+    "attachFailed": "Could not read that image. The format may not be supported. Copy it again as PNG or JPEG and paste once more.",
     "queue": "Queue",
     "queueTitle": "Inserted between the next tool calls",
     "queuePlaceholder": "Add to the running task…",
-    "queuedSteerTitle": "Queued for the running task — lands between the next tool calls. ↑ to edit.",
+    "queuedSteerTitle": "Queued for the running task. Arrives between the next tool calls. ↑ to edit.",
     "queuedSteer": "Waiting to send",
     "queuedSteerPosition": "Waiting to send · #{{position}}",
     "unqueueAria": "Drop queued message",
-    "queueNoImages": "Images can't join a running task — queue the text now and paste the image with the next task.",
+    "queueNoImages": "Images cannot be added to a running task. Queue the text now and paste the image with the next task.",
     "pasteToken": "Pasted {{count}} lines",
-    "pasteHint": "Long pasted text is folded into a note to keep things tidy — the full text is still sent. Backspace deletes it.",
-    "restrictedPageHint": "Chrome blocks extensions on this page — your task will run in a tab of its own.",
+    "pasteHint": "Long pasted text appears as a note to keep the text field tidy. The full text is still sent. Backspace deletes it.",
+    "restrictedPageHint": "Chrome blocks extensions on this page. Your task will run in its own tab.",
     "askUserHint": "Pick one, or write your own",
     "askUserOpenHint": "Type your answer below",
     "answerPlaceholder": "Write your answer…",
     "planPlaceholder": "Approve the plan above, or type what should change…",
     "planSendTitle": "Send the plan back with your note",
-    "planNoImages": "Images can't ride a plan note — type what should change, and paste the image once the task is moving.",
+    "planNoImages": "Images cannot be attached to a plan note. Type what should change and paste the image once the task is running.",
     "thinkingFor": "Thinking · {{duration}}",
     "thoughtFor": "Thought for {{duration}}",
     "reasoningToggle": "Show or hide the model's reasoning (saved for all chats)",
@@ -673,62 +673,62 @@
   "commands": {
     "menuAria": "Commands",
     "current": "Current",
-    "unknown": "No command /{{name}} — type / for the list.",
+    "unknown": "No command /{{name}}. Type / to see the list.",
     "nextTask": "Applies to the next task, not the one running.",
-    "thisChatOnly": "This chat only — new chats keep the default.",
+    "thisChatOnly": "This chat only. New chats keep the default.",
     "deferred": {
       "chip": "After the task",
-      "title": "Waiting for the task to finish — it fires the moment nothing is working here",
+      "title": "Waiting for the task to finish. Runs as soon as nothing is running here.",
       "cancelAria": "Drop the waiting command"
     },
     "stop": {
       "description": "Stop the running task",
-      "none": "Nothing is running here — there's no task to stop.",
-      "elsewhere": "Nothing is running in this chat — the task working now belongs to another one.",
-      "cancelledQueued": "Took your task out of the queue — nothing was started."
+      "none": "There is no task running here to stop.",
+      "elsewhere": "No task is running in this chat. The current task belongs to another chat.",
+      "cancelledQueued": "Removed your task from the queue. Nothing was started."
     },
     "background": {
       "description": "Toggle whether the next task runs in the foreground or in the background",
       "current": "Next task runs: {{mode}}.",
-      "invalid": "No setting called “{{value}}” — pick on or off.",
-      "nowBackground": "Next task runs in the background — the panel closes once you approve the plan, and nothing moves your screen after that. Same tab either way.",
-      "nowForeground": "Next task runs in the foreground — the panel stays open and the run brings a tab it switches to forward."
+      "invalid": "No setting called “{{value}}”. Pick on or off.",
+      "nowBackground": "The next task runs in the background. The panel closes when you approve the plan, and nothing moves your screen after that. The task uses the same tab either way.",
+      "nowForeground": "The next task runs in the foreground. The panel stays open, and tabs the task switches to come to the front."
     },
     "effort": {
-      "description": "Set reasoning effort — none, low, medium, high, max, or default",
-      "current": "Reasoning effort: {{effort}} ({{provider}}) — /effort <level> to change.",
+      "description": "Set reasoning effort: none, low, medium, high, max or default",
+      "current": "Reasoning effort: {{effort}} ({{provider}}). Use /effort <level> to change it.",
       "set": "Reasoning effort → {{effort}} ({{provider}})",
-      "invalid": "No effort \"{{value}}\" — pick one: {{options}}.",
+      "invalid": "No effort level \"{{value}}\". Pick one: {{options}}.",
       "unavailable": "{{model}} has no reasoning effort setting, so it always runs at its default."
     },
     "model": {
-      "description": "Pin the model for this chat — auto undoes it",
-      "current": "Model: {{model}} ({{provider}}) — /model <id> to pin one, /model auto for the endpoint's newest.",
+      "description": "Set the model for this chat. Use auto to undo it.",
+      "current": "Model: {{model}} ({{provider}}). Use /model <id> to set one, or /model auto for the endpoint’s newest.",
       "set": "Model → {{model}} ({{provider}})",
-      "auto": "Model → auto ({{provider}}) — the endpoint's newest."
+      "auto": "Model → auto ({{provider}}), the endpoint’s newest."
     },
     "provider": {
       "description": "Switch this chat's provider",
-      "current": "Provider: {{name}} — also configured: {{others}}. /provider <name> to switch.",
-      "currentOnly": "Provider: {{name}} — the only one configured.",
+      "current": "Provider: {{name}}. Also configured: {{others}}. Use /provider <name> to switch.",
+      "currentOnly": "Provider: {{name}} (the only one configured).",
       "set": "Provider → {{name}}",
-      "unknown": "No provider \"{{value}}\" — configured: {{list}}."
+      "unknown": "No provider \"{{value}}\". Pick a configured provider: {{list}}."
     },
     "rename": {
-      "description": "Name this chat — no argument shows the current name",
-      "current": "This chat is “{{title}}” — /rename <name> to change it.",
-      "none": "Send a task first — a chat with no messages has nothing to name.",
+      "description": "Name this chat. No argument shows the current name.",
+      "current": "This chat is “{{title}}”. Use /rename <name> to change it.",
+      "none": "Send a task first. A chat with no messages has nothing to name.",
       "set": "Chat → “{{title}}”"
     },
     "new": {
       "description": "Start a new chat"
     },
     "skills": {
-      "description": "Manage saved skills — list, toggle, import, edit"
+      "description": "Manage saved skills: enable, edit or import them"
     },
     "usage": {
       "description": "Show the active subscription's usage windows",
-      "unsupported": "{{provider}} runs on an API key — usage windows only exist for subscription sign-ins (Claude, ChatGPT, Kimi)."
+      "unsupported": "{{provider}} uses an API key. Usage windows are available only with subscription sign-ins (Claude, ChatGPT, Kimi)."
     },
     "mcp": {
       "description": "Remote MCP servers: what's connected",
@@ -739,28 +739,28 @@
     "document": {
       "description": "Run a task and get a shareable step-by-step walkthrough",
       "task": "{{task}}\n\nDocument this process as a step-by-step walkthrough I can share.",
-      "hint": "Type the task after /document — or add “and document it” to any task."
+      "hint": "Type the task after /document, or add “and document it” to any task."
     },
     "skill": {
-      "description": "Run a saved skill — /skill new turns this chat into one",
+      "description": "Run a saved skill. /skill new creates one from this chat.",
       "newLabel": "New skill from this chat…",
-      "none": "No skills yet — /skill new turns this chat into one, or import one in Settings → Skills.",
+      "none": "No skills yet. Use /skill new to create one from this chat, or import one in Settings → Skills.",
       "list": "Skills: {{list}}. \"/skill <name>\" runs one.",
       "unknown": "No skill named \"{{name}}\". You have: {{list}}",
-      "disabled": "\"{{name}}\" is disabled — enable it with /skills.",
-      "emptyConversation": "Nothing here to turn into a skill yet — run a task first.",
+      "disabled": "\"{{name}}\" is disabled. Enable it with /skills.",
+      "emptyConversation": "There is nothing here to turn into a skill yet. Run a task first.",
       "task": "Use the \"{{name}}\" skill.",
       "taskWithArgs": "Use the \"{{name}}\" skill for this task: {{args}}"
     },
     "compact": {
       "description": "Summarize this chat so far, to free up context",
       "running": "Compacting the chat…",
-      "nothing": "Nothing to compact yet — this chat is still short enough to replay in full.",
-      "busy": "A task is working — compact once it finishes.",
-      "failed": "Couldn't compact — {{message}}",
+      "nothing": "There is nothing to summarize yet. This chat is still short enough to send in full.",
+      "busy": "A task is running. Summarize the chat once it finishes.",
+      "failed": "Could not summarize the chat: {{message}}. Try again.",
       "cancel": "Cancel",
-      "cancelHint": "Stop summarizing — Esc",
-      "cancelled": "Compaction cancelled — nothing was folded."
+      "cancelHint": "Stop summarizing (Esc)",
+      "cancelled": "Summarizing cancelled. Nothing was summarized."
     },
     "help": {
       "description": "Show every shortcut and command"
@@ -776,7 +776,7 @@
       "stop": "Stop the running task",
       "recall": "Walk back through what you've sent",
       "plan": "Expand or collapse every plan card",
-      "open": "Open help & shortcuts — the composer must be empty"
+      "open": "Open help and shortcuts (the text field must be empty)"
     },
     "docs": "Guides & download — tabrunner.app →"
   },

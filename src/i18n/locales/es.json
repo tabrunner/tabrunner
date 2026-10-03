@@ -625,24 +625,24 @@
     "attachmentAlt": "Imagen adjunta {{number}}",
     "enlargeTitle": "Ampliar imagen",
     "removeAttachment": "Eliminar {{token}}",
-    "attachFailed": "No se pudo leer esa imagen — puede que el formato no sea compatible. Cópiala de nuevo como PNG o JPEG y vuelve a pegarla.",
+    "attachFailed": "No se ha podido leer esa imagen. Puede que el formato no sea compatible. Cópiala de nuevo como PNG o JPEG y vuelve a pegarla.",
     "queue": "Encolar",
     "queueTitle": "Se inserta entre las próximas llamadas a herramientas",
     "queuePlaceholder": "Añade a la tarea en curso…",
-    "queuedSteerTitle": "En cola para la tarea en curso — entra entre las próximas llamadas a herramientas. ↑ para editar.",
+    "queuedSteerTitle": "En cola para la tarea en curso. Llegará entre las próximas llamadas a herramientas. ↑ para editar.",
     "queuedSteer": "Pendiente de envío",
     "queuedSteerPosition": "Pendiente de envío · n.º {{position}}",
     "unqueueAria": "Descartar mensaje en cola",
-    "queueNoImages": "Las imágenes no pueden unirse a una tarea en curso — encola el texto ahora y pega la imagen con la próxima tarea.",
+    "queueNoImages": "No se pueden añadir imágenes a una tarea en curso. Pon el texto en cola ahora y pega la imagen en la próxima tarea.",
     "pasteToken": "{{count}} líneas pegadas",
-    "pasteHint": "El texto largo pegado se pliega en una nota para mantener la entrada ordenada — el texto completo se envía igualmente. Retroceso lo elimina.",
-    "restrictedPageHint": "Chrome bloquea las extensiones en esta página — tu tarea se ejecutará en una pestaña propia.",
+    "pasteHint": "El texto largo pegado aparece como una nota para no ocupar todo el campo. Se envía el texto completo. Retroceso lo elimina.",
+    "restrictedPageHint": "Chrome bloquea las extensiones en esta página. Tu tarea se ejecutará en su propia pestaña.",
     "askUserHint": "Elige una opción o escribe la tuya",
     "askUserOpenHint": "Escribe tu respuesta abajo",
     "answerPlaceholder": "Escribe tu respuesta…",
     "planPlaceholder": "Aprueba el plan de arriba, o escribe qué debe cambiar…",
     "planSendTitle": "Devolver el plan con tu nota",
-    "planNoImages": "Las imágenes no acompañan la nota del plan — escribe qué debe cambiar y pega la imagen cuando la tarea esté en marcha.",
+    "planNoImages": "No se pueden adjuntar imágenes a la nota del plan. Escribe qué debe cambiar y pega la imagen cuando la tarea esté en marcha.",
     "thinkingFor": "Pensando · {{duration}}",
     "thoughtFor": "Pensó durante {{duration}}",
     "reasoningToggle": "Mostrar u ocultar el razonamiento del modelo (se guarda para todos los chats)",
@@ -673,62 +673,62 @@
   "commands": {
     "menuAria": "Comandos",
     "current": "Actual",
-    "unknown": "El comando /{{name}} no existe — escribe / para ver la lista.",
+    "unknown": "El comando /{{name}} no existe. Escribe / para ver la lista.",
     "nextTask": "Se aplica a la próxima tarea, no a la que se está ejecutando.",
-    "thisChatOnly": "Solo este chat — los nuevos mantienen el valor por defecto.",
+    "thisChatOnly": "Solo este chat. Los nuevos mantienen el valor por defecto.",
     "deferred": {
       "chip": "Después de la tarea",
-      "title": "Esperando a que termine la tarea — se lanza en cuanto no haya nada trabajando aquí",
+      "title": "Esperando a que termine la tarea. Se ejecutará en cuanto no haya nada en curso aquí.",
       "cancelAria": "Descartar el comando en espera"
     },
     "stop": {
       "description": "Detiene la tarea en curso",
-      "none": "Aquí no hay nada ejecutándose — no hay tarea que detener.",
-      "elsewhere": "No hay nada ejecutándose en este chat — la tarea que trabaja ahora es de otro.",
-      "cancelledQueued": "Saqué tu tarea de la cola — no se llegó a iniciar nada."
+      "none": "No hay ninguna tarea en curso aquí que detener.",
+      "elsewhere": "No hay ninguna tarea en curso en este chat. La tarea actual pertenece a otro chat.",
+      "cancelledQueued": "Tu tarea se ha quitado de la cola. No se ha iniciado nada."
     },
     "background": {
       "description": "Alterna si la próxima tarea corre en primer o en segundo plano",
       "current": "La próxima tarea corre: {{mode}}.",
-      "invalid": "No hay una opción llamada “{{value}}” — elige on u off.",
-      "nowBackground": "La próxima tarea corre en segundo plano — el panel se cierra cuando apruebas el plan, y nada mueve tu pantalla después de eso. La misma pestaña en cualquier caso.",
-      "nowForeground": "La próxima tarea corre en primer plano — el panel queda abierto y la tarea trae al frente la pestaña a la que cambia."
+      "invalid": "No hay ninguna opción llamada «{{value}}». Elige on u off.",
+      "nowBackground": "La próxima tarea se ejecutará en segundo plano. El panel se cerrará cuando apruebes el plan y nada moverá tu pantalla después. La tarea usa la misma pestaña en ambos modos.",
+      "nowForeground": "La próxima tarea se ejecutará en primer plano. El panel seguirá abierto y las pestañas a las que cambie la tarea pasarán al frente."
     },
     "effort": {
-      "description": "Fija el esfuerzo de razonamiento — none, low, medium, high, max o default",
-      "current": "Esfuerzo de razonamiento: {{effort}} ({{provider}}) — /effort <nivel> para cambiar.",
+      "description": "Fija el esfuerzo de razonamiento: none, low, medium, high, max o default",
+      "current": "Esfuerzo de razonamiento: {{effort}} ({{provider}}). Usa /effort <nivel> para cambiarlo.",
       "set": "Esfuerzo de razonamiento → {{effort}} ({{provider}})",
-      "invalid": "El esfuerzo \"{{value}}\" no existe — elige uno: {{options}}.",
+      "invalid": "El nivel de esfuerzo \"{{value}}\" no existe. Elige uno: {{options}}.",
       "unavailable": "{{model}} no tiene ajuste de esfuerzo de razonamiento, así que siempre usa el valor por defecto."
     },
     "model": {
-      "description": "Fija el modelo de este chat — auto lo deshace",
-      "current": "Modelo: {{model}} ({{provider}}) — /model <id> para fijar, /model auto para el más nuevo del endpoint.",
+      "description": "Fija el modelo de este chat. Usa auto para deshacerlo.",
+      "current": "Modelo: {{model}} ({{provider}}). Usa /model <id> para fijar uno o /model auto para usar el más reciente del endpoint.",
       "set": "Modelo → {{model}} ({{provider}})",
-      "auto": "Modelo → auto ({{provider}}) — el más nuevo del endpoint."
+      "auto": "Modelo → auto ({{provider}}), el más reciente del endpoint."
     },
     "provider": {
       "description": "Cambia el proveedor de este chat",
-      "current": "Proveedor: {{name}} — también configurados: {{others}}. /provider <nombre> para cambiar.",
-      "currentOnly": "Proveedor: {{name}} — el único configurado.",
+      "current": "Proveedor: {{name}}. También configurados: {{others}}. Usa /provider <nombre> para cambiar.",
+      "currentOnly": "Proveedor: {{name}} (el único configurado).",
       "set": "Proveedor → {{name}}",
-      "unknown": "El proveedor \"{{value}}\" no existe — configurados: {{list}}."
+      "unknown": "El proveedor \"{{value}}\" no existe. Elige uno de los configurados: {{list}}."
     },
     "rename": {
-      "description": "Nombra este chat — sin argumento, muestra el nombre actual",
-      "current": "Este chat es “{{title}}” — /rename <nombre> para cambiarlo.",
-      "none": "Envía una tarea primero — un chat sin mensajes no tiene qué nombrar.",
+      "description": "Ponle nombre a este chat. Sin argumento, muestra el nombre actual.",
+      "current": "Este chat se llama «{{title}}». Usa /rename <nombre> para cambiarlo.",
+      "none": "Envía una tarea primero. No se puede poner nombre a un chat sin mensajes.",
       "set": "Chat → “{{title}}”"
     },
     "new": {
       "description": "Empieza un chat nuevo"
     },
     "skills": {
-      "description": "Gestiona las habilidades guardadas — listar, activar, importar, editar"
+      "description": "Gestiona habilidades guardadas: actívalas, edítalas o impórtalas"
     },
     "usage": {
       "description": "Muestra las ventanas de uso de la suscripción activa",
-      "unsupported": "{{provider}} usa una clave de API — las ventanas de uso solo existen en los proveedores por suscripción (Claude, ChatGPT, Kimi)."
+      "unsupported": "{{provider}} usa una clave de API. Las ventanas de uso solo están disponibles al iniciar sesión con una suscripción (Claude, ChatGPT, Kimi)."
     },
     "mcp": {
       "description": "Servidores MCP remotos: qué hay conectado",
@@ -739,28 +739,28 @@
     "document": {
       "description": "Ejecuta una tarea y genera una guía paso a paso para compartir",
       "task": "{{task}}\n\nDocumenta este proceso como una guía paso a paso que pueda compartir.",
-      "hint": "Escribe la tarea después de /document — o añade “y documéntalo” a cualquier tarea."
+      "hint": "Escribe la tarea después de /document o añade «y documéntalo» a cualquier tarea."
     },
     "skill": {
-      "description": "Ejecuta una habilidad guardada — /skill new convierte este chat en una",
+      "description": "Ejecuta una habilidad guardada. /skill new crea una a partir de este chat.",
       "newLabel": "Nueva habilidad desde este chat…",
-      "none": "Aún no hay habilidades — /skill new convierte este chat en una, o importa una en Configuración → Habilidades.",
+      "none": "Aún no hay habilidades. Usa /skill new para crear una a partir de este chat o importa una en Configuración → Habilidades.",
       "list": "Habilidades: {{list}}. \"/skill <nombre>\" ejecuta una.",
       "unknown": "No hay ninguna habilidad llamada \"{{name}}\". Tienes: {{list}}",
-      "disabled": "\"{{name}}\" está desactivada — actívala con /skills.",
-      "emptyConversation": "Aquí no hay nada que convertir en habilidad todavía — ejecuta una tarea primero.",
+      "disabled": "«{{name}}» está desactivada. Actívala con /skills.",
+      "emptyConversation": "Aún no hay nada aquí que convertir en habilidad. Ejecuta una tarea primero.",
       "task": "Usa la habilidad \"{{name}}\".",
       "taskWithArgs": "Usa la habilidad \"{{name}}\" para esta tarea: {{args}}"
     },
     "compact": {
       "description": "Resume este chat hasta aquí, para liberar contexto",
       "running": "Compactando el chat…",
-      "nothing": "Nada que compactar todavía — este chat aún cabe entero en el replay.",
-      "busy": "Hay una tarea en curso — compacta cuando termine.",
-      "failed": "No se pudo compactar — {{message}}",
+      "nothing": "Aún no hay nada que resumir. Este chat sigue siendo lo bastante corto para enviarlo entero.",
+      "busy": "Hay una tarea en curso. Resume el chat cuando termine.",
+      "failed": "No se ha podido resumir el chat: {{message}}. Inténtalo de nuevo.",
       "cancel": "Cancelar",
-      "cancelHint": "Dejar de resumir — Esc",
-      "cancelled": "Compactación cancelada — no se resumió nada."
+      "cancelHint": "Dejar de resumir (Esc)",
+      "cancelled": "Resumen cancelado. No se ha resumido nada."
     },
     "help": {
       "description": "Muestra todos los atajos y comandos"
@@ -776,7 +776,7 @@
       "stop": "Detener la tarea en ejecución",
       "recall": "Recorrer lo que ya enviaste",
       "plan": "Expandir o contraer todos los planes",
-      "open": "Abrir ayuda y atajos — el campo de texto debe estar vacío"
+      "open": "Abrir ayuda y atajos (el campo de texto debe estar vacío)"
     },
     "docs": "Guías y descarga — tabrunner.app →"
   },
