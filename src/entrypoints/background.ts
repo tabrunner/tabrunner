@@ -825,7 +825,7 @@ async function notifyIfAway(
     const tabId = running?.conversationId === conversationId ? running.tabId : undefined;
     notificationTargets.set(id, { conversationId, ...(tabId !== undefined ? { tabId } : {}) });
   }
-  const body = choices?.length ? `${message} — ${choices.join(" · ")}` : message;
+  const body = choices?.length ? `${message}: ${choices.join(" · ")}` : message;
   try {
     void chrome.notifications.create(id, {
       type: "basic",

@@ -159,7 +159,7 @@ export function ServerDialog({
               </span>
             ) : (
               <span className="block text-red-600 dark:text-red-400">
-                {t("mcpOut.testFailed")} — <span className="opacity-75">{testResult.error}</span>
+                {t("mcpOut.testFailed")}: <span className="opacity-75">{testResult.error}</span>
               </span>
             )}
           </p>

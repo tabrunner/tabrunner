@@ -74,7 +74,7 @@ export function StatusStrip({ onAddProvider }: { onAddProvider: () => void }) {
              route to the fix, in the one affordance voice (brand text on a
              hover pill — the caption styling this replaced read as a label). */
           <Button variant="quiet-brand" size="sm" className="-ml-2" onClick={onAddProvider}>
-            {providerDisplayName(provider)} —{" "}
+            {providerDisplayName(provider)}:{" "}
             {isOAuthProvider(provider.id)
               ? t("settings.strip.signInAgain")
               : t("settings.strip.addKeyAgain")}

@@ -16,7 +16,7 @@ describe("formatTranscriptWindow", () => {
   it("reports an empty transcript instead of a blank log", () => {
     const window = formatTranscriptWindow([], {});
     expect(window).toMatchObject({ total: 0, from: 0, to: 0 });
-    expect(window.log).toBe("Nothing in the transcript yet — this chat hasn't run a task.");
+    expect(window.log).toBe("The transcript is empty. This chat has not run a task yet.");
   });
 
   it("drops reasoning and run-internal chatter, numbering what remains", () => {
@@ -36,10 +36,10 @@ describe("formatTranscriptWindow", () => {
     );
 
     expect(window.total).toBe(4);
-    expect(window.log).toContain("#0 user — find flights");
-    expect(window.log).toContain("#1 step navigate · reddit.com — Navigated successfully");
-    expect(window.log).toContain("#2 error — Provider error: 429");
-    expect(window.log).toContain("#3 assistant — I need to continue");
+    expect(window.log).toContain("#0 user: find flights");
+    expect(window.log).toContain("#1 step navigate · reddit.com: Navigated successfully");
+    expect(window.log).toContain("#2 error: Provider error: 429");
+    expect(window.log).toContain("#3 assistant: I need to continue");
   });
 
   it("defaults to the newest window", () => {
@@ -56,8 +56,8 @@ describe("formatTranscriptWindow", () => {
     const window = formatTranscriptWindow(messages, { from: 0, limit: 5 });
 
     expect(window).toMatchObject({ from: 0, to: 5 });
-    expect(window.log).toContain("#0 assistant — turn 0");
-    expect(window.log).toContain("#4 assistant — turn 4");
+    expect(window.log).toContain("#0 assistant: turn 0");
+    expect(window.log).toContain("#4 assistant: turn 4");
     expect(window.log).not.toContain("#5");
   });
 
@@ -80,7 +80,7 @@ describe("formatTranscriptWindow", () => {
       [msg("step", "Failed: element not found", { tool: "click", ok: false, args: { ref: "e9" } })],
       {},
     );
-    expect(window.log).toContain("#0 step click · e9 ✗ — Failed: element not found");
+    expect(window.log).toContain("#0 step click · e9 ✗: Failed: element not found");
   });
 
   it("cuts an oversized window short and marks where to continue", () => {
@@ -106,7 +106,7 @@ describe("formatTranscriptWindow", () => {
 
     const window = formatTranscriptWindow(messages, { query: "march" });
     expect(window).toMatchObject({ total: 1, from: 0, to: 1 });
-    expect(window.log).toContain("#0 user — book the March one");
+    expect(window.log).toContain("#0 user: book the March one");
   });
 
   it("matches case-insensitively against tool, hint and detail too", () => {
@@ -139,6 +139,6 @@ describe("formatTranscriptWindow", () => {
   it("says so when nothing matches, instead of claiming an empty transcript", () => {
     const window = formatTranscriptWindow([msg("user", "hi")], { query: "zebra" });
     expect(window).toMatchObject({ total: 0, from: 0, to: 0 });
-    expect(window.log).toBe("Nothing in the transcript matches “zebra” — try a shorter phrase.");
+    expect(window.log).toBe("Nothing in the transcript matches “zebra”. Try a shorter phrase.");
   });
 });

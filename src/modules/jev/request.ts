@@ -94,7 +94,7 @@ Set every requested filter; a matching result alone does not prove the filter is
 Do not toggle a checkbox, switch or radio that is already in the requested state.
 WAIT only while results or a needed control are still loading.
 HAND_BACK before any step that buys, pays, sends, posts, deletes, or confirms something that
-cannot be undone — even when the goal asks for it — and when the goal needs text the given
+cannot be undone (even when the goal asks for it), and when the goal needs text the given
 values lack.`;
 
 const TARGET_RULES = `Choose the target for this operation only; another question decides which
@@ -202,7 +202,7 @@ function compose(
       },
     ),
     stuck: yesNo(
-      "The recent actions are going nowhere — repeating, undoing each other, or the page ignores them — and no offered operation looks likely to help.",
+      "The recent actions repeat, undo each other or have no effect on the page, and no offered operation looks likely to help.",
       "There is still a clear next step toward the goal.",
       { goal: task.goal, rules: "Judge from the recent actions and the current page." },
     ),

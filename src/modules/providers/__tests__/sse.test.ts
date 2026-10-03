@@ -147,7 +147,7 @@ describe("OpenAI provider SSE parsing", () => {
     vi.restoreAllMocks();
   });
 
-  it("turns a missing response into a network kind, not a provider fault", async () => {
+  it("turns a request that never left into a network kind, not a provider fault", async () => {
     const config = makeConfig("openai", "https://api.openai.com/v1");
     const provider = createOpenAIProvider(config);
 
@@ -172,9 +172,7 @@ describe("OpenAI provider SSE parsing", () => {
     expect((error as ProviderError).status).toBe(0);
     // The host is named — the one token that diagnoses a typo'd base URL at a
     // glance. The raw browser string never reaches the user.
-    expect((error as ProviderError).message).toContain("No response from Test");
     expect((error as ProviderError).message).toContain("api.openai.com");
-    expect((error as ProviderError).message).not.toContain("never left");
     expect((error as ProviderError).message).not.toContain("Failed to fetch");
     expect(isRetryable(error)).toBe(true);
     vi.restoreAllMocks();

@@ -196,12 +196,12 @@ function planFirst(calls: ToolCall[]): ToolCall[] {
  * Model-facing English, inline like the turn nudges: no user ever reads these.
  */
 const cancelledAfterFailure = (name: string) =>
-  `Earlier action \`${name}\` in this turn failed — its error is in that call's result. This call did not run. Re-observe the page before retrying.`;
+  `Earlier action \`${name}\` in this turn failed. Its error is in that call's result. This call did not run. Re-observe the page before retrying.`;
 const CANCELLED_PAGE_CHANGED =
   "The page moved after an earlier action this turn, so the refs you wrote this call with may no longer mean what they did. This call and the rest of the turn did not run. Call snapshot for fresh refs and continue from there.";
-const CANCELLED_RUN_ENDED = "The run ended earlier this turn (`done`) — this call did not run.";
+const CANCELLED_RUN_ENDED = "The run ended earlier this turn (`done`). This call did not run.";
 const CANCELLED_RUN_PAUSED =
-  "The run paused earlier this turn on `ask_user` — this call did not run.";
+  "The run paused earlier this turn on `ask_user`. This call did not run.";
 
 /** The user's answer to a parked plan. */
 export interface PlanApprovalOutcome {
@@ -612,7 +612,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
       messages.push({
         role: "user",
         content:
-          "You are near the end of your working budget. If you can wrap up meaningfully now, call `done` with your best summary of what you accomplished. If you genuinely need more work and have a concrete plan to finish, call `ask_user` to ask the user whether to continue — describe what you have done so far and offer specific choices (for example, keep digging vs stop). Only ask if continuing is meaningfully better than stopping here.",
+          "You are near the end of your working budget. If you can wrap up meaningfully now, call `done` with your best summary of what you accomplished. If you genuinely need more work and have a concrete plan to finish, call `ask_user` to ask the user whether to continue. Describe what you have done so far and offer specific choices (for example, keep digging vs stop). Only ask if continuing is meaningfully better than stopping here.",
       });
     } else if (finalizing) {
       messages.push({
@@ -730,8 +730,8 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
       messages.push({
         role: "user",
         content: turn.truncated
-          ? "You hit the output limit and the tool call at the end was cut off — but your text above is already the full answer. Don't reason or call any other tool: call `done` now, and put that same answer in the summary, restated in full — if it's long, break it into smaller pieces so it isn't cut again."
-          : "Respond with a tool call, not plain text. If you just asked the user a question, call `ask_user` with that same question now — written-out questions do not pause the run, so the user never got to answer. Otherwise make progress on the task: call snapshot if you need to see the page, or `done` if the task is complete.",
+          ? "You hit the output limit and the tool call at the end was cut off, but your text above is already the full answer. Don't reason or call any other tool: call `done` now, and put that same answer in the summary, restated in full. If it's long, break it into smaller pieces so it isn't cut again."
+          : "Respond with a tool call, not plain text. If you just asked the user a question, call `ask_user` with that same question now. Written-out questions do not pause the run, so the user never got to answer. Otherwise make progress on the task: call snapshot if you need to see the page, or `done` if the task is complete.",
       });
       continue;
     }

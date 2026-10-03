@@ -457,7 +457,7 @@ export const COMMANDS: readonly SlashCommand[] = [
           const status = statuses[s.id];
           const mark = !status ? "·" : status.ok ? "✓" : "✗";
           const detail = status?.detail ?? i18n.t("mcpOut.statusNever");
-          return `${mark} ${s.name} — ${detail}${s.enabled ? "" : ` ${i18n.t("commands.mcp.off")}`}`;
+          return `${mark} ${s.name}: ${detail}${s.enabled ? "" : ` ${i18n.t("commands.mcp.off")}`}`;
         });
         note([...lines, i18n.t("commands.mcp.manage")].join("\n"));
       })();

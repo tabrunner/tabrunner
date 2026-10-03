@@ -36,7 +36,7 @@ export function splitErrorDetail(message: string): {
 
   const reason = findReason(parsed);
   return {
-    summary: reason ? `${prefix} — ${truncate(reason, 300)}` : prefix,
+    summary: reason ? `${prefix}: ${truncate(reason, 300)}` : prefix,
     lead: prefix,
     detail: candidate,
   };

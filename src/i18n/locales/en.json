@@ -606,7 +606,7 @@
     "hint": {
       "badKey": "The API key is likely missing or invalid. Update it and try again.",
       "signedOut": "The sign-in for this provider is no longer valid. Sign in again and retry.",
-      "quota": "You have used up your plan’s quota. Top up with the provider or switch to another one and try again.",
+      "quota": "You have used up your plan's quota. Top up with the provider or switch to another one and try again.",
       "rateLimited": "Too many requests. Wait a moment, then send again.",
       "rejected": "The provider rejected the request. It may not support the model or reasoning effort level. The detail above says which.",
       "network": "Could not reach the provider. Check the base URL and your connection, then try again.",
@@ -703,9 +703,9 @@
     },
     "model": {
       "description": "Set the model for this chat. Use auto to undo it.",
-      "current": "Model: {{model}} ({{provider}}). Use /model <id> to set one, or /model auto for the endpoint’s newest.",
+      "current": "Model: {{model}} ({{provider}}). Use /model <id> to set one, or /model auto for the endpoint's newest.",
       "set": "Model → {{model}} ({{provider}})",
-      "auto": "Model → auto ({{provider}}), the endpoint’s newest."
+      "auto": "Model → auto ({{provider}}), the endpoint's newest."
     },
     "provider": {
       "description": "Switch this chat's provider",
@@ -802,8 +802,8 @@
   "context": {
     "used": "{{used}} context",
     "usedOf": "{{used}} / {{window}}",
-    "tooltip": "Context: this conversation uses {{used}} of the model’s {{window}} input limit. Use /compact to summarize the chat and free up space.",
-    "tooltipUnknown": "Context: this conversation uses {{used}}. The model’s input limit is unknown, so no percentage can be shown. Use /compact to summarize the chat and free up space.",
+    "tooltip": "Context: this conversation uses {{used}} of the model's {{window}} input limit. Use /compact to summarize the chat and free up space.",
+    "tooltipUnknown": "Context: this conversation uses {{used}}. The model's input limit is unknown, so no percentage can be shown. Use /compact to summarize the chat and free up space.",
     "threadCost": "{{cost}} total"
   },
   "indicator": {
@@ -824,7 +824,7 @@
     "approve": "Approve",
     "revisionNote": "The user requested changes to this plan. Call `plan` again with a revised list. It returns to the user for approval. No page action runs before that.",
     "narrowedNote": "This list removed steps the run already finished, so they disappeared from the progress card. Call `plan` again with the full list, including finished steps and the cursor past them, unless the user cancelled those steps.",
-    "shrunkNote": "This run’s first plan has fewer steps than the {{count}}-step plan this conversation already approved. Standing approval accepted it without a card, so the user did not see the shorter plan. Call `plan` again with the full approved list and the cursor at the current step, unless the user cancelled those steps or replaced the task in their new message.",
+    "shrunkNote": "This run's first plan has fewer steps than the {{count}}-step plan this conversation already approved. Standing approval accepted it without a card, so the user did not see the shorter plan. Call `plan` again with the full approved list and the cursor at the current step, unless the user cancelled those steps or replaced the task in their new message.",
     "reject": "Reject"
   },
   "run": {
@@ -919,7 +919,7 @@
     "backgroundNow": "Run in background",
     "backgroundNowTitle": "Close the panel and let this task finish on its own. It will not move your screen. Reopen the panel any time to watch.",
     "backgroundNowGated": "Answer the waiting plan or question first. Closing now would leave the task waiting for a reply through a notification.",
-    "modeTitle": "“In foreground” keeps the panel open and brings the task’s selected tab to the front. “In background” closes the panel when you approve the plan and never moves your screen. Both use your current tab. Switching during a task applies at once, once the plan is approved.",
+    "modeTitle": "“In foreground” keeps the panel open and brings the task's selected tab to the front. “In background” closes the panel when you approve the plan and never moves your screen. Both use your current tab. Switching during a task applies at once, once the plan is approved.",
     "receiptIn": "{{tokens}} in",
     "receiptOut": "{{tokens}} out",
     "tabReopened": "Tab closed. Reopened {{host}}.",
@@ -958,7 +958,7 @@
     "planApproval": "A task shows its plan before page actions. Approve it or request changes.",
     "planExpand": "Press E to expand/collapse the plan.",
     "widget": "Click any TabRunner mark on a page to bring the panel back.",
-    "board": "Another chat’s task appears under Tasks at the top. Open its tab or stop it there.",
+    "board": "Another chat's task appears under Tasks at the top. Open its tab or stop it there.",
     "memory": "Review or delete facts TabRunner learned in Settings → Memory.",
     "usage": "With a subscription, see 5-hour and weekly use at the bottom of the model picker.",
     "slashCommands": "Type / for commands to change provider, model or effort during a chat.",
@@ -983,7 +983,7 @@
     "stopped": "The user stopped this run before it finished. What it had already done:",
     "thenFailed": "It then failed: {{message}}",
     "resume": "Call read_history to see these steps' full results, then continue from where it stopped instead of repeating them.",
-    "resumeStopped": "The user’s next message decides what happens to this work. They may continue it or choose another task. Call read_history when you need these steps’ full results.",
+    "resumeStopped": "The user's next message decides what happens to this work. They may continue it or choose another task. Call read_history when you need these steps' full results.",
     "omitted": "… {{count}} earlier steps"
   },
   "jev": {
@@ -1081,7 +1081,7 @@
     "kindQuota": "You have used up your quota with {{provider}}. Wait for it to reset or top up your {{provider}} account",
     "kindAuth": "{{provider}} rejected the API key. Check it or replace it in the provider settings",
     "kindAuthSignedIn": "{{provider}} did not accept the sign-in. Sign in again in the provider settings",
-    "dataPolicy": "{{provider}} cannot run this model until you accept its data policy. The model trains on data from your runs. Read and accept the policy at {{url}}, then retry",
+    "dataPolicy": "{{provider}} can't run this model until you accept its data policy. It trains on data from your runs. Open {{url}}, accept, then retry",
     "kindModel": "{{provider}} does not recognize this model. It may have been renamed or removed. Pick another model",
     "kindRate": "{{provider}} is limiting requests. Try again in a moment",
     "kindRateRetry": "{{provider}} is limiting requests. Try again {{reset}}",
@@ -1092,14 +1092,14 @@
     "kindOverload": "{{provider}} is overloaded right now. Try again in a few minutes",
     "kindContext": "This chat is longer than {{provider}} can read in one request. Use /compact to summarize it and continue",
     "kindTimeout": "{{provider}} stopped responding. Nothing came back in time. Retry, or pick another model if it keeps happening",
-    "kindContent": "{{provider}}’s safety filter blocked this message. Rewrite it or try another model",
-    "kindNetworkOffline": "You are offline, so the request to {{provider}} failed. Reconnect, then Retry",
-    "kindNetworkHost": "No response from {{provider}} at {{host}}. Check your connection, any VPN or blocker, and the base URL, then retry",
-    "kindNetwork": "No response from {{provider}}. Check your connection and any VPN or blocker, then retry",
+    "kindContent": "{{provider}}'s safety filter blocked this message. Rewrite it or try another model",
+    "kindNetworkOffline": "You're offline. The request to {{provider}} never left this machine. Reconnect, then Retry",
+    "kindNetworkHost": "Couldn't reach {{provider}} at {{host}}. The request never left this machine. Check your connection, any VPN or blocker in the way, and the base URL",
+    "kindNetwork": "Couldn't reach {{provider}}. The request never left this machine. Check your connection and any VPN or blocker in the way",
     "kindStreamCut": "{{provider}} stopped partway through its reply. The connection closed before the answer was done. Retry, or pick another model if it keeps happening",
     "compactEmpty": "The model returned an empty summary, so nothing was compacted. Try again, or start a new chat to reset the context.",
     "oauthRefreshExpired": "Your {{name}} sign-in expired and could not be renewed. Sign in again in Settings.",
-    "signInRateLimited": "The provider’s sign-in service is refusing requests because there were too many in a short time. This is not about your plan’s usage. Wait a minute, then start over.",
+    "signInRateLimited": "The provider's sign-in service is refusing requests because there were too many in a short time. This is not about your plan's usage. Wait a minute, then start over.",
     "signInTokenResponse": "The sign-in response was incomplete, with no usable token. Start over to try again.",
     "signInDeviceResponse": "The sign-in service replied in a format TabRunner didn't recognize. Try again in a moment.",
     "metaSetup": "Meta hasn't turned on Muse for this account yet. Finish setup in your Meta account, then sign in again.",
@@ -1137,7 +1137,7 @@
     "memoryEmpty": "There is nothing to remember. Pass the fact as a sentence.",
     "skillLoaded": "Loaded skill \"{{name}}\"",
     "skillNotFound": "No skill named \"{{name}}\". Available: {{list}}",
-    "usageUnreadable": "The provider’s usage reply used a format TabRunner did not recognize. Try Refresh.",
+    "usageUnreadable": "The provider's usage reply used a format TabRunner did not recognize. Try Refresh.",
     "documentUnavailable": "Documenting is off. Turn on Walkthroughs in Settings, then ask again.",
     "skillSaved": "Saved \"{{name}}\". Find it in /skills.",
     "saveSkillNoUrl": "No URL given. Provide a direct https URL or owner/repo for the skill.",
