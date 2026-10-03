@@ -6,7 +6,7 @@ describe("splitErrorDetail", () => {
     const body =
       '{"error":{"type":"invalid_request_error","message":"Invalid request Error"},"type":"error"}';
     expect(splitErrorDetail(`Provider error: Anthropic API error 400: ${body}`)).toEqual({
-      summary: "Provider error: Anthropic API error 400 — Invalid request Error",
+      summary: "Provider error: Anthropic API error 400: Invalid request Error",
       lead: "Provider error: Anthropic API error 400",
       detail: body,
     });
@@ -14,7 +14,7 @@ describe("splitErrorDetail", () => {
 
   it("reads a bare string error body", () => {
     expect(splitErrorDetail('HTTP 502: {"error":"upstream timed out"}')).toEqual({
-      summary: "HTTP 502 — upstream timed out",
+      summary: "HTTP 502: upstream timed out",
       lead: "HTTP 502",
       detail: '{"error":"upstream timed out"}',
     });
@@ -24,7 +24,7 @@ describe("splitErrorDetail", () => {
     const body =
       '[{"error":{"code":429,"message":"You exceeded your current quota","status":"RESOURCE_EXHAUSTED"}}]';
     expect(splitErrorDetail(`Provider error: OpenAI API error 429: ${body}`)).toEqual({
-      summary: "Provider error: OpenAI API error 429 — You exceeded your current quota",
+      summary: "Provider error: OpenAI API error 429: You exceeded your current quota",
       lead: "Provider error: OpenAI API error 429",
       detail: body,
     });
@@ -40,7 +40,7 @@ describe("splitErrorDetail", () => {
     });
     expect(splitErrorDetail(`Anthropic API error 400: ${body}`)).toEqual({
       summary:
-        "Anthropic API error 400 — max_completion_tokens [4096] must be greater than thinking_budget [32768]",
+        "Anthropic API error 400: max_completion_tokens [4096] must be greater than thinking_budget [32768]",
       lead: "Anthropic API error 400",
       detail: body,
     });
@@ -65,7 +65,7 @@ describe("splitErrorDetail", () => {
   it("truncates a runaway provider message", () => {
     const long = "x".repeat(400);
     const { summary } = splitErrorDetail(`HTTP 400: ${JSON.stringify({ message: long })}`);
-    expect(summary).toBe(`HTTP 400 — ${"x".repeat(300)}…`);
+    expect(summary).toBe(`HTTP 400: ${"x".repeat(300)}…`);
   });
 
   it("leaves plain messages untouched", () => {

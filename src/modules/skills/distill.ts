@@ -18,22 +18,22 @@ import { MAX_CATALOG_DESC_CHARS } from "./types";
 /** The draft call must not outlive the panel's patience — same bound as extraction. */
 const DISTILL_TIMEOUT_MS = 90_000;
 
-const SKILL_DISTILL_SYSTEM = `Below is the transcript of a browser-automation conversation. Distill the reusable procedure in it into a skill — a recipe a future agent run follows to do this kind of task again without re-discovering everything this one had to work out.
+const SKILL_DISTILL_SYSTEM = `Below is the transcript of a browser-automation conversation. Turn its reusable procedure into a skill, instructions a future agent run can follow to do this kind of task again without repeating this run's investigation.
 
 Reply with a complete SKILL.md file and nothing else, in exactly this shape:
 
 ---
 name: <kebab-case-name>
-description: <one sentence, under ${MAX_CATALOG_DESC_CHARS} characters — what the skill does and when to use it>
+description: <one sentence, under ${MAX_CATALOG_DESC_CHARS} characters, saying what the skill does and when to use it>
 sites: [<domain the steps happen on>]
 ---
 
 <the instructions: concrete numbered steps naming the exact pages, links, buttons and fields the transcript used, including any quirk it hit and what fixed it>
 
 Rules:
-- The user's own messages are the steering signal. Pay special attention to every place the user corrected the agent — the correction is the lesson the skill exists to keep.
+- The user's own messages are the steering signal. Pay special attention to every place the user corrected the agent. The correction is the lesson the skill exists to keep.
 - Omit the sites line entirely when the steps are not tied to a specific site.
-- Leave out one-off values — this run's dates, amounts, names, search terms. The next task supplies its own; the skill carries the how, not the what.
+- Leave out one-off values, such as this run's dates, amounts, names and search terms. The next task supplies its own; the skill carries the how, not the what.
 - Never include secrets, credentials, or personal data values.
 - Keep simple skills simple: a task that took three steps gets three steps.
 - Write the instruction body in the language the user wrote in.`;

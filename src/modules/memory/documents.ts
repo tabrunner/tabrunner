@@ -44,14 +44,14 @@ export const memoryEnabled = defineItem<boolean>("memoryEnabled", true);
  * surface and missing the other two.
  */
 export const DURABLE_FACT_RULES = `A durable fact is still true months from now, and a future run would want it before it starts:
-- A stable fact about the user — an account they use, an address, how they prefer something done.
-- A site quirk you could only learn the hard way — the login that actually works, a step a form silently requires, a page whose structure misleads.
+- A stable fact about the user, such as an account they use, an address or how they prefer something done.
+- A site quirk you could only learn through use, such as the login that actually works, a step a form silently requires or a page whose structure misleads.
 
-A fact about one site belongs to that site — scope it to its registrable domain ("acme.com", so every subdomain loads it), naming a subdomain only when the fact holds nowhere else. Only facts about the user themselves, true on every site, are global.
+A fact about one site belongs to that site. Scope it to its registrable domain ("acme.com", so every subdomain loads it), naming a subdomain only when the fact holds nowhere else. Only facts about the user themselves, true on every site, are global.
 
-Never save a reading. Counts, metrics, prices, balances, statuses, dates, search results, message text — anything a page displayed today answers this task and belongs in your summary, not in memory, because it will be wrong the next time anyone looks. Save what the page taught, not what it showed: not "the dashboard showed 1,018 visitors in 7 days", but "this dashboard opens on a 7-day window".
+Never save a reading. Counts, metrics, prices, balances, statuses, dates, search results, message text and anything else a page displayed today answer this task and belong in your summary, not in memory, because it will be wrong the next time anyone looks. Save what the page taught, not what it showed: not "the dashboard showed 1,018 visitors in 7 days", but "this dashboard opens on a 7-day window".
 
-Write each fact to stand alone. It is read months later, beside unrelated facts, with nothing left of the task that produced it — so name what it is about: the site, the account, the thing. A fact that opens with a number and names no subject is unreadable later; do not save it.
+Write each fact to stand alone. It is read months later, beside unrelated facts, with nothing left of the task that produced it. Name what it is about: the site, the account, the thing. A fact that opens with a number and names no subject is unreadable later; do not save it.
 
 Never save secrets: passwords, API keys, card numbers, security answers. Never save anything already in the memory you were shown.`;
 

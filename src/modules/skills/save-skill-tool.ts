@@ -55,6 +55,6 @@ export async function handleSaveSkill(args: {
   if (!result.ok) return result;
   // The truncated line doubles as the tool result's confirmation — bounded,
   // so a giant description can't flood the wire payload.
-  const shown = parsed.description ? `${name} — ${parsed.description}` : name;
+  const shown = parsed.description ? `${name}: ${parsed.description}` : name;
   return { ok: true, saved: { name, description: truncateTo(shown, 300) } };
 }

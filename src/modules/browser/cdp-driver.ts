@@ -493,7 +493,7 @@ export function waitForLoad(tabId: TabId, timeoutMs = 30_000): Promise<void> {
       () =>
         done(
           new Error(
-            `Page load timeout (${timeoutMs / 1000}s) — the page may be slow or unresponsive.`,
+            `Page load timed out after ${timeoutMs / 1000}s. The page may be slow or unresponsive. Try again.`,
           ),
         ),
       timeoutMs,

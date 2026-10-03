@@ -319,7 +319,7 @@ describe("OpenAI provider SSE parsing", () => {
 
     const err = error as ProviderError;
     expect(err.kind).toBe("entitlement");
-    expect(err.message).toContain("your plan doesn't include");
+    expect(err.message).toContain("your plan does not include");
     expect(err.message).not.toContain("rejected the API key");
     vi.restoreAllMocks();
   });
@@ -651,7 +651,7 @@ describe("Anthropic provider SSE parsing", () => {
     })();
 
     expect((error as ProviderError).kind).toBe("rate");
-    expect((error as ProviderError).message).toContain("rate-limiting");
+    expect((error as ProviderError).message).toContain("limiting requests");
     expect(isRetryable(error)).toBe(true);
     vi.restoreAllMocks();
   });

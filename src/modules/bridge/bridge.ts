@@ -173,7 +173,7 @@ export class Bridge {
       this.fail(
         requestId,
         "bad-image",
-        "Images must be data URLs — data:image/png;base64,<base64>. Pass the bytes base64-encoded.",
+        "Images must be data URLs: data:image/png;base64,<base64>. Pass the bytes base64-encoded.",
       );
       return;
     }
@@ -346,7 +346,7 @@ export class Bridge {
       this.fail(
         requestId,
         "run-in-progress",
-        "This chat has a task in progress — stop it first, then start the new one.",
+        "This chat has a task in progress. Stop it first, then start the new one.",
       );
       return;
     }
@@ -364,7 +364,7 @@ export class Bridge {
       this.fail(
         requestId,
         "nothing-to-compact",
-        "This chat has no history yet — it starts on the first task.",
+        "This chat has no history yet. It starts on the first task.",
       );
       return;
     }
@@ -376,7 +376,7 @@ export class Bridge {
       this.fail(
         requestId,
         "run-in-progress",
-        "This chat has a task in progress — compact once it finishes.",
+        "This chat has a task in progress. Compact once it finishes.",
       );
       return;
     }

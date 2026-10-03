@@ -47,9 +47,9 @@ export function buildExtractionSystemPrompt(memory: string, hint: string | null 
 
 ${DURABLE_FACT_RULES}
 
-Most runs teach nothing durable. That is the normal outcome and "none" is the right answer — a run that only looked something up almost always ends there. Never name more than 3 facts.
+Most runs teach nothing durable. That is the normal outcome and "none" is the right answer. A run that only looked something up almost always ends there. Never name more than 3 facts.
 
-Reply with only the facts, one per line, each starting with "- ". When a fact is about one specific site, tag it with the site's domain in brackets: "- [acme.com] Login is the email link, not SSO." A line with no tag is a global fact about the user.${hint ? ` This run worked mainly on ${hint} — facts learned there should carry its tag.` : ""} If nothing is durable, reply with exactly: none
+Reply with only the facts, one per line, each starting with "- ". When a fact is about one specific site, tag it with the site's domain in brackets: "- [acme.com] Login is the email link, not SSO." A line with no tag is a global fact about the user.${hint ? ` This run worked mainly on ${hint}. Facts learned there should carry its tag.` : ""} If nothing is durable, reply with exactly: none
 
 Current memory:
 ${memory || "(empty)"}`;

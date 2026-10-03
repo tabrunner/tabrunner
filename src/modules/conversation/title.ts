@@ -17,7 +17,7 @@ const log = createLogger("title");
 
 const TITLE_SYSTEM = `You name browser-automation conversations for a history list.
 
-Given the task the user sent, write a short title that names what the run was for — the thing it did or the page it worked, not the literal opening words.
+Given the task the user sent, write a short title that names what the run was for: the thing it did or the page it worked on, not the literal opening words.
 
 Rules:
 - 3 to 7 words. No quotes, no trailing period, no "Task:" or "Title:" prefix.

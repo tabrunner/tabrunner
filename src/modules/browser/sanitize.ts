@@ -77,5 +77,5 @@ export function sanitizeForModel(value: unknown): unknown {
   const cleaned = walk(value, 0);
   const json = JSON.stringify(cleaned) ?? "null";
   if (json.length <= MAX_RESULT_CHARS) return cleaned;
-  return `${json.slice(0, MAX_RESULT_CHARS)}…[truncated at ${MAX_RESULT_CHARS} chars — return a smaller piece]`;
+  return `${json.slice(0, MAX_RESULT_CHARS)}…[truncated at ${MAX_RESULT_CHARS} chars. Return a smaller piece]`;
 }

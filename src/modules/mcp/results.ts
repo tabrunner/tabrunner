@@ -40,7 +40,7 @@ export function normalizeMcpResult(result: McpCallResult): NormalizedMcpResult {
       if (typeof r.text === "string" && r.text) {
         texts.push(r.text);
       } else {
-        texts.push(`[resource ${str(r.uri) || "unknown"} — binary content withheld]`);
+        texts.push(`[resource ${str(r.uri) || "unknown"}: binary content withheld]`);
       }
     } else if (type === "resource_link") {
       texts.push(`${str(block.name) || "resource"}: ${str(block.uri) || "(no uri)"}`);

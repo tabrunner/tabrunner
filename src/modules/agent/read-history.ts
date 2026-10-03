@@ -55,18 +55,18 @@ function entryLine(m: Message, includeDetails: boolean): string {
   switch (m.role) {
     case "user":
     case "assistant":
-      return `${m.role} — ${truncateTo(m.content, MAX_TEXT_CHARS)}`;
+      return `${m.role}: ${truncateTo(m.content, MAX_TEXT_CHARS)}`;
     case "error":
-      return `error — ${truncateTo(m.content, MAX_DETAIL_CHARS)}`;
+      return `error: ${truncateTo(m.content, MAX_DETAIL_CHARS)}`;
     case "plan": {
       const total = m.steps?.length ?? 0;
       const current = m.steps?.[m.current ?? -1];
-      return `plan — step ${Math.min((m.current ?? 0) + 1, total)} of ${total}${current ? `: ${current}` : ""}`;
+      return `plan: step ${Math.min((m.current ?? 0) + 1, total)} of ${total}${current ? `: ${current}` : ""}`;
     }
     default: {
       const hint = stepHint(m.tool, m.args);
       const failed = m.ok === false ? " ✗" : "";
-      let line = `step ${m.tool}${hint ? ` · ${hint}` : ""}${failed} — ${m.content}`;
+      let line = `step ${m.tool}${hint ? ` · ${hint}` : ""}${failed}: ${m.content}`;
       if (includeDetails && m.detail) {
         line += `\n    ↳ ${truncateTo(m.detail, MAX_DETAIL_CHARS)}`;
       }

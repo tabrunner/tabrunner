@@ -37,16 +37,16 @@ const COMPACT_SYSTEM = `You are compacting the record of a browser-automation se
 Write a dense factual summary under these headings, omitting any that have no content:
 
 1. Task: what the user asked for, in their terms, including every correction or change of mind.
-2. Findings: concrete data gathered — names, prices, dates, confirmation numbers, quotes, URLs. Reproduce exact values; this is the only place they survive.
+2. Findings: concrete data gathered, including names, prices, dates, confirmation numbers, quotes and URLs. Reproduce exact values; this is the only place they survive.
 3. Pages: which sites and pages were visited and what each was for.
-4. Actions taken: everything already done to the world — forms submitted, messages sent, items purchased, settings changed. Be exhaustive and unambiguous: whatever is missing here may be done a second time.
+4. Actions taken: everything already done, including forms submitted, messages sent, items purchased and settings changed. Be exhaustive and unambiguous: whatever is missing here may be done a second time.
 5. Obstacles: what failed, what was blocked (logins, captchas, missing permissions), and what was tried.
 6. Remaining: what is still outstanding for the task to be complete.
 
 Rules:
 - Facts only. No commentary, no restating these instructions, no describing the summary itself.
 - Preserve exact values verbatim. Never round, never paraphrase an identifier.
-- Omit reasoning about page structure, element ids, and scrolling — the agent re-reads the page.
+- Omit reasoning about page structure, element ids and scrolling. The agent re-reads the page.
 - Plain text under the numbered headings. No preamble, no sign-off.`;
 
 /** One provider call, no tools, text collected. */

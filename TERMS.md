@@ -8,7 +8,7 @@ English text differ, the English text governs.
 
 **The short version:** TabRunner is open-source software you run in your own browser, with your
 own AI provider. There is no TabRunner service to sign up for or depend on. You are responsible
-for what the agent does with your sessions — it asks before consequential actions, but
+for what the agent does with your sessions. It asks before consequential actions, but
 supervision is yours.
 
 ---
@@ -22,12 +22,12 @@ once approved, the Chrome Web Store listing). The MIT license governs the code i
 ## 2. No service
 
 TabRunner is software, not a service. There is no TabRunner server, account, subscription, or
-telemetry — nothing we operate, host, or can shut off. Nothing in these terms creates an account
+telemetry, nothing we operate, host, or can shut off. Nothing in these terms creates an account
 relationship or a service-level commitment of any kind.
 
 ## 3. Your providers, your terms
 
-You bring your own AI provider — a subscription you sign into, or an API key you paste — and,
+You bring your own AI provider (a subscription you sign into, or an API key you paste) and,
 if you add them, a Jev key, remote MCP servers and webhooks. Your agreement with each of those
 services (pricing, rate limits, acceptable use, data handling) is between you and them.
 TabRunner sends task data only to the services you set up, as [PRIVACY.md](PRIVACY.md)
@@ -36,7 +36,7 @@ describes; we are not a party to those relationships and don't see the traffic.
 ## 4. Your browser, your responsibility
 
 TabRunner acts in _your_ browser, with _your_ logged-in sessions and authority. It is designed
-to stop and ask before consequential actions — paying, sending, deleting, submitting — but that
+to stop and ask before consequential actions (paying, sending, deleting, submitting), but that
 guardrail is best-effort, not a guarantee. You are responsible for:
 
 - supervising runs, especially on accounts that can spend, send, or publish;
@@ -57,7 +57,7 @@ rights. That's the whole list.
 To the maximum extent permitted by law, TabRunner is provided **"as is"**, without warranty of
 any kind, express or implied (including merchantability, fitness for a particular purpose, and
 non-infringement). In no event are the authors or contributors liable for any claim, damages, or
-other liability arising from your use of the software — including actions the agent took in your
+other liability arising from your use of the software, including actions the agent took in your
 browser.
 
 ## 7. Changes
