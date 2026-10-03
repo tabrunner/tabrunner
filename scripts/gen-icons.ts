@@ -76,8 +76,8 @@ function ogSvg(): string {
   <text x="96" y="196" font-family="JetBrains Mono" font-size="21" letter-spacing="6" fill="#6ee7b7">BROWSER AGENT · ANY PROVIDER</text>
   <text x="92" y="330" font-family="Unbounded" font-weight="600" font-size="76" letter-spacing="-1" fill="#e8eefb">You give the goal.</text>
   <text x="92" y="426" font-family="Unbounded" font-weight="600" font-size="76" letter-spacing="-1" fill="#34d399">It runs the tabs.</text>
-  <text x="96" y="500" font-family="Figtree" font-size="27" fill="#b9c6de">An AI agent drives your real browser — your tabs, sessions</text>
-  <text x="96" y="538" font-family="Figtree" font-size="27" fill="#b9c6de">and logins — through any provider you choose.</text>
+  <text x="96" y="500" font-family="Figtree" font-size="27" fill="#b9c6de">An AI agent uses your browser tabs, sessions and logins</text>
+  <text x="96" y="538" font-family="Figtree" font-size="27" fill="#b9c6de">with any provider you choose.</text>
   <text x="96" y="586" font-family="JetBrains Mono" font-size="19" fill="#8797ba">tabrunner.app</text>
   <rect x="0" y="${H - 8}" width="${W}" height="8" fill="#34d399" />
 </svg>`;
