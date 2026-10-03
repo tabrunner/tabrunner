@@ -221,30 +221,30 @@
     },
     "draft": {
       "title": "New skill from this chat",
-      "description": "TabRunner distills what this chat worked out into a reusable recipe — review and edit before saving.",
+      "description": "TabRunner turns what this chat worked out into instructions you can use again. Review and edit them before saving.",
       "working": "Distilling this chat…",
       "retry": "Try again",
       "manual": "Write it by hand",
-      "errorNothing": "This chat has nothing to distill yet — run a task first, then save what it worked out.",
-      "errorTimeout": "The model didn't answer within 90 seconds — it may be overloaded. Try again.",
+      "errorNothing": "This chat has no task to turn into a skill yet. Run a task first, then save what you learned.",
+      "errorTimeout": "The model did not answer within 90 seconds. It may be overloaded. Try again.",
       "errorEmpty": "The model answered with nothing to save. Try again, or write the skill by hand."
     },
     "errors": {
-      "badName": "Name must be lowercase letters, digits and dashes (like \"invoice-download\") — and \"new\" is reserved.",
-      "noDescription": "A description is required — without one the model never sees the skill.",
-      "noBody": "Instructions are required — an empty skill teaches nothing.",
-      "descriptionTooLong": "Description is over {{max}} characters — tighten it; it's a catalog line, not the instructions.",
-      "bodyTooLong": "Instructions are over {{max}} characters — trim the steps or split into two skills.",
-      "reservedName": "That name is taken by a built-in slash command — pick another.",
-      "nameTaken": "A skill named \"{{name}}\" already exists — pick another name or edit that one.",
-      "tooMany": "You have {{max}} skills — the cap. Delete one you no longer use before adding another."
+      "badName": "Use lowercase letters, digits and hyphens, like \"invoice-download\". The name \"new\" is reserved.",
+      "noDescription": "Add a description. Without it, the model cannot see the skill.",
+      "noBody": "Add instructions. An empty skill cannot tell the model what to do.",
+      "descriptionTooLong": "The description is over {{max}} characters. Shorten it to a brief summary and put the steps in the instructions.",
+      "bodyTooLong": "The instructions are over {{max}} characters. Shorten the steps or split them into two skills.",
+      "reservedName": "A built-in slash command already uses that name. Pick another.",
+      "nameTaken": "A skill named \"{{name}}\" already exists. Pick another name or edit that skill.",
+      "tooMany": "You have reached the limit of {{max}} skills. Delete one you no longer use before adding another."
     },
     "manageTitle": "Your skills",
-    "manageHelp": "Every saved recipe — toggle, edit, import. Each also runs as its own slash command."
+    "manageHelp": "Enable, edit or import saved skills. Each one also has its own slash command."
   },
   "mcpOut": {
     "errors": {
-      "tooMany": "No more than {{max}} MCP servers — remove one to add another.",
+      "tooMany": "The limit is {{max}} MCP servers. Remove one before adding another.",
       "invalidUrl": "Enter an https:// URL (plain http:// works for localhost only).",
       "invalidName": "Give the server a name of up to 32 characters.",
       "duplicate": "A server with this name already exists."
@@ -254,7 +254,7 @@
       "down": "{{reason}}"
     },
     "run": {
-      "serverDown": "MCP server \"{{name}}\" is unreachable — continuing without its tools."
+      "serverDown": "MCP server \"{{name}}\" is unreachable. Continuing without its tools."
     },
     "title": "Connect to MCP servers",
     "help": "Add remote MCP servers whose tools this agent can call during its runs. Every remote tool sits behind plan approval, like page actions.",
@@ -264,7 +264,7 @@
     "editTitle": "Edit {{name}}",
     "dialogHelp": "The agent lists this server's tools when a run starts and may call them once a plan is approved.",
     "nameLabel": "Name",
-    "nameHint": "Becomes part of tool names — keep it short (letters, digits, dashes).",
+    "nameHint": "Keep it short: letters, digits and hyphens. It becomes part of tool names.",
     "urlLabel": "Server URL",
     "urlHint": "https:// anywhere; plain http:// only for localhost.",
     "headersTitle": "Auth headers",
@@ -281,7 +281,7 @@
     "delete": "Remove",
     "deleteTitle": "Remove {{name}}?",
     "deleteDescription": "Its tools leave new runs. Anything already in a transcript stays.",
-    "empty": "Nothing here yet — this is where TabRunner reaches out, rather than being driven. Add a remote MCP server and its tools join every run's toolkit, each one behind plan approval so nothing fires before you've seen the plan.",
+    "empty": "No remote MCP servers yet. Add one to give TabRunner tools it can use in every run. Every tool requires your plan approval before it can run.",
     "statusNever": "never checked",
     "elicitTitle": "{{server}} asks for input",
     "elicitRequired": "Required",
@@ -290,12 +290,12 @@
   },
   "hooks": {
     "errors": {
-      "tooMany": "No more than {{max}} webhooks — remove one to add another.",
+      "tooMany": "The limit is {{max}} webhooks. Remove one before adding another.",
       "invalidUrl": "Enter an https:// URL (plain http:// works for localhost only).",
       "badEvent": "Pick one of the four events."
     },
     "title": "Webhooks",
-    "help": "POST a JSON payload to your own URL when runs start, finish, hit an error, or ask you something. Fire-and-forget — a slow endpoint never holds a run.",
+    "help": "Send a JSON payload with POST to your URL when a run starts, finishes, fails or asks you a question. The run does not wait for a reply, so a slow endpoint cannot delay it.",
     "add": "Add webhook",
     "newTitle": "Add webhook",
     "editTitle": "Edit webhook",
@@ -309,14 +309,14 @@
     },
     "urlLabel": "URL",
     "urlHint": "https:// anywhere; plain http:// only for localhost.",
-    "headersHint": "Auth headers can be added by editing the rule in storage for now — plain webhooks need none.",
+    "headersHint": "For now, add auth headers by editing the rule in storage. Plain webhooks do not need them.",
     "save": "Save",
     "enable": "Enabled",
     "edit": "Edit",
     "delete": "Remove",
     "deleteTitle": "Remove this webhook?",
     "deleteDescription": "Future events stop being delivered. Nothing already sent is affected.",
-    "empty": "No webhooks yet. Add one and TabRunner pings that URL at the moment you picked — run started, finished, errored, or asking you a question.",
+    "empty": "No webhooks yet. Add one to notify your URL when a run starts, finishes, fails or asks you a question.",
     "receiptNever": "never fired",
     "receipt": "{{at}} · {{status}}",
     "receiptFailed": "failed {{at}}"
@@ -324,9 +324,9 @@
   "schedule": {
     "agentLabel": "Scheduled",
     "lateNote": "This run was scheduled for {{scheduled}} and is starting late, because the browser was closed until now. Take the delay into account, and say so in your summary if it changes the answer.",
-    "historyLostNote": "The earlier conversation for this schedule is no longer stored, so there is no record here of what its previous runs found. Treat this as a first run — do not assume any of the work was already done.",
+    "historyLostNote": "The earlier conversation for this schedule is no longer stored, so there is no record of what its previous runs found. Treat this as a first run. Do not assume any work was already done.",
     "desc": {
-      "once": "Once — {{when}}",
+      "once": "Once, {{when}}",
       "daily": "Every day at {{time}}",
       "dailyDays": "{{days}} at {{time}}",
       "interval": "Every {{every}}",
@@ -334,47 +334,47 @@
       "onDays": "{{base}} · {{days}}"
     },
     "step": {
-      "scheduled": "{{recurrence}} — next {{next}}",
+      "scheduled": "{{recurrence}}. Next: {{next}}",
       "cancelled": "Cancelled: {{task}}",
       "cancelledBare": "Schedule cancelled"
     },
     "errors": {
-      "pastFire": "That time has already passed — pick one in the future.",
+      "pastFire": "That time has already passed. Pick a future time.",
       "badDays": "days must be numbers from 0 (Sunday) to 6 (Saturday).",
-      "badTime": "\"{{value}}\" is not a time — use 24-hour HH:MM, like \"09:00\".",
+      "badTime": "\"{{value}}\" is not a valid time. Use 24-hour HH:MM, like \"09:00\".",
       "tooFrequent": "A repeating task runs at most every {{min}} minutes.",
       "badWindow": "The window's end time has to come after its start.",
       "badRecurrence": "recurrence needs a kind of \"once\", \"daily\" or \"interval\", plus the field that kind requires: at, time, or every_minutes.",
-      "neverFires": "That rule never comes around — check the time and the days.",
+      "neverFires": "This rule has no future run time. Check the time and days.",
       "tooMany": "There are already {{max}} scheduled tasks, the most TabRunner keeps. Cancel one before adding another.",
       "selfOnly": "A scheduled run can only re-time the schedule it is running from, never create a new one. If new work should be scheduled, ask the user.",
       "chainExhausted": "This schedule has rescheduled itself {{max}} times without the user stepping in. Stop here and report what you found.",
-      "noTask": "task is required — say what the scheduled run should do.",
-      "noId": "id is required — take it from the scheduled-tasks list.",
-      "notFound": "No schedule with id {{id}} — it may already be cancelled."
+      "noTask": "task is required. Say what the scheduled run should do.",
+      "noId": "id is required. Use one from the scheduled-tasks list.",
+      "notFound": "No schedule with id {{id}}. It may already be cancelled. Check the scheduled-tasks list."
     },
     "ui": {
       "title": "Scheduled tasks",
       "help": "Work TabRunner runs on its own, in a tab of its own. Each one keeps its own chat, and notifies you when it finishes.",
       "emptyTitle": "Nothing scheduled",
-      "emptyBody": "Scheduled tasks run with nobody watching — a morning inbox summary, an hourly price check.",
+      "emptyBody": "Scheduled tasks run without supervision, such as a morning inbox summary or an hourly price check.",
       "emptyAction": "Ask for one in the side panel: “every weekday at 9am, summarize my inbox”. Approve the plan and it appears here.",
       "next": "Next {{when}}",
       "lastOk": "Last run finished {{when}}",
       "lastFailed": "Last run failed {{when}}",
       "runNow": "Run now",
-      "runNowOnce": "Run now as a test — it still fires at its scheduled time",
+      "runNowOnce": "Run now as a test. It will still run at the scheduled time.",
       "running": "Running now",
-      "queued": "Queued — starts when the current task finishes",
+      "queued": "Queued. Starts when the current task finishes.",
       "paused": "Paused",
-      "pause": "Pause — keeps the task and its chat, stops the timer",
-      "resume": "Resume — the next fire is recalculated from now",
+      "pause": "Pause (keep the task and chat; stop the timer)",
+      "resume": "Resume (recalculate the next run from now)",
       "open": "Open its chat",
       "delete": "Delete this schedule",
       "deleteRunning": "Delete this schedule and stop the task in progress",
       "deleteTitle": "Delete this schedule?",
       "deleteBody": "The rule is removed and nothing else fires. Its chat stays in your history.",
-      "deleteBodyRunning": "It's running right now — deleting stops the task in progress. Its chat stays in your history.",
+      "deleteBodyRunning": "This task is running. Deleting it stops the current run. Its chat stays in your history.",
       "count": "{{n}} of {{max}}"
     }
   },
@@ -406,7 +406,7 @@
       "stepCount_other": "{{count}} steps",
       "prerequisite": "Before you start: sign in to {{hosts}} with an account that can do this.",
       "notePartial": "This task was interrupted, so the walkthrough stops before the process finished.",
-      "noteTruncated": "The process ran longer than one document holds — the later steps are not shown.",
+      "noteTruncated": "The process was too long to fit in one document. Later steps are not shown.",
       "noteLateArm_one": "Documenting started after the first action, which is not shown.",
       "noteLateArm_other": "Documenting started after the first {{count}} actions, which are not shown.",
       "noteDegraded": "Some screens could not be captured on this browser, so a few steps have no picture.",
@@ -424,7 +424,7 @@
       "open": "Open",
       "partial": "Partial",
       "truncated": "Shortened",
-      "review": "Check the screenshots before sharing — they show whatever was on screen."
+      "review": "Check the screenshots before sharing. They show whatever was on screen."
     },
     "viewer": {
       "tabTitle": "Walkthrough",
@@ -432,12 +432,12 @@
       "branding": "Include TabRunner credit",
       "loading": "Loading the walkthrough…",
       "missingTitle": "This walkthrough is gone",
-      "missingBody": "Its screenshots were deleted — a walkthrough goes when its chat does, or when storage fills up.",
+      "missingBody": "The screenshots were deleted. A walkthrough is removed when its chat is deleted or storage fills up.",
       "missingFix": "Run the task again and ask TabRunner to document it.",
       "emptyTitle": "Nothing was captured",
-      "emptyBody": "The task was documented, but no screen could be captured — the tab was probably closed or blocked before the first shot. Run it again to get a fresh recording."
+      "emptyBody": "The task was documented, but no screenshot could be captured. The tab was probably closed or blocked before the first shot. Run it again to make a new recording."
     },
-    "badgeTitle": "TabRunner · REC — documenting this task"
+    "badgeTitle": "TabRunner · REC: documenting this task"
   },
   "addProvider": {
     "title": "Add provider",

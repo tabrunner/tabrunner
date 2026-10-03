@@ -221,30 +221,30 @@
     },
     "draft": {
       "title": "Nova habilidade desta conversa",
-      "description": "O TabRunner destila o que esta conversa descobriu em uma receita reutilizável — revise e edite antes de salvar.",
+      "description": "O TabRunner transforma o que esta conversa descobriu em instruções que você pode usar de novo. Revise e edite antes de salvar.",
       "working": "Destilando esta conversa…",
       "retry": "Tentar de novo",
       "manual": "Escrever à mão",
-      "errorNothing": "Esta conversa ainda não tem o que destilar — execute uma tarefa primeiro e salve o que ela descobriu.",
-      "errorTimeout": "O modelo não respondeu em 90 segundos — pode estar sobrecarregado. Tente de novo.",
+      "errorNothing": "Esta conversa ainda não tem uma tarefa para transformar em habilidade. Execute uma tarefa primeiro e salve o que aprendeu.",
+      "errorTimeout": "O modelo não respondeu em 90 segundos. Pode estar sobrecarregado. Tente de novo.",
       "errorEmpty": "O modelo respondeu sem nada para salvar. Tente de novo, ou escreva a habilidade à mão."
     },
     "errors": {
-      "badName": "O nome usa letras minúsculas, dígitos e hífens (como \"baixar-fatura\") — e \"new\" é reservado.",
-      "noDescription": "A descrição é obrigatória — sem ela o modelo nunca vê a habilidade.",
-      "noBody": "As instruções são obrigatórias — uma habilidade vazia não ensina nada.",
-      "descriptionTooLong": "A descrição passa de {{max}} caracteres — enxugue; é uma linha de catálogo, não as instruções.",
-      "bodyTooLong": "As instruções passam de {{max}} caracteres — encurte os passos ou divida em duas habilidades.",
-      "reservedName": "Esse nome já é usado por um comando embutido da barra — escolha outro.",
-      "nameTaken": "Já existe uma habilidade chamada \"{{name}}\" — escolha outro nome ou edite aquela.",
-      "tooMany": "Você tem {{max}} habilidades — o limite. Exclua uma que não usa mais antes de adicionar outra."
+      "badName": "Use letras minúsculas, números e hífens, como \"baixar-fatura\". O nome \"new\" é reservado.",
+      "noDescription": "Adicione uma descrição. Sem ela, o modelo não vê a habilidade.",
+      "noBody": "Adicione instruções. Uma habilidade vazia não diz ao modelo o que fazer.",
+      "descriptionTooLong": "A descrição passa de {{max}} caracteres. Resuma o que a habilidade faz e coloque os passos nas instruções.",
+      "bodyTooLong": "As instruções passam de {{max}} caracteres. Encurte os passos ou divida em duas habilidades.",
+      "reservedName": "Um comando integrado iniciado com / já usa esse nome. Escolha outro.",
+      "nameTaken": "Já existe uma habilidade chamada \"{{name}}\". Escolha outro nome ou edite essa habilidade.",
+      "tooMany": "Você atingiu o limite de {{max}} habilidades. Exclua uma que não usa mais antes de adicionar outra."
     },
     "manageTitle": "Suas habilidades",
-    "manageHelp": "Todas as receitas salvas — ative, edite, importe. Cada uma também vira um comando próprio."
+    "manageHelp": "Ative, edite ou importe habilidades salvas. Cada uma também tem seu próprio comando iniciado com /."
   },
   "mcpOut": {
     "errors": {
-      "tooMany": "No máximo {{max}} servidores MCP — remova um para adicionar outro.",
+      "tooMany": "O limite é de {{max}} servidores MCP. Remova um antes de adicionar outro.",
       "invalidUrl": "Informe uma URL https:// (http:// só funciona para localhost).",
       "invalidName": "Dê ao servidor um nome de até 32 caracteres.",
       "duplicate": "Já existe um servidor com esse nome."
@@ -254,7 +254,7 @@
       "down": "{{reason}}"
     },
     "run": {
-      "serverDown": "O servidor MCP \"{{name}}\" está inacessível — continuando sem as ferramentas dele."
+      "serverDown": "O servidor MCP \"{{name}}\" está inacessível. A execução continuará sem as ferramentas dele."
     },
     "title": "Conectar a servidores MCP",
     "help": "Adicione servidores MCP remotos cujas ferramentas o agente pode usar nas execuções dele. Toda ferramenta remota passa pela aprovação do plano, como as ações de página.",
@@ -264,7 +264,7 @@
     "editTitle": "Editar {{name}}",
     "dialogHelp": "O agente lista as ferramentas deste servidor quando uma execução começa e pode chamá-las depois que um plano é aprovado.",
     "nameLabel": "Nome",
-    "nameHint": "Vira parte dos nomes das ferramentas — mantenha curto (letras, dígitos, traços).",
+    "nameHint": "Mantenha curto: letras, números e hífens. Ele vira parte dos nomes das ferramentas.",
     "urlLabel": "URL do servidor",
     "urlHint": "https:// em qualquer lugar; http:// simples só para localhost.",
     "headersTitle": "Cabeçalhos de autenticação",
@@ -281,7 +281,7 @@
     "delete": "Remover",
     "deleteTitle": "Remover {{name}}?",
     "deleteDescription": "As ferramentas saem das próximas execuções. O que já está em um transcript permanece.",
-    "empty": "Nada aqui ainda — é daqui que o TabRunner sai para conectar, em vez de ser controlado. Adicione um servidor MCP remoto e as ferramentas dele entram no kit de cada execução, sempre atrás da aprovação do plano.",
+    "empty": "Nenhum servidor MCP remoto ainda. Adicione um para dar ao TabRunner ferramentas que ele pode usar em cada execução. Todas exigem sua aprovação do plano antes de serem usadas.",
     "statusNever": "nunca verificado",
     "elicitTitle": "{{server}} pede informações",
     "elicitRequired": "Obrigatório",
@@ -290,12 +290,12 @@
   },
   "hooks": {
     "errors": {
-      "tooMany": "No máximo {{max}} webhooks — remova um para adicionar outro.",
+      "tooMany": "O limite é de {{max}} webhooks. Remova um antes de adicionar outro.",
       "invalidUrl": "Informe uma URL https:// (http:// só funciona para localhost).",
       "badEvent": "Escolha um dos quatro eventos."
     },
     "title": "Webhooks",
-    "help": "Envia um payload JSON para sua própria URL quando execuções começam, terminam, dão erro ou lhe fazem uma pergunta. Fire-and-forget — um endpoint lento nunca segura uma execução.",
+    "help": "Envie um payload JSON com POST para sua URL quando uma execução começar, terminar, falhar ou fizer uma pergunta. A execução não espera uma resposta, então um endpoint lento não a atrasa.",
     "add": "Adicionar webhook",
     "newTitle": "Adicionar webhook",
     "editTitle": "Editar webhook",
@@ -309,14 +309,14 @@
     },
     "urlLabel": "URL",
     "urlHint": "https:// em qualquer lugar; http:// simples só para localhost.",
-    "headersHint": "Cabeçalhos de autenticação podem ser adicionados editando a regra no armazenamento por enquanto — webhooks simples não precisam de nenhum.",
+    "headersHint": "Por enquanto, adicione cabeçalhos de autenticação editando a regra no armazenamento. Webhooks simples não precisam deles.",
     "save": "Salvar",
     "enable": "Ativado",
     "edit": "Editar",
     "delete": "Remover",
     "deleteTitle": "Remover este webhook?",
     "deleteDescription": "Os próximos eventos deixam de ser entregues. Nada já enviado é afetado.",
-    "empty": "Nenhum webhook ainda. Adicione um e o TabRunner avisa essa URL no momento escolhido — execução iniciada, concluída, com erro ou perguntando algo.",
+    "empty": "Nenhum webhook ainda. Adicione um para avisar sua URL quando uma execução começar, terminar, falhar ou fizer uma pergunta.",
     "receiptNever": "nunca disparou",
     "receipt": "{{at}} · {{status}}",
     "receiptFailed": "falhou em {{at}}"
@@ -324,9 +324,9 @@
   "schedule": {
     "agentLabel": "Agendado",
     "lateNote": "Esta execução estava agendada para {{scheduled}} e está começando atrasada, porque o navegador esteve fechado até agora. Leve o atraso em conta e diga isso no seu resumo se mudar a resposta.",
-    "historyLostNote": "A conversa anterior deste agendamento não está mais armazenada, então não há registro aqui do que as execuções anteriores encontraram. Trate esta como a primeira execução — não presuma que algo já tenha sido feito.",
+    "historyLostNote": "A conversa anterior deste agendamento não está mais armazenada, então não há registro do que as execuções anteriores encontraram. Trate esta como a primeira execução. Não presuma que algo já tenha sido feito.",
     "desc": {
-      "once": "Uma vez — {{when}}",
+      "once": "Uma vez, {{when}}",
       "daily": "Todo dia às {{time}}",
       "dailyDays": "{{days}} às {{time}}",
       "interval": "A cada {{every}}",
@@ -334,47 +334,47 @@
       "onDays": "{{base}} · {{days}}"
     },
     "step": {
-      "scheduled": "{{recurrence}} — próxima {{next}}",
+      "scheduled": "{{recurrence}}. Próxima: {{next}}",
       "cancelled": "Cancelado: {{task}}",
       "cancelledBare": "Agendamento cancelado"
     },
     "errors": {
-      "pastFire": "Esse horário já passou — escolha um no futuro.",
+      "pastFire": "Esse horário já passou. Escolha um horário no futuro.",
       "badDays": "days precisa ser números de 0 (domingo) a 6 (sábado).",
-      "badTime": "\"{{value}}\" não é um horário — use HH:MM em 24 horas, como \"09:00\".",
+      "badTime": "\"{{value}}\" não é um horário válido. Use HH:MM no formato de 24 horas, como \"09:00\".",
       "tooFrequent": "Uma tarefa repetida roda no máximo a cada {{min}} minutos.",
       "badWindow": "O fim da janela precisa vir depois do início.",
       "badRecurrence": "recurrence precisa de um kind \"once\", \"daily\" ou \"interval\", mais o campo que esse kind exige: at, time ou every_minutes.",
-      "neverFires": "Essa regra nunca chega a acontecer — confira o horário e os dias.",
+      "neverFires": "Esta regra não tem um horário futuro de execução. Confira o horário e os dias.",
       "tooMany": "Já existem {{max}} tarefas agendadas, o máximo que o TabRunner guarda. Cancele uma antes de criar outra.",
       "selfOnly": "Uma execução agendada só pode reprogramar o próprio agendamento, nunca criar um novo. Se for para agendar algo novo, pergunte ao usuário.",
       "chainExhausted": "Este agendamento se reprogramou {{max}} vezes sem o usuário intervir. Pare por aqui e relate o que encontrou.",
-      "noTask": "task é obrigatório — diga o que a execução agendada deve fazer.",
-      "noId": "id é obrigatório — pegue na lista de tarefas agendadas.",
-      "notFound": "Nenhum agendamento com id {{id}} — ele pode já ter sido cancelado."
+      "noTask": "task é obrigatório. Diga o que a execução agendada deve fazer.",
+      "noId": "id é obrigatório. Use um da lista de tarefas agendadas.",
+      "notFound": "Nenhum agendamento com id {{id}}. Ele pode já ter sido cancelado. Confira a lista de tarefas agendadas."
     },
     "ui": {
       "title": "Tarefas agendadas",
       "help": "Trabalhos que o TabRunner executa sozinho, em uma aba própria. Cada um mantém sua conversa e avisa você quando termina.",
       "emptyTitle": "Nada agendado",
-      "emptyBody": "Tarefas agendadas rodam sem ninguém olhando — um resumo da caixa de entrada de manhã, uma checagem de preço a cada hora.",
+      "emptyBody": "Tarefas agendadas rodam sem supervisão, como um resumo da caixa de entrada de manhã ou uma consulta de preço a cada hora.",
       "emptyAction": "Peça uma no painel lateral: “todo dia útil às 9h, resuma minha caixa de entrada”. Aprove o plano e ela aparece aqui.",
       "next": "Próxima {{when}}",
       "lastOk": "Última execução terminou {{when}}",
       "lastFailed": "Última execução falhou {{when}}",
       "runNow": "Executar agora",
-      "runNowOnce": "Executar agora como teste — ela ainda dispara no horário agendado",
-      "queued": "Na fila — começa quando a tarefa atual terminar",
+      "runNowOnce": "Executar agora como teste. A tarefa ainda será executada no horário agendado.",
+      "queued": "Na fila. Começa quando a tarefa atual terminar.",
       "paused": "Pausada",
-      "pause": "Pausar — mantém a tarefa e a conversa, para o cronômetro",
-      "resume": "Retomar — o próximo disparo é recalculado a partir de agora",
+      "pause": "Pausar (manter a tarefa e a conversa; parar o temporizador)",
+      "resume": "Retomar (recalcular a próxima execução a partir de agora)",
       "running": "Executando agora",
       "open": "Abrir a conversa dela",
       "delete": "Excluir este agendamento",
       "deleteRunning": "Excluir este agendamento e parar a tarefa em andamento",
       "deleteTitle": "Excluir este agendamento?",
       "deleteBody": "A regra é removida e nada mais dispara. A conversa dela continua no seu histórico.",
-      "deleteBodyRunning": "Está rodando agora — excluir interrompe a tarefa em andamento. A conversa dela continua no seu histórico.",
+      "deleteBodyRunning": "Esta tarefa está em execução. Excluir interrompe a execução atual. A conversa continua no seu histórico.",
       "count": "{{n}} de {{max}}"
     }
   },
@@ -406,7 +406,7 @@
       "stepCount_other": "{{count}} passos",
       "prerequisite": "Antes de começar: entre em {{hosts}} com uma conta que possa fazer isso.",
       "notePartial": "Esta tarefa foi interrompida, então o passo a passo termina antes do fim do processo.",
-      "noteTruncated": "O processo foi mais longo do que cabe em um documento — os passos finais não aparecem.",
+      "noteTruncated": "O processo foi longo demais para caber em um documento. Os passos finais não aparecem.",
       "noteLateArm_one": "A documentação começou após a primeira ação, que não aparece aqui.",
       "noteLateArm_other": "A documentação começou após as primeiras {{count}} ações, que não aparecem aqui.",
       "noteDegraded": "Algumas telas não puderam ser capturadas neste navegador, então alguns passos ficaram sem imagem.",
@@ -424,7 +424,7 @@
       "open": "Abrir",
       "partial": "Parcial",
       "truncated": "Encurtado",
-      "review": "Confira as capturas antes de compartilhar — elas mostram tudo o que estava na tela."
+      "review": "Confira as capturas antes de compartilhar. Elas mostram tudo o que estava na tela."
     },
     "viewer": {
       "tabTitle": "Passo a passo",
@@ -432,12 +432,12 @@
       "branding": "Incluir crédito do TabRunner",
       "loading": "Carregando o passo a passo…",
       "missingTitle": "Este passo a passo não existe mais",
-      "missingBody": "As capturas foram apagadas — um passo a passo some junto com a conversa dele, ou quando o armazenamento enche.",
+      "missingBody": "As capturas foram apagadas. Um passo a passo é removido quando a conversa dele é excluída ou o armazenamento enche.",
       "missingFix": "Rode a tarefa de novo e peça para o TabRunner documentar.",
       "emptyTitle": "Nada foi capturado",
-      "emptyBody": "A tarefa foi documentada, mas nenhuma tela pôde ser capturada — a aba provavelmente foi fechada ou bloqueada antes da primeira captura. Rode de novo para gerar um registro novo."
+      "emptyBody": "A tarefa foi documentada, mas não foi possível capturar nenhuma tela. A aba provavelmente foi fechada ou bloqueada antes da primeira captura. Execute de novo para gerar um novo registro."
     },
-    "badgeTitle": "TabRunner · REC — documentando esta tarefa"
+    "badgeTitle": "TabRunner · REC: documentando esta tarefa"
   },
   "addProvider": {
     "title": "Adicionar provedor",

@@ -221,30 +221,30 @@
     },
     "draft": {
       "title": "Nueva habilidad desde este chat",
-      "description": "TabRunner destila lo que este chat resolvió en una receta reutilizable — revisa y edita antes de guardar.",
+      "description": "TabRunner convierte lo que se ha resuelto en este chat en instrucciones que puedes volver a usar. Revísalas y edítalas antes de guardar.",
       "working": "Destilando este chat…",
       "retry": "Reintentar",
       "manual": "Escribirla a mano",
-      "errorNothing": "Este chat aún no tiene nada que destilar — ejecuta una tarea primero y guarda lo que resolvió.",
-      "errorTimeout": "El modelo no respondió en 90 segundos — puede estar saturado. Inténtalo de nuevo.",
+      "errorNothing": "Este chat aún no tiene una tarea que convertir en habilidad. Ejecuta una tarea primero y guarda lo que hayas aprendido.",
+      "errorTimeout": "El modelo no respondió en 90 segundos. Puede estar saturado. Inténtalo de nuevo.",
       "errorEmpty": "El modelo respondió sin nada que guardar. Inténtalo de nuevo, o escribe la habilidad a mano."
     },
     "errors": {
-      "badName": "El nombre usa minúsculas, dígitos y guiones (como \"descargar-factura\") — y \"new\" está reservado.",
-      "noDescription": "La descripción es obligatoria — sin ella el modelo nunca ve la habilidad.",
-      "noBody": "Las instrucciones son obligatorias — una habilidad vacía no enseña nada.",
-      "descriptionTooLong": "La descripción supera {{max}} caracteres — recórtala; es una línea de catálogo, no las instrucciones.",
-      "bodyTooLong": "Las instrucciones superan {{max}} caracteres — acorta los pasos o divídela en dos habilidades.",
-      "reservedName": "Ese nombre ya lo usa un comando integrado de la barra — elige otro.",
-      "nameTaken": "Ya existe una habilidad llamada \"{{name}}\" — elige otro nombre o edita esa.",
-      "tooMany": "Tienes {{max}} habilidades — el tope. Elimina una que ya no uses antes de añadir otra."
+      "badName": "Usa minúsculas, números y guiones, como \"descargar-factura\". El nombre \"new\" está reservado.",
+      "noDescription": "Añade una descripción. Sin ella, el modelo no ve la habilidad.",
+      "noBody": "Añade instrucciones. Una habilidad vacía no le dice al modelo qué hacer.",
+      "descriptionTooLong": "La descripción supera los {{max}} caracteres. Resume lo que hace la habilidad y pon los pasos en las instrucciones.",
+      "bodyTooLong": "Las instrucciones superan los {{max}} caracteres. Acorta los pasos o divídelas en dos habilidades.",
+      "reservedName": "Un comando integrado que empieza por / ya usa ese nombre. Elige otro.",
+      "nameTaken": "Ya existe una habilidad llamada \"{{name}}\". Elige otro nombre o edita esa habilidad.",
+      "tooMany": "Has alcanzado el límite de {{max}} habilidades. Elimina una que ya no uses antes de añadir otra."
     },
     "manageTitle": "Tus habilidades",
-    "manageHelp": "Todas las recetas guardadas — activa, edita, importa. Cada una también es su propio comando."
+    "manageHelp": "Activa, edita o importa habilidades guardadas. Cada una también tiene su propio comando que empieza por /."
   },
   "mcpOut": {
     "errors": {
-      "tooMany": "Como mucho {{max}} servidores MCP — elimina uno para añadir otro.",
+      "tooMany": "El límite es de {{max}} servidores MCP. Elimina uno antes de añadir otro.",
       "invalidUrl": "Introduce una URL https:// (http:// solo funciona en localhost).",
       "invalidName": "Dale al servidor un nombre de hasta 32 caracteres.",
       "duplicate": "Ya existe un servidor con este nombre."
@@ -254,7 +254,7 @@
       "down": "{{reason}}"
     },
     "run": {
-      "serverDown": "El servidor MCP \"{{name}}\" no responde — se continúa sin sus herramientas."
+      "serverDown": "El servidor MCP \"{{name}}\" no responde. La ejecución continuará sin sus herramientas."
     },
     "title": "Conectar a servidores MCP",
     "help": "Añade servidores MCP remotos cuyas herramientas puede usar el agente en sus ejecuciones. Toda herramienta remota pasa por la aprobación del plan, igual que las acciones de página.",
@@ -264,7 +264,7 @@
     "editTitle": "Editar {{name}}",
     "dialogHelp": "El agente lista las herramientas de este servidor al iniciar una ejecución y puede llamarlas una vez aprobado un plan.",
     "nameLabel": "Nombre",
-    "nameHint": "Pasa a formar parte de los nombres de las herramientas — mantenlo corto (letras, dígitos, guiones).",
+    "nameHint": "Usa un nombre corto, con letras, números y guiones. Formará parte de los nombres de las herramientas.",
     "urlLabel": "URL del servidor",
     "urlHint": "https:// en cualquier sitio; http:// solo para localhost.",
     "headersTitle": "Cabeceras de autenticación",
@@ -281,7 +281,7 @@
     "delete": "Eliminar",
     "deleteTitle": "¿Eliminar {{name}}?",
     "deleteDescription": "Sus herramientas salen de las próximas ejecuciones. Lo que ya está en una transcripción permanece.",
-    "empty": "Nada aquí todavía — es desde donde TabRunner sale a conectarse, en lugar de ser dirigido. Añade un servidor MCP remoto y sus herramientas entran en el kit de cada ejecución, siempre tras la aprobación del plan.",
+    "empty": "Aún no hay servidores MCP remotos. Añade uno para darle a TabRunner herramientas que pueda usar en cada ejecución. Todas requieren que apruebes el plan antes de usarlas.",
     "statusNever": "sin comprobar",
     "elicitTitle": "{{server}} pide datos",
     "elicitRequired": "Obligatorio",
@@ -290,12 +290,12 @@
   },
   "hooks": {
     "errors": {
-      "tooMany": "Como mucho {{max}} webhooks — elimina uno para añadir otro.",
+      "tooMany": "El límite es de {{max}} webhooks. Elimina uno antes de añadir otro.",
       "invalidUrl": "Introduce una URL https:// (http:// solo funciona en localhost).",
       "badEvent": "Elige uno de los cuatro eventos."
     },
     "title": "Webhooks",
-    "help": "Envía un payload JSON a tu propia URL cuando las ejecuciones empiezan, terminan, dan error o te preguntan algo. Fire-and-forget — un endpoint lento jamás retiene una ejecución.",
+    "help": "Envía una carga útil JSON con POST a tu URL cuando una ejecución empiece, termine, falle o te haga una pregunta. La ejecución no espera una respuesta, así que un endpoint lento no la retrasa.",
     "add": "Añadir webhook",
     "newTitle": "Añadir webhook",
     "editTitle": "Editar webhook",
@@ -309,14 +309,14 @@
     },
     "urlLabel": "URL",
     "urlHint": "https:// en cualquier sitio; http:// solo para localhost.",
-    "headersHint": "Las cabeceras de autenticación se pueden añadir editando la regla en el almacenamiento por ahora — los webhooks simples no necesitan ninguna.",
+    "headersHint": "Por ahora, añade cabeceras de autenticación editando la regla en el almacenamiento. Los webhooks simples no las necesitan.",
     "save": "Guardar",
     "enable": "Activado",
     "edit": "Editar",
     "delete": "Eliminar",
     "deleteTitle": "¿Eliminar este webhook?",
     "deleteDescription": "Los próximos eventos dejan de entregarse. Nada de lo ya enviado se ve afectado.",
-    "empty": "Sin webhooks todavía. Añade uno y TabRunner avisará a esa URL en el momento que elijas — ejecución iniciada, terminada, con error o preguntándote algo.",
+    "empty": "Aún no hay webhooks. Añade uno para avisar a tu URL cuando una ejecución empiece, termine, falle o te haga una pregunta.",
     "receiptNever": "sin disparar",
     "receipt": "{{at}} · {{status}}",
     "receiptFailed": "falló {{at}}"
@@ -324,9 +324,9 @@
   "schedule": {
     "agentLabel": "Programado",
     "lateNote": "Esta ejecución estaba programada para {{scheduled}} y empieza tarde, porque el navegador estuvo cerrado hasta ahora. Ten en cuenta el retraso y dilo en tu resumen si cambia la respuesta.",
-    "historyLostNote": "La conversación anterior de esta tarea programada ya no está almacenada, así que aquí no hay registro de lo que encontraron las ejecuciones anteriores. Trata esta como la primera ejecución — no asumas que algo ya se hizo.",
+    "historyLostNote": "La conversación anterior de esta tarea programada ya no está almacenada, así que no hay registro de lo que encontraron las ejecuciones anteriores. Trata esta como la primera ejecución. No asumas que se ha hecho ningún trabajo.",
     "desc": {
-      "once": "Una vez — {{when}}",
+      "once": "Una vez, {{when}}",
       "daily": "Todos los días a las {{time}}",
       "dailyDays": "{{days}} a las {{time}}",
       "interval": "Cada {{every}}",
@@ -334,47 +334,47 @@
       "onDays": "{{base}} · {{days}}"
     },
     "step": {
-      "scheduled": "{{recurrence}} — próxima {{next}}",
+      "scheduled": "{{recurrence}}. Próxima: {{next}}",
       "cancelled": "Cancelado: {{task}}",
       "cancelledBare": "Programación cancelada"
     },
     "errors": {
-      "pastFire": "Esa hora ya pasó — elige una futura.",
+      "pastFire": "Esa hora ya ha pasado. Elige una hora futura.",
       "badDays": "days deben ser números de 0 (domingo) a 6 (sábado).",
-      "badTime": "\"{{value}}\" no es una hora — usa HH:MM en 24 horas, como \"09:00\".",
+      "badTime": "\"{{value}}\" no es una hora válida. Usa HH:MM en formato de 24 horas, como \"09:00\".",
       "tooFrequent": "Una tarea repetida se ejecuta como mucho cada {{min}} minutos.",
       "badWindow": "El fin de la ventana debe ir después del inicio.",
       "badRecurrence": "recurrence necesita un kind \"once\", \"daily\" o \"interval\", más el campo que ese kind exige: at, time o every_minutes.",
-      "neverFires": "Esa regla nunca llega a cumplirse — revisa la hora y los días.",
+      "neverFires": "Esta regla no tiene ninguna hora futura de ejecución. Revisa la hora y los días.",
       "tooMany": "Ya hay {{max}} tareas programadas, el máximo que TabRunner guarda. Cancela una antes de añadir otra.",
       "selfOnly": "Una ejecución programada solo puede reprogramar su propia programación, nunca crear una nueva. Si hay que programar algo nuevo, pregunta al usuario.",
       "chainExhausted": "Esta programación se ha reprogramado {{max}} veces sin que el usuario intervenga. Detente aquí e informa de lo que encontraste.",
-      "noTask": "task es obligatorio — di qué debe hacer la ejecución programada.",
-      "noId": "id es obligatorio — tómalo de la lista de tareas programadas.",
-      "notFound": "No hay programación con id {{id}} — puede que ya esté cancelada."
+      "noTask": "task es obligatorio. Indica qué debe hacer la ejecución programada.",
+      "noId": "id es obligatorio. Usa uno de la lista de tareas programadas.",
+      "notFound": "No hay ninguna tarea programada con id {{id}}. Puede que ya esté cancelada. Revisa la lista de tareas programadas."
     },
     "ui": {
       "title": "Tareas programadas",
       "help": "Trabajo que TabRunner ejecuta por su cuenta, en una pestaña propia. Cada una mantiene su chat y te avisa cuando termina.",
       "emptyTitle": "Nada programado",
-      "emptyBody": "Las tareas programadas se ejecutan sin que nadie mire — un resumen del correo por la mañana, una comprobación de precio cada hora.",
+      "emptyBody": "Las tareas programadas se ejecutan sin supervisión, como un resumen del correo por la mañana o una consulta de precios cada hora.",
       "emptyAction": "Pide una en el panel lateral: “cada día laborable a las 9, resume mi bandeja de entrada”. Aprueba el plan y aparecerá aquí.",
       "next": "Próxima {{when}}",
       "lastOk": "La última ejecución terminó {{when}}",
       "lastFailed": "La última ejecución falló {{when}}",
       "runNow": "Ejecutar ahora",
-      "runNowOnce": "Ejecutar ahora como prueba — seguirá disparándose a su hora programada",
-      "queued": "En cola — empieza cuando termine la tarea actual",
+      "runNowOnce": "Ejecutar ahora como prueba. La tarea seguirá ejecutándose a la hora programada.",
+      "queued": "En cola. Empieza cuando termine la tarea actual.",
       "paused": "Pausada",
-      "pause": "Pausar — conserva la tarea y su chat, detiene el temporizador",
-      "resume": "Reanudar — el próximo disparo se recalcula desde ahora",
+      "pause": "Pausar (conservar la tarea y el chat; detener el temporizador)",
+      "resume": "Reanudar (recalcular la próxima ejecución desde ahora)",
       "running": "Ejecutando ahora",
       "open": "Abrir su chat",
       "delete": "Eliminar esta programación",
       "deleteRunning": "Eliminar esta programación y detener la tarea en curso",
       "deleteTitle": "¿Eliminar esta programación?",
       "deleteBody": "La regla se elimina y no vuelve a dispararse. Su chat sigue en tu historial.",
-      "deleteBodyRunning": "Se está ejecutando ahora — eliminarla detiene la tarea en curso. Su chat sigue en tu historial.",
+      "deleteBodyRunning": "Esta tarea se está ejecutando. Si la eliminas, se detendrá la ejecución actual. El chat seguirá en tu historial.",
       "count": "{{n}} de {{max}}"
     }
   },
@@ -406,7 +406,7 @@
       "stepCount_other": "{{count}} pasos",
       "prerequisite": "Antes de empezar: inicia sesión en {{hosts}} con una cuenta que pueda hacer esto.",
       "notePartial": "Esta tarea se interrumpió, así que la guía termina antes de que el proceso acabara.",
-      "noteTruncated": "El proceso fue más largo de lo que cabe en un documento — los últimos pasos no aparecen.",
+      "noteTruncated": "El proceso era demasiado largo para caber en un documento. No se muestran los últimos pasos.",
       "noteLateArm_one": "La documentación empezó tras la primera acción, que no aparece aquí.",
       "noteLateArm_other": "La documentación empezó tras las primeras {{count}} acciones, que no aparecen aquí.",
       "noteDegraded": "Algunas pantallas no se pudieron capturar en este navegador, así que varios pasos no tienen imagen.",
@@ -424,7 +424,7 @@
       "open": "Abrir",
       "partial": "Parcial",
       "truncated": "Acortada",
-      "review": "Revisa las capturas antes de compartir — muestran todo lo que había en pantalla."
+      "review": "Revisa las capturas antes de compartir. Muestran todo lo que había en pantalla."
     },
     "viewer": {
       "tabTitle": "Guía paso a paso",
@@ -432,12 +432,12 @@
       "branding": "Incluir crédito de TabRunner",
       "loading": "Cargando la guía…",
       "missingTitle": "Esta guía ya no existe",
-      "missingBody": "Sus capturas se borraron — una guía desaparece con su chat, o cuando se llena el almacenamiento.",
+      "missingBody": "Las capturas se han borrado. Una guía se elimina cuando se borra su chat o se llena el almacenamiento.",
       "missingFix": "Vuelve a lanzar la tarea y pide a TabRunner que la documente.",
       "emptyTitle": "No se capturó nada",
-      "emptyBody": "La tarea se documentó, pero no se pudo capturar ninguna pantalla — seguramente la pestaña se cerró o estaba bloqueada antes de la primera captura. Vuelve a lanzarla para obtener un registro nuevo."
+      "emptyBody": "La tarea se ha documentado, pero no se ha podido capturar ninguna pantalla. Puede que la pestaña se cerrara o estuviera bloqueada antes de la primera captura. Vuelve a ejecutarla para obtener un nuevo registro."
     },
-    "badgeTitle": "TabRunner · REC — documentando esta tarea"
+    "badgeTitle": "TabRunner · REC: documentando esta tarea"
   },
   "addProvider": {
     "title": "Añadir proveedor",
