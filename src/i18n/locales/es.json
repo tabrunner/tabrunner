@@ -778,7 +778,7 @@
       "plan": "Expandir o contraer todos los planes",
       "open": "Abrir ayuda y atajos (el campo de texto debe estar vacío)"
     },
-    "docs": "Guías y descarga — tabrunner.app →"
+    "docs": "Guías y descarga: tabrunner.app →"
   },
   "report": {
     "title": "Reportar un problema",
@@ -797,13 +797,13 @@
     "showEarlier_one": "Mostrar {{count}} mensaje anterior",
     "showEarlier_other": "Mostrar {{count}} mensajes anteriores",
     "hideEarlier": "Ocultar mensajes anteriores",
-    "explain": "Los mensajes de arriba siguen aquí para ti — el agente reproduce este resumen en su lugar."
+    "explain": "Los mensajes de arriba siguen aquí para ti. El agente recibe este resumen en su lugar."
   },
   "context": {
     "used": "{{used}} de contexto",
     "usedOf": "{{used}} / {{window}}",
-    "tooltip": "Contexto: esta conversación ocupa {{used}} de la ventana de {{window}} del modelo — /compact resume el chat para liberar espacio",
-    "tooltipUnknown": "Contexto: esta conversación ocupa {{used}}. No se conoce el tamaño de ventana de este modelo, así que no hay porcentaje que mostrar — /compact resume el chat para liberar espacio",
+    "tooltip": "Contexto: esta conversación ocupa {{used}} del límite de entrada de {{window}} del modelo. Usa /compact para resumir el chat y liberar espacio.",
+    "tooltipUnknown": "Contexto: esta conversación ocupa {{used}}. No se conoce el límite de entrada del modelo, así que no se puede mostrar un porcentaje. Usa /compact para resumir el chat y liberar espacio.",
     "threadCost": "{{cost}} en total"
   },
   "indicator": {
@@ -819,16 +819,16 @@
     "peekToggle": "Mostrar u ocultar el plan completo",
     "stepNew": "nuevo",
     "approvalTitle": "¿Aprobar este plan?",
-    "reapprovalTitle": "El plan cambió — ¿aprobar el nuevo?",
+    "reapprovalTitle": "El plan ha cambiado. ¿Aprobar el nuevo?",
     "deviationWhy": "Por qué volvemos a preguntar",
     "approve": "Aprobar",
-    "revisionNote": "The user sent this plan back with requested changes. Call `plan` again with a revised list — it goes back to the user for approval, and no page action runs before that.",
-    "narrowedNote": "This list dropped steps the run already finished — the progress card lost them. Call `plan` again with the whole arc (finished steps included, cursor past them) unless the user cancelled those steps.",
-    "shrunkNote": "This run's first plan is shorter than the {{count}}-step arc this conversation already approved, and the standing approval let it through without a card — so the user never saw their plan shrink. Call `plan` again with the whole approved arc, cursor where the work actually stands, unless they cancelled those steps or their new message replaced the task.",
+    "revisionNote": "The user requested changes to this plan. Call `plan` again with a revised list. It returns to the user for approval. No page action runs before that.",
+    "narrowedNote": "This list removed steps the run already finished, so they disappeared from the progress card. Call `plan` again with the full list, including finished steps and the cursor past them, unless the user cancelled those steps.",
+    "shrunkNote": "This run’s first plan has fewer steps than the {{count}}-step plan this conversation already approved. Standing approval accepted it without a card, so the user did not see the shorter plan. Call `plan` again with the full approved list and the cursor at the current step, unless the user cancelled those steps or replaced the task in their new message.",
     "reject": "Rechazar"
   },
   "run": {
-    "newSkills": "Nuevas habilidades disponibles en este sitio — antes de actuar aquí, carga con la herramienta skill la que encaje con la tarea:",
+    "newSkills": "Hay nuevas habilidades disponibles en este sitio. Antes de actuar aquí, usa la herramienta skill para cargar las que encajen con la tarea:",
     "tool": {
       "navigate": "Navegando",
       "read_page_text": "Leyendo el texto de la página",
@@ -909,7 +909,7 @@
     "awaitingApproval": "Esperando tu aprobación",
     "revisingPlan": "Revisando el plan…",
     "awaitingAnswer": "Esperando tu respuesta",
-    "drivingTabTip": "Abrir esta página — se vuelve a abrir si la pestaña ya no existe",
+    "drivingTabTip": "Abrir esta página (la vuelve a abrir si la pestaña ya no existe)",
     "bridgeTask": "{{client}} está ejecutando una tarea en tu navegador",
     "bridgeDriving": "{{client}} está controlando tu navegador",
     "bridgeStopTitle": "Detiene la tarea y devuelve el navegador",
@@ -917,13 +917,13 @@
     "foreground": "En primer plano",
     "modeAria": "La próxima tarea corre: {{mode}}",
     "backgroundNow": "Ejecutar en segundo plano",
-    "backgroundNowTitle": "Cierra el panel y deja que esta tarea termine sola — nunca mueve tu pantalla. Vuelve a abrirlo cuando quieras verla.",
-    "backgroundNowGated": "Responde primero el plan o la pregunta en espera — cerrar ahora dejaría la tarea esperando en una notificación.",
-    "modeTitle": "“En primer plano” deja el panel abierto para que la veas, y la tarea trae al frente la pestaña a la que cambia; “En segundo plano” cierra el panel cuando apruebas el plan y nunca mueve tu pantalla. Ambas manejan la pestaña en la que estás — cambiar durante la tarea se aplica al momento (con el plan aprobado)",
+    "backgroundNowTitle": "Cierra el panel y deja que esta tarea termine sola. No moverá tu pantalla. Vuelve a abrir el panel cuando quieras verla.",
+    "backgroundNowGated": "Responde primero al plan o a la pregunta pendiente. Si cierras ahora, la tarea quedará esperando tu respuesta a través de una notificación.",
+    "modeTitle": "«En primer plano» deja el panel abierto y trae al frente las pestañas a las que cambie la tarea. «En segundo plano» cierra el panel cuando apruebas el plan y nunca mueve tu pantalla. Ambos usan tu pestaña actual. Cambiar durante una tarea se aplica al momento, una vez aprobado el plan.",
     "receiptIn": "{{tokens}} de entrada",
     "receiptOut": "{{tokens}} de salida",
-    "tabReopened": "Pestaña cerrada — {{host}} reabierta",
-    "tabReopenedNote": "The tab you were working was closed, so TabRunner reopened {{url}} in a new tab. Nothing the old page was holding survived — unsaved input, scroll position, anything mid-flow — so check what actually completed before repeating a step."
+    "tabReopened": "Pestaña cerrada. Se ha vuelto a abrir {{host}}.",
+    "tabReopenedNote": "The tab you were working on was closed, so TabRunner reopened {{url}} in a new tab. The old page lost its unsaved input, scroll position and any work in progress. Check what actually completed before repeating a step."
   },
   "queue": {
     "position": "Pendiente de ejecución · n.º {{position}}",
@@ -933,8 +933,8 @@
   "widget": {
     "queued": "+{{count}} en cola",
     "hide": "Ocultar",
-    "openHint": "Sigue la ejecución — abre el panel junto a la página que TabRunner está controlando",
-    "hideHint": "Contraer a un punto — haz clic en el punto para recuperarlo",
+    "openHint": "Sigue la ejecución (abre el panel junto a la página que TabRunner está usando)",
+    "hideHint": "Contraer a un punto. Haz clic en el punto para expandirlo de nuevo.",
     "expandHint": "Mostrar el widget de estado de TabRunner",
     "settledDone": "Tarea completada",
     "settledFailed": "La tarea falló",
@@ -949,41 +949,41 @@
   },
   "tips": {
     "label": "Consejo",
-    "escStop": "Esc detiene la tarea en curso — lo que ya escribiste se envía como la siguiente.",
-    "historyRecall": "Pulsa ↑ cuando quieras para recorrer lo que ya enviaste — ↓ vuelve con tu borrador.",
-    "foreground": "Toda tarea actúa en la pestaña que estás viendo — “En segundo plano” solo cierra el panel.",
-    "queueSteer": "Puedes seguir escribiendo mientras la tarea corre — el mensaje se encola y la orienta entre pasos.",
-    "pasteImage": "Pega una captura de pantalla directamente en el campo — el agente puede verla.",
-    "pasteCollapse": "El primer texto largo pegado se pliega en un token compacto — el texto completo igual llega al agente.",
-    "planApproval": "La tarea muestra su plan antes de tocar la página — aprueba, o responde con ajustes y replanifica.",
+    "escStop": "Esc detiene la tarea. El texto que ya has escrito se envía como la siguiente tarea.",
+    "historyRecall": "↑ muestra los mensajes que has enviado. ↓ avanza y recupera tu borrador.",
+    "foreground": "Las tareas usan tu pestaña actual. «En segundo plano» solo cierra el panel.",
+    "queueSteer": "Sigue escribiendo mientras se ejecuta la tarea. Tu mensaje le llega entre pasos.",
+    "pasteImage": "Pega una captura de pantalla en el campo de texto para que el agente la vea.",
+    "pasteCollapse": "El primer texto largo pegado aparece como una nota. El agente recibe el texto completo.",
+    "planApproval": "La tarea muestra su plan antes de actuar en la página. Apruébalo o pide cambios.",
     "planExpand": "Pulsa E para expandir/cerrar el plan.",
-    "widget": "Toda marca de TabRunner en la página es clicable — haz clic en una para volver al panel.",
-    "board": "Una tarea de otro chat aparece en la banda Tareas de arriba — salta a su pestaña o detenla ahí.",
-    "memory": "TabRunner recuerda datos útiles de tus tareas — revísalos o bórralos en Configuración → Memoria.",
-    "usage": "En un proveedor por suscripción, abre el chip de modelo en el campo de texto — tu uso de 5 horas y semanal está al final.",
-    "slashCommands": "Escribe / en el campo de texto para ver comandos — cambia proveedor, modelo o esfuerzo.",
-    "compact": "¿Chat largo llenándose? /compact cambia los mensajes viejos por un resumen — conservas el historial.",
-    "schedule": "Pide trabajo con temporizador — “cada día laborable a las 9, mira mi correo”. Gestiónalas en Configuración.",
+    "widget": "Haz clic en cualquier marca de TabRunner en la página para volver al panel.",
+    "board": "La tarea de otro chat aparece en Tareas, arriba. Abre su pestaña o detenla allí.",
+    "memory": "Revisa o borra lo que TabRunner ha aprendido en Configuración → Memoria.",
+    "usage": "Con una suscripción, consulta el uso de 5 horas y semanal al final del selector de modelos.",
+    "slashCommands": "Escribe / para ver comandos y cambiar de proveedor, modelo o esfuerzo durante el chat.",
+    "compact": "/compact envía un resumen en lugar de mensajes antiguos. Tu historial se conserva.",
+    "schedule": "Pide «cada día laborable a las 9, mira mi correo». Gestiona las tareas en Configuración.",
     "skills": "¿Le enseñaste algo en este chat? /skill new guarda la receta para la próxima.",
     "siteInstructions": "En Instrucciones, una línea “## site: acme.com” limita todo lo que sigue a ese sitio.",
-    "enginePicker": "El chip junto a Enviar define proveedor, modelo y esfuerzo de este chat — /model también.",
-    "engineScope": "Cada chat guarda su modelo y esfuerzo — los nuevos parten de tu última elección.",
-    "help": "Pulsa ? con el campo vacío para ver atajos y comandos — /help también sirve.",
+    "enginePicker": "Elige proveedor, modelo y esfuerzo de este chat junto a Enviar. /model también funciona.",
+    "engineScope": "Cada chat conserva su modelo y esfuerzo. Los nuevos usan tu última elección.",
+    "help": "Pulsa ? con el campo vacío para ver atajos y comandos. /help también funciona.",
     "walkthrough": "Pide “y documéntalo” y el agente escribe el proceso como una guía para compartir.",
-    "mcpOut": "Escribe /mcp para ver qué servidores remotos respondieron — añade más en Ajustes → MCP.",
-    "webhooks": "Los eventos de ejecución pueden llegar por POST a tu propia URL — configura los webhooks en Ajustes → Comportamiento.",
-    "skillsManage": "Escribe /skills para gestionar tus habilidades — cada una también funciona como su propio comando.",
+    "mcpOut": "/mcp muestra qué servidores remotos respondieron. Añade más en Configuración → MCP.",
+    "webhooks": "Envía eventos de ejecución a tu URL con webhooks en Configuración → Comportamiento.",
+    "skillsManage": "Escribe /skills para gestionar habilidades. Cada una también tiene su propio comando.",
     "jev": "Añade una clave de Jev en Ajustes → Proveedores y gasta menos en clics simples."
   },
   "notify": {
-    "doneFallback": "Tarea terminada — abre TabRunner para ver cómo fue."
+    "doneFallback": "Tarea terminada. Abre TabRunner para ver cómo ha ido."
   },
   "progress": {
     "interrupted": "Esta ejecución se interrumpió antes de terminar. Lo que ya había hecho:",
     "stopped": "El usuario detuvo esta ejecución antes de que terminara. Lo que ya había hecho:",
     "thenFailed": "Después falló: {{message}}",
     "resume": "Llama a read_history para ver los resultados completos de estos pasos y continúa donde se detuvo, en lugar de repetirlos.",
-    "resumeStopped": "El siguiente mensaje del usuario decide qué pasa con este trabajo: puede continuarlo o ir en otra dirección. Llama a read_history cuando necesites los resultados completos de estos pasos.",
+    "resumeStopped": "El siguiente mensaje del usuario decide qué pasa con este trabajo. Puede continuarlo o pedir otra tarea. Llama a read_history cuando necesites los resultados completos de estos pasos.",
     "omitted": "… {{count}} pasos anteriores"
   },
   "jev": {
@@ -1033,7 +1033,7 @@
   "errors": {
     "alreadyRunningMCP": "Ya hay una tarea de un cliente MCP externo en ejecución. Detenla desde el cliente (tabrunner.stop) o espera a que termine.",
     "alreadyRunningPanel": "Ya hay una tarea ejecutándose en el panel de TabRunner. Abre el panel y detenla, o espera a que termine.",
-    "noActiveProvider": "No hay proveedor activo — elige uno en el selector del panel o añade uno en Configuración.",
+    "noActiveProvider": "No hay ningún proveedor activo. Elige uno en el selector del panel o añádelo en Configuración y vuelve a intentarlo.",
     "noActiveTab": "No hay ninguna pestaña activa con la que trabajar. Haz clic en la pestaña que quieras y envía la tarea de nuevo.",
     "runCancelled": "Esa tarea en cola se canceló antes de empezar",
     "tabCreateFailed": "No se pudo abrir una pestaña para la tarea: {{message}}",

@@ -778,7 +778,7 @@
       "plan": "Expand or collapse every plan card",
       "open": "Open help and shortcuts (the text field must be empty)"
     },
-    "docs": "Guides & download — tabrunner.app →"
+    "docs": "Guides and download: tabrunner.app →"
   },
   "report": {
     "title": "Report an issue",
@@ -797,13 +797,13 @@
     "showEarlier_one": "Show {{count}} earlier message",
     "showEarlier_other": "Show {{count}} earlier messages",
     "hideEarlier": "Hide earlier messages",
-    "explain": "The messages above stay here for you — the agent replays this summary instead."
+    "explain": "The messages above stay here for you. The agent receives this summary instead."
   },
   "context": {
     "used": "{{used}} context",
     "usedOf": "{{used}} / {{window}}",
-    "tooltip": "Context: this conversation fills {{used}} of the model's {{window}} window — /compact summarizes the chat to free some up",
-    "tooltipUnknown": "Context: this conversation fills {{used}}. This model's window size isn't known, so there's no percentage to show — /compact summarizes the chat to free some up",
+    "tooltip": "Context: this conversation uses {{used}} of the model’s {{window}} input limit. Use /compact to summarize the chat and free up space.",
+    "tooltipUnknown": "Context: this conversation uses {{used}}. The model’s input limit is unknown, so no percentage can be shown. Use /compact to summarize the chat and free up space.",
     "threadCost": "{{cost}} total"
   },
   "indicator": {
@@ -819,16 +819,16 @@
     "peekToggle": "Show or hide the whole plan",
     "stepNew": "new",
     "approvalTitle": "Approve this plan?",
-    "reapprovalTitle": "The plan changed — approve the new one?",
+    "reapprovalTitle": "The plan changed. Approve the new one?",
     "deviationWhy": "Why you're being asked again",
     "approve": "Approve",
-    "revisionNote": "The user sent this plan back with requested changes. Call `plan` again with a revised list — it goes back to the user for approval, and no page action runs before that.",
-    "narrowedNote": "This list dropped steps the run already finished — the progress card lost them. Call `plan` again with the whole arc (finished steps included, cursor past them) unless the user cancelled those steps.",
-    "shrunkNote": "This run's first plan is shorter than the {{count}}-step arc this conversation already approved, and the standing approval let it through without a card — so the user never saw their plan shrink. Call `plan` again with the whole approved arc, cursor where the work actually stands, unless they cancelled those steps or their new message replaced the task.",
+    "revisionNote": "The user requested changes to this plan. Call `plan` again with a revised list. It returns to the user for approval. No page action runs before that.",
+    "narrowedNote": "This list removed steps the run already finished, so they disappeared from the progress card. Call `plan` again with the full list, including finished steps and the cursor past them, unless the user cancelled those steps.",
+    "shrunkNote": "This run’s first plan has fewer steps than the {{count}}-step plan this conversation already approved. Standing approval accepted it without a card, so the user did not see the shorter plan. Call `plan` again with the full approved list and the cursor at the current step, unless the user cancelled those steps or replaced the task in their new message.",
     "reject": "Reject"
   },
   "run": {
-    "newSkills": "Newly available skills on this site — before acting on anything here, load any that matches the task with the skill tool:",
+    "newSkills": "New skills are available on this site. Before acting here, use the skill tool to load any that match the task:",
     "tool": {
       "navigate": "Navigating",
       "read_page_text": "Reading the page text",
@@ -909,7 +909,7 @@
     "awaitingApproval": "Waiting for your approval",
     "revisingPlan": "Revising the plan…",
     "awaitingAnswer": "Waiting for your answer",
-    "drivingTabTip": "Go to this page — reopened if the tab is gone",
+    "drivingTabTip": "Go to this page (reopens it if the tab is gone)",
     "bridgeTask": "{{client}} is running a task in your browser",
     "bridgeDriving": "{{client}} is driving your browser",
     "bridgeStopTitle": "Stops the task and hands the browser back",
@@ -917,13 +917,13 @@
     "foreground": "In foreground",
     "modeAria": "Next task runs: {{mode}}",
     "backgroundNow": "Run in background",
-    "backgroundNowTitle": "Close the panel and let this task finish on its own — it never moves your screen. Reopen any time to watch.",
-    "backgroundNowGated": "Answer the waiting plan or question first — closing now would leave it parked on a notification.",
-    "modeTitle": "“In foreground” keeps the panel open so you can watch, and the run brings a tab it switches to forward; “In background” closes the panel once you approve the plan and never moves your screen. Both drive the tab you're on — flipping mid-task applies at once (once the plan is approved)",
+    "backgroundNowTitle": "Close the panel and let this task finish on its own. It will not move your screen. Reopen the panel any time to watch.",
+    "backgroundNowGated": "Answer the waiting plan or question first. Closing now would leave the task waiting for a reply through a notification.",
+    "modeTitle": "“In foreground” keeps the panel open and brings the task’s selected tab to the front. “In background” closes the panel when you approve the plan and never moves your screen. Both use your current tab. Switching during a task applies at once, once the plan is approved.",
     "receiptIn": "{{tokens}} in",
     "receiptOut": "{{tokens}} out",
-    "tabReopened": "Tab closed — reopened {{host}}",
-    "tabReopenedNote": "The tab you were working was closed, so TabRunner reopened {{url}} in a new tab. Nothing the old page was holding survived — unsaved input, scroll position, anything mid-flow — so check what actually completed before repeating a step."
+    "tabReopened": "Tab closed. Reopened {{host}}.",
+    "tabReopenedNote": "The tab you were working on was closed, so TabRunner reopened {{url}} in a new tab. The old page lost its unsaved input, scroll position and any work in progress. Check what actually completed before repeating a step."
   },
   "queue": {
     "position": "Waiting to run · #{{position}}",
@@ -933,8 +933,8 @@
   "widget": {
     "queued": "+{{count}} queued",
     "hide": "Hide",
-    "openHint": "Watch the run — opens the panel beside the page TabRunner is driving",
-    "hideHint": "Collapse to a small dot — click the dot to bring the widget back",
+    "openHint": "Watch the run (opens the panel beside the page TabRunner is using)",
+    "hideHint": "Collapse to a small dot. Click the dot to show the widget again.",
     "expandHint": "Show the TabRunner status widget",
     "settledDone": "Task finished",
     "settledFailed": "Task failed",
@@ -949,41 +949,41 @@
   },
   "tips": {
     "label": "Tip",
-    "escStop": "Esc stops the running task — anything already typed is sent as the next one.",
-    "historyRecall": "Press ↑ any time to walk back through what you've sent — ↓ comes forward, draft and all.",
-    "foreground": "Every task works the tab you're looking at — “In background” just closes the panel.",
-    "queueSteer": "You can keep typing while a task runs — the message queues and steers it between steps.",
-    "pasteImage": "Paste a screenshot straight into the composer — the agent can see it.",
-    "pasteCollapse": "The first long paste folds into a neat token — the full text still reaches the agent.",
-    "planApproval": "A task shows its plan before it touches the page — approve it, or reply with adjustments and it replans.",
+    "escStop": "Esc stops the task. Text you already typed is sent as the next task.",
+    "historyRecall": "↑ shows messages you sent. ↓ goes forward and brings back your draft.",
+    "foreground": "Tasks use your current tab. “In background” just closes the panel.",
+    "queueSteer": "Keep typing while a task runs. Your message reaches it between steps.",
+    "pasteImage": "Paste a screenshot into the text field so the agent can see it.",
+    "pasteCollapse": "Your first long paste appears as a note. The agent still gets the full text.",
+    "planApproval": "A task shows its plan before page actions. Approve it or request changes.",
     "planExpand": "Press E to expand/collapse the plan.",
-    "widget": "Every TabRunner mark on a page is clickable — click one to bring the panel back.",
-    "board": "A task running in another chat shows in the Tasks band at the top — jump to its tab or stop it there.",
-    "memory": "TabRunner remembers useful facts from your tasks — review or prune them under Settings → Memory.",
-    "usage": "On a subscription provider, open the model chip in the composer — your 5-hour and weekly usage sit at the bottom.",
-    "slashCommands": "Type / in the composer for commands — switch provider, model, or effort mid-chat.",
-    "compact": "Long chat filling up? /compact swaps the older messages for a summary — you keep the scrollback.",
-    "schedule": "Ask for work on a timer — “every weekday at 9am, check my inbox”. Manage them in Settings.",
+    "widget": "Click any TabRunner mark on a page to bring the panel back.",
+    "board": "Another chat’s task appears under Tasks at the top. Open its tab or stop it there.",
+    "memory": "Review or delete facts TabRunner learned in Settings → Memory.",
+    "usage": "With a subscription, see 5-hour and weekly use at the bottom of the model picker.",
+    "slashCommands": "Type / for commands to change provider, model or effort during a chat.",
+    "compact": "/compact sends a summary instead of older messages. Your chat history stays.",
+    "schedule": "Ask “every weekday at 9am, check my inbox”. Manage scheduled tasks in Settings.",
     "skills": "Taught it something in this chat? /skill new saves the recipe for next time.",
     "siteInstructions": "In Instructions, a “## site: acme.com” line scopes everything under it to that site.",
-    "enginePicker": "The chip by Send sets provider, model, and effort for this chat — /model works too.",
-    "engineScope": "Each chat keeps its own model and effort — new chats start from your last pick.",
-    "help": "Press ? on an empty composer for every shortcut and command — /help works too.",
+    "enginePicker": "Pick provider, model and effort for this chat next to Send. /model also works.",
+    "engineScope": "Each chat keeps its model and effort. New chats use your last choice.",
+    "help": "Press ? with an empty text field for shortcuts and commands. /help also works.",
     "walkthrough": "Ask “and document it” and the agent writes the process up as a shareable guide.",
-    "mcpOut": "Type /mcp to see which remote servers answered — add more under Settings → MCP.",
-    "webhooks": "Run events can POST to your own URL — wire webhooks up under Settings → Behavior.",
-    "skillsManage": "Type /skills to manage your skills — every one also runs as its own command.",
+    "mcpOut": "/mcp shows which remote servers answered. Add more in Settings → MCP.",
+    "webhooks": "Send run events to your URL with webhooks in Settings → Behavior.",
+    "skillsManage": "Type /skills to manage skills. Each one also has its own command.",
     "jev": "Add a Jev key under Settings → Providers to spend less on simple clicking."
   },
   "notify": {
-    "doneFallback": "Task finished — open TabRunner to see how it went."
+    "doneFallback": "Task finished. Open TabRunner to see how it went."
   },
   "progress": {
     "interrupted": "This run was interrupted before it could finish. What it had already done:",
     "stopped": "The user stopped this run before it finished. What it had already done:",
     "thenFailed": "It then failed: {{message}}",
     "resume": "Call read_history to see these steps' full results, then continue from where it stopped instead of repeating them.",
-    "resumeStopped": "The user's next message decides what happens to this work — it may continue it or go somewhere else. Call read_history when you need these steps' full results.",
+    "resumeStopped": "The user’s next message decides what happens to this work. They may continue it or choose another task. Call read_history when you need these steps’ full results.",
     "omitted": "… {{count}} earlier steps"
   },
   "jev": {
@@ -1033,7 +1033,7 @@
   "errors": {
     "alreadyRunningMCP": "A task from an external MCP client is already running. Stop it from the client (tabrunner.stop), or wait for it to finish.",
     "alreadyRunningPanel": "A task is already running in the TabRunner panel. Open the panel and stop it, or wait for it to finish.",
-    "noActiveProvider": "No active provider — pick one in the panel dropdown, or add one in Settings.",
+    "noActiveProvider": "No active provider. Pick one in the panel dropdown or add one in Settings, then try again.",
     "noActiveTab": "No active tab to work with. Click the tab you want, then send the task again.",
     "runCancelled": "That queued task was cancelled before it started",
     "tabCreateFailed": "Couldn't open a tab for the task: {{message}}",
