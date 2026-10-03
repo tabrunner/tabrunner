@@ -21,14 +21,14 @@ export class BridgeError extends Error {
 export const NOT_CONNECTED =
   "TabRunner isn't connected to this bridge.\n" +
   "Cause: the bridge is off, the extension isn't installed, its service worker is asleep, or it's pointed at another port.\n" +
-  "Fix: enable the bridge under TabRunner's Settings → MCP, then open its side panel once to wake the worker. It reconnects on its own within ~30s — call health again then.";
+  "Fix: enable the bridge under TabRunner's Settings → MCP, then open its side panel once to wake the worker. It reconnects on its own within ~30s. Call health again then.";
 
 const WORKER_GONE =
   "The task stopped: Chrome suspended or restarted TabRunner's service worker while it was working.\n" +
   "Fix: send the task again with run. Keeping the side panel open while a long task runs prevents this.";
 
 const TIMED_OUT =
-  "TabRunner didn't answer in time — the browser may be busy or the worker may have been suspended mid-request.\n" +
+  "TabRunner didn't answer in time. The browser may be busy or the worker may have been suspended mid-request.\n" +
   "Fix: call health to check the link, then retry.";
 
 /** One request/response round trip. Long work is polled, never held open here. */
@@ -88,7 +88,7 @@ export class BridgeLink {
         fetch: (req, server) => {
           if (server.upgrade(req)) return undefined;
           // A browser hitting the port by hand should learn what it found.
-          return new Response("TabRunner MCP bridge — the extension connects here over /ws.\n", {
+          return new Response("TabRunner MCP bridge. The extension connects here over /ws.\n", {
             headers: { "content-type": "text/plain" },
           });
         },
