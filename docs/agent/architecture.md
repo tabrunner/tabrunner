@@ -696,7 +696,10 @@ snapshot the planner must read.
 `jevForRun()` returns a connection (a key saved and switched on), gated with the action tools, and
 in `NEW_PAGE_TOOLS` so a turn's later calls cancel behind it. `values` is the only text Jev may
 type — it picks field and value together (`idx=v` options), so no text model runs. `max_actions`
-defaults to 20, capped at 30.
+defaults to 20, capped at 30. A tool alone is not enough: lost in a long tool list, it was never
+called in days of real sessions, because the planner plans every click itself. So the system prompt
+carries a short `# Jev` section (`JEV_SECTION`) under the same `delegateOn` flag, saying the user
+turned it on and which stretches to hand over.
 
 **One request per step** (`request.ts`, pure). Each page read becomes one call carrying the
 element table (on-screen controls always; below-the-fold ones while a ~10k-token budget lasts), up

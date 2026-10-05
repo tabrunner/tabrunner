@@ -484,12 +484,15 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
     loadSkillsForRun(startUrl),
     driver.snapshot(),
   ]);
+  // One flag for both halves: the tool and the prompt section that says why it
+  // exists are offered together or not at all.
+  const delegateOn = opts.jev !== undefined;
   const tools = buildToolDefs(
     context.memoryOn,
     supportsImages,
     runSkills.all.length > 0,
     recorder !== undefined,
-    opts.jev !== undefined,
+    delegateOn,
     opts.mcp?.tools ?? [],
   );
   // Skills named in the start catalog are already known to the model — mid-run
@@ -508,6 +511,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         supportsImages,
         schedules,
         runSkills.applicable,
+        delegateOn,
       ),
     },
     ...(history ?? []),
