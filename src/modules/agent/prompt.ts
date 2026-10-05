@@ -175,12 +175,24 @@ Named sets of instructions the user saved for tasks like this. When one matches 
 ${rows}`;
 }
 
+/**
+ * Why `delegate` exists, said once where the model reads its standing rules.
+ * The tool description only says how to use it; without this the planner sees
+ * one more tool in a long list, plans every click itself, and never reaches for
+ * it. Emitted only with the tool (buildToolDefs' `delegateOn`), static so the
+ * prompt-cache prefix stays stable.
+ */
+const JEV_SECTION = `# Jev
+
+The user switched on Jev, a low-cost executor, so routine clicking and typing should go to it. When a stretch of the plan is 3 or more mechanical steps on one site with values you already know (a search form, filters, stepping to a result), write it as one plan step and, once the plan is approved, hand it over with "delegate" instead of clicking through it yourself. Everything else stays with you: reading, judgment, signing in, and any step that pays, sends, posts, deletes or submits. Jev's "done" is a claim, so check the snapshot it returns before you move on.`;
+
 export function buildSystemPrompt(
   ctx: AgentContext,
   language: string,
   supportsImages = true,
   schedules: Schedule[] = [],
   skills: Skill[] = [],
+  delegateOn = false,
 ): string {
   const sections = [BASE_PROMPT];
   if (!supportsImages) sections.push(TEXT_ONLY_NOTE);
@@ -189,6 +201,7 @@ export function buildSystemPrompt(
   if (ctx.memoryOn) sections.push(memorySection(ctx.memory));
   if (schedules.length > 0) sections.push(schedulesSection(schedules));
   if (skills.length > 0) sections.push(skillsSection(skills));
+  if (delegateOn) sections.push(JEV_SECTION);
   return sections.join("\n\n");
 }
 

@@ -128,4 +128,11 @@ describe("skills in the prompt and tool list", () => {
       "delegate",
     );
   });
+
+  it("tells the planner about Jev only while it is on — the section rides with the tool", () => {
+    expect(buildSystemPrompt(ctx, "English")).not.toContain("# Jev");
+    const prompt = buildSystemPrompt(ctx, "English", true, [], [], true);
+    expect(prompt).toContain("# Jev");
+    expect(prompt).toContain('"delegate"');
+  });
 });
