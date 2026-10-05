@@ -1630,7 +1630,8 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       }),
     // Folding disarms the fold: the note is a surprise the first time and an
     // obstacle after that. You have seen what a long paste does, so the second
-    // one in the same draft is deliberate — it lands inline, in full.
+    // one in the same draft is deliberate — it lands in full, and the note
+    // opens up to its text beside it (ChatInput's onPaste).
     addPastedText: (entry) =>
       set((st) => ({ pastedTexts: [...st.pastedTexts, entry], collapseDisabled: true })),
     clearPastedTexts: () => set({ pastedTexts: [], collapseDisabled: false }),

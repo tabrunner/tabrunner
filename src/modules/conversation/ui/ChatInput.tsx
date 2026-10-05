@@ -269,24 +269,35 @@ export function ChatInput() {
 
     // Text paste: the FIRST big block of a draft folds into a token at the
     // caret, its full text spliced back in on send (see paste-collapse.ts).
-    // Short pastes fall through to the browser's normal inline paste — and so
-    // does everything after that first fold, which armed `collapseDisabled`.
     const pasted = e.clipboardData.getData("text/plain");
-    if (!pasted || collapseDisabled || !shouldCollapse(pasted)) return;
-    e.preventDefault();
+    if (!pasted) return;
     const el = areaRef.current;
     const caretStart = el?.selectionStart ?? text.length;
     const caretEnd = el?.selectionEnd ?? caretStart;
-    const token = nextToken(
-      new Set(pastedTexts.map((p) => p.token)),
-      t("chat.pasteToken", { count: linesOf(pasted) }),
-    );
-    // The entry lands before the text write, so setDraft's prune sees the token
-    // already present and keeps it.
-    addPastedText({ token, content: pasted });
-    const { text: newText, caret } = insertToken(text, caretStart, caretEnd, token);
-    setText(newText);
-    pendingCaret.current = caret;
+    if (!collapseDisabled && shouldCollapse(pasted)) {
+      e.preventDefault();
+      const token = nextToken(
+        new Set(pastedTexts.map((p) => p.token)),
+        t("chat.pasteToken", { count: linesOf(pasted) }),
+      );
+      // The entry lands before the text write, so setDraft's prune sees the token
+      // already present and keeps it.
+      addPastedText({ token, content: pasted });
+      const { text: newText, caret } = insertToken(text, caretStart, caretEnd, token);
+      setText(newText);
+      pendingCaret.current = caret;
+      return;
+    }
+    // Every paste after that lands whole, and a note still in the draft opens
+    // up first (a field half text, half placeholder reads as a bug). Each side
+    // expands on its own, so the pasted text is never scanned for a token.
+    if (pastedTexts.length === 0) return;
+    e.preventDefault();
+    // A textarea's value is always \n; a \r\n in state would never match it.
+    const inline = pasted.replaceAll("\r\n", "\n");
+    const before = expandText(text.slice(0, caretStart), pastedTexts);
+    setText(before + inline + expandText(text.slice(caretEnd), pastedTexts));
+    pendingCaret.current = before.length + inline.length;
   };
 
   const removeAttachment = (token: string) => {
