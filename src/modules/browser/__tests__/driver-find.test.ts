@@ -97,7 +97,7 @@ describe("driver.closeTab", () => {
 
   it("refuses to close the tab it is driving", async () => {
     const driver = createDriver(1);
-    await expect(driver.closeTab(1)).rejects.toThrow(/driving/);
+    await expect(driver.closeTab(1)).rejects.toThrow(/tab you are using/);
     expect(removed).toEqual([]);
   });
 

@@ -124,7 +124,7 @@ describe("a compaction the panel asked for", () => {
 
     const state = useConversationStore.getState();
     expect(state.compactingSince).toBeNull();
-    // A cancel is an answer, not a failure — no "Couldn't compact —" prefix.
+    // A cancel is an answer, not a failure — no "Could not summarize the chat" prefix.
     expect(state.messages.some((m) => m.content.startsWith("Compaction cancelled"))).toBe(true);
   });
 
@@ -138,7 +138,9 @@ describe("a compaction the panel asked for", () => {
     const state = useConversationStore.getState();
     // Otherwise the shimmer keeps promising a fold nobody is doing.
     expect(state.compactingSince).toBeNull();
-    expect(state.messages.some((m) => m.content.startsWith("Couldn't compact —"))).toBe(true);
+    expect(state.messages.some((m) => m.content.startsWith("Could not summarize the chat"))).toBe(
+      true,
+    );
   });
 });
 

@@ -60,7 +60,7 @@ describe("normalizeMcpResult", () => {
     ]);
     expect(out.data).toBe(
       [
-        "[resource file:///x.pdf — binary content withheld]",
+        "[resource file:///x.pdf: binary content withheld]",
         "plain",
         "doc: https://x",
         "[audio clip withheld]",

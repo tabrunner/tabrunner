@@ -151,7 +151,7 @@ describe("TranscriptWriter", () => {
     expect(rows[0]).toEqual(["step", "Captured 154 elements"]);
     expect(rows[1]).toEqual([
       "step",
-      "You stopped this task — your next message can pick up from here.",
+      "You stopped this task. Your next message can continue from here.",
     ]);
     expect(rows[2]?.[0]).toBe("assistant");
     expect(rows[2]?.[1]).toContain("The user stopped this run");
@@ -179,7 +179,7 @@ describe("TranscriptWriter", () => {
       { type: "done", stopped: true },
     ]);
 
-    expect(rows.map(([, content]) => content).join("\n")).not.toContain("You stopped this run");
+    expect(rows.map(([, content]) => content).join("\n")).not.toContain("You stopped this task");
   });
 
   it("writes no note for a run that ended on a question — the card is its closing word", async () => {
