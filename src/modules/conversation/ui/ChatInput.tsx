@@ -508,7 +508,7 @@ export function ChatInput() {
           !pastedTexts.some((p) => text.includes(p.token)) && <TipLine />
         ))}
       {/* One card, two tenants: the bare input on top, a footer row below with
-          the run mode and the engine picker on the left and the morph button
+          the engine picker and the run mode on the left and the morph button
           on the right — so the textarea never shares its width with a button
           column. */}
       <div className="relative rounded-xl border border-neutral-300 transition-colors focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500 dark:border-neutral-600">
@@ -547,8 +547,8 @@ export function ChatInput() {
           onBlur={onComposerBlur}
         />
         <div className="flex items-center gap-1 px-1.5 pb-1.5">
-          <RunModeToggle />
           <EnginePicker provider={engineProvider} onPick={setEngine} />
+          <RunModeToggle />
           {pastedTexts.some((p) => text.includes(p.token)) && (
             <p
               className="min-w-0 flex-1 truncate text-right text-[11px] italic text-neutral-500 dark:text-neutral-400"
