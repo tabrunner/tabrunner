@@ -30,6 +30,11 @@ function ForegroundIcon() {
  * information. The current mode is the label (self-explanatory); the tooltip
  * says what the other mode does.
  *
+ * It sits after the engine picker and takes whatever width the picker leaves
+ * (a size container), so a narrow panel drops the label and keeps the icon
+ * before the model name loses a letter. The icon still says which mode it is,
+ * and the tooltip and the aria-label name it in words.
+ *
  * It says nothing about which page, because the answer never differed: every
  * run works the tab you're on. What the toggle sets is whether the panel stays
  * open once you approve the plan — and, with it, whether the run may bring a
@@ -50,43 +55,45 @@ export function RunModeToggle() {
   const setRunMode = useConversationStore((s) => s.setRunMode);
   const { live, parked } = useWalkAway();
   const foreground = runMode === "foreground";
+  const mode = t(foreground ? "run.foreground" : "run.background");
+  const state = t("run.modeAria", { mode });
 
-  if (live) {
-    return (
-      <Button
-        type="button"
-        variant="quiet-brand"
-        size="sm"
-        disabled={parked}
-        // Deliberately no setRunMode: this is an act on the run in flight,
-        // not a vote on where the next one goes — so it dresses as the action
-        // it is (brand, pressable), not the preference it was a second ago.
-        onClick={() => window.close()}
-        title={t(parked ? "run.backgroundNowGated" : "run.backgroundNowTitle")}
-        className="flex shrink-0 items-center gap-1.5"
-      >
-        <BackgroundIcon />
-        <span className="truncate">{t("run.backgroundNow")}</span>
-      </Button>
-    );
-  }
-
-  const flip = () => setRunMode(foreground ? "background" : "foreground");
-
+  // The label shows once the slot can hold the longest wording of its state
+  // ("Ejecutar en segundo plano" is wider than "En primer plano"). Literal
+  // class names, so Tailwind sees both.
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      onClick={flip}
-      aria-label={t("run.modeAria", {
-        mode: foreground ? t("run.foreground") : t("run.background"),
-      })}
-      title={t("run.modeTitle")}
-      className="flex shrink-0 items-center gap-1.5 hover:text-neutral-900 dark:hover:text-neutral-100"
-    >
-      {foreground ? <ForegroundIcon /> : <BackgroundIcon />}
-      <span className="truncate">{foreground ? t("run.foreground") : t("run.background")}</span>
-    </Button>
+    <div className="@container flex min-w-8 flex-1">
+      {live ? (
+        <Button
+          type="button"
+          variant="quiet-brand"
+          size="sm"
+          disabled={parked}
+          // Deliberately no setRunMode: this is an act on the run in flight,
+          // not a vote on where the next one goes — so it dresses as the action
+          // it is (brand, pressable), not the preference it was a second ago.
+          onClick={() => window.close()}
+          aria-label={t("run.backgroundNow")}
+          title={t(parked ? "run.backgroundNowGated" : "run.backgroundNowTitle")}
+          className="flex items-center gap-1.5"
+        >
+          <BackgroundIcon />
+          <span className="hidden truncate @[12.5rem]:inline">{t("run.backgroundNow")}</span>
+        </Button>
+      ) : (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setRunMode(foreground ? "background" : "foreground")}
+          aria-label={state}
+          title={`${state}\n${t("run.modeTitle")}`}
+          className="flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-neutral-100"
+        >
+          {foreground ? <ForegroundIcon /> : <BackgroundIcon />}
+          <span className="hidden truncate @[9.5rem]:inline">{mode}</span>
+        </Button>
+      )}
+    </div>
   );
 }
