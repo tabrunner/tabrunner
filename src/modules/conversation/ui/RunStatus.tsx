@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { boardRunHere, runsHere, useConversationStore } from "./store";
 import { DrivenTabChip } from "./DrivenTabChip";
 import { PlanMark } from "./PlanMark";
 import { ContextGauge } from "./ContextGauge";
+import { usageParts } from "../usage-parts";
 import { pendingAskId } from "./ask-gate";
 import { useNow, useQueueBusy } from "./hooks";
 import { TipLine } from "@/modules/tips/ui";
@@ -11,7 +12,7 @@ import { Button } from "@/components/Button";
 import { ChevronRightIcon } from "@/components/Icon";
 import type { BridgeActive } from "@/shared/protocol";
 import { EFFORT_LABEL_KEYS } from "@/modules/providers/types";
-import { formatDuration, formatMoney, formatTokens } from "@/lib/format";
+import { formatDuration } from "@/lib/format";
 
 export function RunStatus() {
   const { t } = useTranslation();
@@ -110,12 +111,9 @@ export function RunStatus() {
   // yet (the writer stamps it at the end). A panel that joined a run already in
   // flight therefore counts low until it settles — see the settled band below,
   // which swaps in the writer's complete number the moment the run ends.
-  const totalTokens = usage.input + usage.output;
-  const tokenNote =
-    totalTokens > 0 ? ` · ${t("run.tokens", { count: formatTokens(totalTokens) })}` : "";
-  // Money rides the same slot: gold telemetry, after the tokens it prices.
-  // Absent on an unpriced model — no estimate, never a fake $0.00.
-  const costNote = usage.cost !== undefined ? ` · ${formatMoney(usage.cost)}` : "";
+  // Money rides the same line, after the tokens it prices. Absent on an
+  // unpriced model: no estimate, never a fake $0.00.
+  const liveUsage = usageParts(usage).join(" · ");
 
   // What the last run cost, kept up after it ends: while it streams the numbers
   // move too fast to read, and they are gone by the time you look.
@@ -153,17 +151,21 @@ export function RunStatus() {
           }
         : lastRun;
     if (!finished) return null;
-    const finishedTokens = finished.input + finished.output;
-    const finishedNote =
-      finishedTokens > 0 ? ` · ${t("run.tokens", { count: formatTokens(finishedTokens) })}` : "";
-    const finishedCost = finished.cost !== undefined ? ` · ${formatMoney(finished.cost)}` : "";
+    const receipt = [
+      formatDuration(finished.endedAt - finished.startedAt),
+      ...usageParts(finished),
+    ];
     const failed = finished.ok === false;
     // The ink is the panel's one quiet-text pair, not its inverse: this band
     // carries the verdict, and at neutral-400/500 it read fainter than the gold
     // measurement beside it — the number out-shouting the outcome.
     return (
       <div className="arrive flex flex-col gap-0.5 border-t border-neutral-100 px-3 py-1.5 text-xs text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-        <div className="flex items-center gap-2">
+        {/* Wraps: the receipt is as long as "3.5M de entrada · 5.3k de saída"
+            and a 360px panel cannot hold it beside "Interrompido". It breaks
+            between its parts only, and the no-break space before each dot
+            leaves the dot ending a line instead of starting the next. */}
+        <div className="flex flex-wrap items-center gap-x-2">
           {/* Two states earn an accent here, and only these two: red for a run
               that failed, gold for the one outcome still asking something of
               the user. "Done"/"Stopped" want no colour — nothing is owed. */}
@@ -187,10 +189,13 @@ export function RunStatus() {
           {/* What answered — identity, not measurement, so it stays out of the
               gold telemetry AND off this crowded first row: it rides the gauge's
               row below, where a wire id has room to truncate. */}
-          <span className="telemetry">
-            {formatDuration(finished.endedAt - finished.startedAt)}
-            {finishedNote}
-            {finishedCost}
+          <span className="telemetry" title={t("run.usageTip")}>
+            {receipt.map((part, i) => (
+              <Fragment key={part}>
+                {i > 0 && "\u00a0· "}
+                <span className="whitespace-nowrap">{part}</span>
+              </Fragment>
+            ))}
           </span>
         </div>
         {/* The tab the work happened on, named — same row and same chip the live
@@ -296,10 +301,10 @@ export function RunStatus() {
             {t("walkthrough.rec")}
           </span>
         )}
-        {/* Neutral, not telemetry-gold: mid-stream these tick too fast to read,
-            and gold on the brand wash was accent on accent. The shimmer is the
-            live signal; gold stays for the measurement at rest — the settled
-            band's receipt below keeps it. */}
+        {/* Neutral, not telemetry-gold: mid-stream the clock ticks too fast to
+            read, and gold on the brand wash was accent on accent. The shimmer
+            is the live signal; gold stays for the measurement at rest — the
+            settled band's receipt below keeps it. */}
         <span
           className={`shrink-0 text-xs text-neutral-500 dark:text-neutral-400 ${
             recording ? "" : "ml-auto"
@@ -307,8 +312,6 @@ export function RunStatus() {
           aria-hidden="true"
         >
           {formatDuration(now - liveStartedAt)}
-          {tokenNote}
-          {costNote}
         </span>
         {/* The composer's send/stop morphs away the moment a draft exists, so
             the band carries the one Stop that is always there — same control
@@ -330,9 +333,20 @@ export function RunStatus() {
       {plan?.steps && !awaitingApproval && (
         <PlanPeek steps={plan.steps} current={plan.current ?? 0} />
       )}
-      {/* Same corner as the settled band's, so the number does not move when the
-          run ends — you look in one place whether it is working or done. */}
-      <ContextGauge />
+      {/* What the run has spent (left) beside how full the chat is (right), one
+          row, so the two numbers that look alike are read together: the spend
+          counts the chat again on every step. Same corner as the settled
+          band's gauge, so it does not move when the run ends. The gauge drops
+          to a line of its own, still on the right, before the spend loses its
+          price to an ellipsis. The row steps aside while it has neither. */}
+      <div className="flex flex-wrap items-center justify-end gap-x-2 text-xs text-neutral-500 empty:hidden dark:text-neutral-400">
+        {liveUsage && (
+          <span className="mr-auto" title={t("run.usageTip")} aria-hidden="true">
+            {liveUsage}
+          </span>
+        )}
+        <ContextGauge />
+      </div>
       {/* The working band is the one place the user watches while waiting —
           Claude Code's spinner-tip slot; idle/composer gets the same line. */}
       {!queueBusy && <TipLine className="text-brand-800/60 dark:text-brand-200/50" />}

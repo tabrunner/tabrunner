@@ -3,9 +3,10 @@ import type { Message } from "./types";
 import type { ReasoningEffort } from "@/modules/providers/types";
 import { appendMessageTo, recordRunSummary, replaceMessageTo } from "./conversations";
 import { buildProgressNote } from "./progress-note";
+import { usageParts } from "./usage-parts";
 import type { ProgressStep } from "./progress-note";
 import { createLogger } from "@/lib/logger";
-import { formatDuration, formatMoney, formatTokens } from "@/lib/format";
+import { formatDuration } from "@/lib/format";
 import { i18n } from "@/i18n";
 
 const log = createLogger("transcript");
@@ -134,16 +135,12 @@ export class TranscriptWriter {
    */
   private writeReceipt(): void {
     if (this.receiptWritten) return;
-    const { input, output, cost } = this.usage;
-    if (input + output <= 0) return;
+    const spent = usageParts(this.usage);
+    if (spent.length === 0) return;
     this.receiptWritten = true;
-    const parts = [
-      formatDuration(Date.now() - this.startedAt),
-      i18n.t("run.receiptIn", { tokens: formatTokens(input) }),
-      i18n.t("run.receiptOut", { tokens: formatTokens(output) }),
-    ];
-    if (cost !== undefined) parts.push(formatMoney(cost));
-    this.append(makeMsg("step", parts.join(" · ")));
+    this.append(
+      makeMsg("step", [formatDuration(Date.now() - this.startedAt), ...spent].join(" · ")),
+    );
   }
 
   /**
