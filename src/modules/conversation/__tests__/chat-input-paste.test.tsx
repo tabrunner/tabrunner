@@ -1,10 +1,11 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The composer half of the paste fold: the first long paste of a draft becomes
-// a [Pasted N lines] note, and every paste after it lands inline — the note is
-// a surprise once, then it would just be in the way. paste-collapse.test.ts
-// covers the pure token/expand math. The image half is here too: its encode is
-// async, so its draft write must read the draft as it is when it lands.
+// a [Pasted N lines] note, and every paste after it lands whole — the note
+// opens up into its full text first, so the field never mixes note and text.
+// paste-collapse.test.ts covers the pure token/expand math. The image half is
+// here too: its encode is async, so its draft write must read the draft as it
+// is when it lands.
 
 /** Image encodes, held open so a paste can be caught mid-flight. */
 const { encodes } = vi.hoisted(() => ({ encodes: [] as ((url: string) => void)[] }));
@@ -113,7 +114,7 @@ beforeEach(() => {
 });
 
 describe("ChatInput paste fold", () => {
-  it("folds the first long paste, then lets the second through inline", async () => {
+  it("folds the first long paste, then the second opens the note up", async () => {
     const h = await renderInput();
 
     const first = await paste(h.area, LONG);
@@ -123,12 +124,42 @@ describe("ChatInput paste fold", () => {
       { token: "[Pasted 5 lines]", content: LONG },
     ]);
 
-    // Second one: the composer stays out of the way, so the browser inserts the
-    // text itself — no new note, and nothing new held back for send.
-    const second = await paste(h.area, LONG);
-    expect(second.defaultPrevented).toBe(false);
-    expect(useConversationStore.getState().pastedTexts).toHaveLength(1);
-    expect(useConversationStore.getState().draft).toBe("[Pasted 5 lines]");
+    // Second one: no new note. The first note becomes its full text, the new
+    // paste lands after it, and nothing is held back for send any more.
+    const second = await paste(h.area, "six\nseven\neight\nnine\nten");
+    expect(second.defaultPrevented).toBe(true);
+    expect(useConversationStore.getState().draft).toBe(`${LONG}six\nseven\neight\nnine\nten`);
+    expect(useConversationStore.getState().pastedTexts).toEqual([]);
+    expect(h.area.selectionStart).toBe(useConversationStore.getState().draft.length);
+
+    // Opened up, so the browser handles the next one itself.
+    const third = await paste(h.area, LONG);
+    expect(third.defaultPrevented).toBe(false);
+
+    await act(async () => h.root.unmount());
+    h.container.remove();
+  });
+
+  it("a short paste opens the note up too, and lands at the caret", async () => {
+    const h = await renderInput();
+    await paste(h.area, LONG);
+    await act(async () => h.area.setSelectionRange(0, 0));
+
+    await paste(h.area, "ok ");
+    expect(useConversationStore.getState().draft).toBe(`ok ${LONG}`);
+    expect(useConversationStore.getState().pastedTexts).toEqual([]);
+    expect(h.area.selectionStart).toBe(3);
+
+    await act(async () => h.root.unmount());
+    h.container.remove();
+  });
+
+  it("never expands a token the pasted text happens to contain", async () => {
+    const h = await renderInput();
+    await paste(h.area, LONG);
+
+    await paste(h.area, "see [Pasted 5 lines]");
+    expect(useConversationStore.getState().draft).toBe(`${LONG}see [Pasted 5 lines]`);
 
     await act(async () => h.root.unmount());
     h.container.remove();
