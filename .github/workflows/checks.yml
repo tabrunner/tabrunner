@@ -5,26 +5,39 @@ name: Checks
 # — so a red `main` was discovered at release time, or by the next person to
 # pull. Several agents commit into this repo concurrently; this is the seam
 # that catches what one of them didn't run.
+#
+# Same shape as the rest of the fleet: one job per pull request. It runs the
+# gates, then squash-merges the PR. Nothing runs on main, and nothing deploys on
+# a merge: a release is a tag (`bun run release`), pushed by hand. Put the `hold`
+# label on a PR to stop the merge.
 on:
-  push:
-    branches: [main]
   pull_request:
-  # Lets a run be re-triggered by hand after a flake, without an empty commit.
-  workflow_dispatch:
+    # ready_for_review: a draft skips the job below, so `gh pr ready` starts it.
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
 
-# A newer push supersedes the run in flight — except on main, where every
-# commit's own verdict is the record.
+# A new push to a PR cancels its older run instead of paying for it.
 concurrency:
-  group: checks-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # the squash merge
+  pull-requests: write # the squash merge
 
 jobs:
   gates:
+    # A draft is not asking to merge yet, so it costs nothing.
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
     # The ceiling is for a hang, not for a slow runner.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Keeps the write token out of .git/config, so `bun install` and the
+          # packages it runs cannot push with it. Only the last step gets it.
+          persist-credentials: false
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v7
         with:
@@ -49,3 +62,39 @@ jobs:
       # daemon half). This is the check that they still agree — and it needs
       # no Chrome, which is the only reason it can run here at all.
       - run: bun run bridge:check
+
+      - name: Merge
+        # A fork's PR gets a read-only token and never merges itself.
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # The PR as it is now, not as it was when this run started: it may have
+          # become a draft or taken the `hold` label since.
+          pr=$(gh api "repos/$REPO/pulls/$PR")
+          if [ "$(jq -r .draft <<<"$pr")" = true ]; then echo "PR #$PR is a draft now; not merging."; exit 0; fi
+          if [ "$(jq -r 'any(.labels[]; .name == "hold")' <<<"$pr")" = true ]; then echo "PR #$PR has the 'hold' label; not merging."; exit 0; fi
+
+          # --match-head-commit: a push that lands now is refused, not merged unchecked.
+          #
+          # Two PRs that go green together race: the first merge moves main, and GitHub
+          # refuses the second with "Base branch was modified" for a few seconds. So a
+          # refusal is retried, and a PR that closed or got a new head ends the tries.
+          for try in 1 2 3 4 5 6; do
+            gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA" && break
+            now=$(gh api "repos/$REPO/pulls/$PR" --jq '"\(.state) \(.merged) \(.head.sha)"' 2>/dev/null || echo "no answer")
+            case "$now" in
+              "closed true $HEAD_SHA") break ;;
+              "open false $HEAD_SHA" | "no answer") ;;
+              *) echo "PR #$PR is '$now' now; not merging."; exit 0 ;;
+            esac
+            if [ "$try" = 6 ]; then echo "::error::PR #$PR was not merged after 6 tries. GitHub's refusals are above."; exit 1; fi
+            wait_s=$((try * 10 + RANDOM % 10))
+            echo "Merge refused (try $try of 6); trying again in ${wait_s}s."
+            sleep "$wait_s"
+          done
