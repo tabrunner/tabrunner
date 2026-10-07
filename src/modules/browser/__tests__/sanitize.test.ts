@@ -78,7 +78,7 @@ describe("sanitizeForModel", () => {
     const wide = Array.from({ length: 100 }, (_, i) => ({ [`field ${i}`]: "value ".repeat(80) }));
     const result = sanitizeForModel(wide);
     expect(typeof result).toBe("string");
-    expect((result as string).endsWith("chars — return a smaller piece]")).toBe(true);
+    expect((result as string).endsWith("chars. Return a smaller piece]")).toBe(true);
     expect((result as string).length).toBeLessThan(21_000);
   });
 });

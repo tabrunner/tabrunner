@@ -58,7 +58,7 @@ describe("group_tab tool", () => {
     const groupTab = vi.fn();
     const result = await executeTool(groupTabCall(2), driverWith(groupTab));
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("tab group");
+    expect(result.error).toContain("Could not add that tab to a group");
     expect(groupTab).not.toHaveBeenCalled();
   });
 
@@ -68,7 +68,7 @@ describe("group_tab tool", () => {
       runGroup: runGroupWith(undefined, async () => undefined),
     });
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("tab group");
+    expect(result.error).toContain("Could not add that tab to a group");
     expect(groupTab).not.toHaveBeenCalled();
   });
 

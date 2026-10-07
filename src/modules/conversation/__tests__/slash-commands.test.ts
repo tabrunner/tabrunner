@@ -165,22 +165,19 @@ describe("executeSlash", () => {
   });
 
   it("reports /usage windows for a subscription provider", async () => {
-    useProvidersStore.setState({
-      providers: [
-        {
-          ...PROVIDER,
-          id: "claude",
-          apiKey: "",
-          auth: {
-            accessToken: "at",
-            refreshToken: "rt",
-            expiresAt: Date.now() + 60_000,
-          },
-        },
-      ],
-      activeId: "claude",
-      loaded: true,
-    });
+    const claude: ProviderConfig = {
+      ...PROVIDER,
+      id: "claude",
+      apiKey: "",
+      auth: {
+        accessToken: "at",
+        refreshToken: "rt",
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    // The credential is read from storage on every call, never from the copy in hand.
+    await saveProvider(claude);
+    useProvidersStore.setState({ providers: [claude], activeId: "claude", loaded: true });
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -260,7 +257,7 @@ describe("/stop", () => {
 
   it("orients instead of failing silently when there is nothing to stop", () => {
     command("stop").run(undefined);
-    expect(lastNote()).toContain("no task to stop");
+    expect(lastNote()).toContain("no task running here to stop");
   });
 });
 

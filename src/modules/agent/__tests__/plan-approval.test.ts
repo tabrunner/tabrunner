@@ -580,6 +580,6 @@ describe("runAgentLoop plan approval gate", () => {
       .filter((r) => r.id === "c-plan");
     expect(planResults[0]?.content).toContain(i18n.t("plan.shrunkNote", { count: 3 }));
     // Re-sent whole, so the nudge stops — and a longer list never trips it.
-    expect(planResults[1]?.content).not.toContain("whole approved arc");
+    expect(planResults[1]?.content).not.toContain(i18n.t("plan.shrunkNote", { count: 3 }));
   });
 });

@@ -89,7 +89,8 @@ describe("envelopeProviderError", () => {
     });
     const error = envelopeProviderError({ id: "chatgpt", name: "ChatGPT" }, 429, body);
     expect(error.kind).toBe("quota");
-    expect(error.message).toContain("hit your 5-hour usage limit — it resets in 2 hours");
+    expect(error.message).toContain("reached your 5-hour usage limit");
+    expect(error.message).toContain("It resets in 2 hours");
     expect(isRetryable(error)).toBe(false);
   });
 
@@ -98,7 +99,7 @@ describe("envelopeProviderError", () => {
       '{"error":{"message":"You exceeded your current quota","type":"insufficient_quota"}}';
     const error = envelopeProviderError({ id: "openai", name: "OpenAI" }, 429, body);
     expect(error.kind).toBe("quota");
-    expect(error.message).toContain("is out of usage");
+    expect(error.message).toContain("You have used up your quota with OpenAI");
   });
 });
 

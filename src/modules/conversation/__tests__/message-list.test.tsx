@@ -225,7 +225,7 @@ describe("error bubble", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("Anthropic is rate-limiting requests — try again in a moment");
     // The dedup: the generic hint paraphrases the lead, so it must not render.
-    expect(text).not.toContain("Rate limited — wait a moment, then send again.");
+    expect(text).not.toContain("Wait a moment, then send again.");
   });
 
   it("an unclassified error keeps the generic regex hint", async () => {
@@ -235,7 +235,7 @@ describe("error bubble", () => {
       content: "Provider error: 429 rate limit hit",
       timestamp: 1,
     });
-    expect(container.textContent ?? "").toContain("Rate limited — wait a moment, then send again.");
+    expect(container.textContent ?? "").toContain("Wait a moment, then send again.");
   });
 });
 

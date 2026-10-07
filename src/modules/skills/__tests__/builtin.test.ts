@@ -33,7 +33,7 @@ describe("seedBuiltinSkills", () => {
 
     const after = await record();
     // Shipped doc wins on content; the toggle and creation time stay theirs.
-    expect(after?.description).toContain("TabRunner itself");
+    expect(after?.description).toContain("Answers questions about TabRunner");
     expect(after?.body).toContain("# TabRunner help");
     expect(after?.enabled).toBe(false);
     expect(after?.createdAt).toBe(current.createdAt);
