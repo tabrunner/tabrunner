@@ -259,7 +259,7 @@ describe("the run band's plan peek", () => {
   });
 });
 
-describe("the finished band's token total", () => {
+describe("the run band's token spend", () => {
   // `usage` is summed from the events THIS panel received, and a panel receives
   // none while it is closed — a background run closes it at the plan gate by
   // design. Left to its own sum the band reported the fraction of turns it
@@ -275,13 +275,14 @@ describe("the finished band's token total", () => {
       conversations: [{ id: "c1", title: "t", createdAt: 0, updatedAt: 0, taskCount: 1, lastRun }],
     });
 
-  const band = (h: Harness) => h.container.textContent ?? "";
+  // The receipt joins with a no-break space so a wrap never starts a line on a dot.
+  const band = (h: Harness) => (h.container.textContent ?? "").replaceAll("\u00a0", " ");
 
   it("prefers the writer's complete count over this panel's partial sum", async () => {
     settledWith({ startedAt: 1000, endedAt: 206_000, input: 88_000, output: 4_100, ok: true });
     const h = await render(<RunStatus />);
-    expect(band(h)).toContain("92.1k");
-    expect(band(h)).not.toContain("15.9k");
+    expect(band(h)).toContain("88.0k in · 4.1k out");
+    expect(band(h)).not.toContain("15.6k");
     await unmount(h);
   });
 
@@ -289,7 +290,21 @@ describe("the finished band's token total", () => {
     settledWith({ startedAt: 0, endedAt: 0, input: 0, output: 0, ok: true });
     useConversationStore.setState({ conversations: [] });
     const h = await render(<RunStatus />);
-    expect(band(h)).toContain("15.9k");
+    expect(band(h)).toContain("15.6k in · 300 out");
+    await unmount(h);
+  });
+
+  // The sum read as the chat's size ("3.6M tokens" beside "46.2k context").
+  // Input and output stay apart, and the live band says so beside the gauge.
+  it("live: reads as input and output, never one total", async () => {
+    useConversationStore.setState({
+      status: "running",
+      runStartedAt: Date.now(),
+      usage: { input: 3_500_000, output: 5_300 },
+    });
+    const h = await render(<RunStatus />);
+    expect(band(h)).toContain("3.5M in · 5.3k out");
+    expect(band(h)).not.toContain("tokens");
     await unmount(h);
   });
 });

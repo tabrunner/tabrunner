@@ -902,7 +902,6 @@
       "Rodopiando",
       "Gingando"
     ],
-    "tokens": "{{count}} tokens",
     "finished": "Concluído",
     "failed": "Falhou",
     "stopped": "Interrompido",
@@ -922,6 +921,7 @@
     "modeTitle": "“Em primeiro plano” mantém o painel aberto e traz para a frente as abas para as quais a tarefa mudar. “Em segundo plano” fecha o painel quando você aprova o plano e nunca mexe na sua tela. Os dois modos usam sua aba atual. Trocar durante a tarefa vale na hora, depois da aprovação do plano.",
     "receiptIn": "{{tokens}} de entrada",
     "receiptOut": "{{tokens}} de saída",
+    "usageTip": "A entrada conta a conversa inteira a cada vez que ela vai para o modelo, uma vez por passo. A saída é o que o modelo escreveu. Por isso a entrada cresce bem mais rápido que a própria conversa.",
     "tabReopened": "Aba fechada. {{host}} reaberta.",
     "tabReopenedNote": "The tab you were working on was closed, so TabRunner reopened {{url}} in a new tab. The old page lost its unsaved input, scroll position and any work in progress. Check what actually completed before repeating a step."
   },

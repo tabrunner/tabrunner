@@ -902,7 +902,6 @@
       "Razzmatazzing",
       "Vibing"
     ],
-    "tokens": "{{count}} tokens",
     "finished": "Done",
     "failed": "Failed",
     "stopped": "Stopped",
@@ -922,6 +921,7 @@
     "modeTitle": "“In foreground” keeps the panel open and brings the task's selected tab to the front. “In background” closes the panel when you approve the plan and never moves your screen. Both use your current tab. Switching during a task applies at once, once the plan is approved.",
     "receiptIn": "{{tokens}} in",
     "receiptOut": "{{tokens}} out",
+    "usageTip": "Input counts the whole chat each time it goes to the model, once per step. Output is what the model wrote back. So input grows much faster than the chat itself.",
     "tabReopened": "Tab closed. Reopened {{host}}.",
     "tabReopenedNote": "The tab you were working on was closed, so TabRunner reopened {{url}} in a new tab. The old page lost its unsaved input, scroll position and any work in progress. Check what actually completed before repeating a step."
   },

@@ -902,7 +902,6 @@
       "Bailoteando",
       "Zumbando"
     ],
-    "tokens": "{{count}} tokens",
     "finished": "Listo",
     "failed": "Falló",
     "stopped": "Detenido",
@@ -922,6 +921,7 @@
     "modeTitle": "«En primer plano» deja el panel abierto y trae al frente las pestañas a las que cambie la tarea. «En segundo plano» cierra el panel cuando apruebas el plan y nunca mueve tu pantalla. Ambos usan tu pestaña actual. Cambiar durante una tarea se aplica al momento, una vez aprobado el plan.",
     "receiptIn": "{{tokens}} de entrada",
     "receiptOut": "{{tokens}} de salida",
+    "usageTip": "La entrada cuenta el chat completo cada vez que se envía al modelo, una vez por paso. La salida es lo que el modelo escribió. Por eso la entrada crece mucho más rápido que el propio chat.",
     "tabReopened": "Pestaña cerrada. Se ha vuelto a abrir {{host}}.",
     "tabReopenedNote": "The tab you were working on was closed, so TabRunner reopened {{url}} in a new tab. The old page lost its unsaved input, scroll position and any work in progress. Check what actually completed before repeating a step."
   },
