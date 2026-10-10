@@ -93,6 +93,8 @@ export async function seedBuiltinSkills(reason: "install" | "update"): Promise<v
   await upsertBuiltinSkill({
     id: BUILTIN_ID,
     name: parsed.name,
+    ...(parsed.aliases !== undefined ? { aliases: parsed.aliases } : {}),
+    ...(parsed.tags !== undefined ? { tags: parsed.tags } : {}),
     description: parsed.description,
     ...(parsed.sites.length > 0 ? { sites: parsed.sites } : {}),
     body: parsed.body,

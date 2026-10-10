@@ -193,6 +193,8 @@ function ImportBody({ onDone }: { onDone: () => void }) {
           const result = await saveSkill({
             id: crypto.randomUUID(),
             name,
+            ...(c.parsed.aliases !== undefined ? { aliases: c.parsed.aliases } : {}),
+            ...(c.parsed.tags !== undefined ? { tags: c.parsed.tags } : {}),
             description: c.parsed.description ?? "",
             sites: c.parsed.sites.length > 0 ? c.parsed.sites : undefined,
             // Stored but not offered here: credential consent inside a 25-row

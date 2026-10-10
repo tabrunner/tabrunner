@@ -158,6 +158,10 @@
     "editTitle": "Editar \"{{name}}\"",
     "newTitle": "Nueva habilidad",
     "form": {
+      "aliases": "Otros nombres de comando",
+      "aliasesHint": "Opcional. Separa los nombres con comas, como facturas, descargar-facturas. Usa letras minúsculas, números y guiones.",
+      "tags": "Palabras de búsqueda",
+      "tagsHint": "Opcional. Separa palabras o frases con comas. Sirven para encontrar esta habilidad, no para ejecutarla.",
       "name": "Nombre",
       "nameHint": "Usa minúsculas, números y guiones. Es el nombre que usan /skill y el modelo.",
       "description": "Descripción",
@@ -230,13 +234,20 @@
       "errorEmpty": "El modelo respondió sin nada que guardar. Inténtalo de nuevo, o escribe la habilidad a mano."
     },
     "errors": {
+      "badAlias": "\"{{alias}}\" no es un nombre de comando válido. Usa entre 1 y {{max}} letras minúsculas, números o guiones. Empieza con una letra o un número.",
+      "aliasReserved": "/{{alias}} es un comando de TabRunner. Elige otro nombre.",
+      "aliasSelf": "/{{name}} ya ejecuta esta habilidad. Quítalo de Otros nombres de comando.",
+      "aliasRepeated": "/{{alias}} aparece más de una vez. Déjalo solo una vez.",
+      "commandTaken": "/{{name}} pertenece a la habilidad {{skill}}, aunque esté desactivada. Elige otro nombre o edita esa habilidad primero.",
+      "tooManyAliases": "Una habilidad puede tener hasta {{max}} otros nombres de comando. Quita algunos y vuelve a guardar.",
+      "tooManyTags": "Una habilidad puede tener hasta {{max}} palabras o frases de búsqueda. Quita algunas y vuelve a guardar.",
+      "badTag": "Cada palabra o frase de búsqueda puede tener hasta {{max}} caracteres y debe estar en una línea. Acórtala y vuelve a guardar.",
       "badName": "Usa minúsculas, números y guiones, como \"descargar-factura\". El nombre \"new\" está reservado.",
       "noDescription": "Añade una descripción. Sin ella, el modelo no ve la habilidad.",
       "noBody": "Añade instrucciones. Una habilidad vacía no le dice al modelo qué hacer.",
       "descriptionTooLong": "La descripción supera los {{max}} caracteres. Resume lo que hace la habilidad y pon los pasos en las instrucciones.",
       "bodyTooLong": "Las instrucciones superan los {{max}} caracteres. Acorta los pasos o divídelas en dos habilidades.",
       "reservedName": "Un comando integrado que empieza por / ya usa ese nombre. Elige otro.",
-      "nameTaken": "Ya existe una habilidad llamada \"{{name}}\". Elige otro nombre o edita esa habilidad.",
       "tooMany": "Has alcanzado el límite de {{max}} habilidades. Elimina una que ya no uses antes de añadir otra."
     },
     "manageTitle": "Tus habilidades",

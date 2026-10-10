@@ -158,6 +158,10 @@
     "editTitle": "Edit \"{{name}}\"",
     "newTitle": "New skill",
     "form": {
+      "aliases": "Other command names",
+      "aliasesHint": "Optional. Separate names with commas, like bills, get-invoices. Use lowercase letters, numbers and hyphens.",
+      "tags": "Search words",
+      "tagsHint": "Optional. Separate words or phrases with commas. They help you find this skill but do not run it.",
       "name": "Name",
       "nameHint": "Use lowercase letters, digits and hyphens. This is the name /skill and the model use.",
       "description": "Description",
@@ -230,13 +234,20 @@
       "errorEmpty": "The model answered with nothing to save. Try again, or write the skill by hand."
     },
     "errors": {
+      "badAlias": "\"{{alias}}\" is not a valid command name. Use 1–{{max}} lowercase letters, numbers or hyphens, starting with a letter or number.",
+      "aliasReserved": "/{{alias}} is a built-in command. Choose another name.",
+      "aliasSelf": "/{{name}} already runs this skill. Remove it from Other command names.",
+      "aliasRepeated": "/{{alias}} is listed twice. Keep it only once.",
+      "commandTaken": "/{{name}} belongs to {{skill}}, even if that skill is off. Choose another name or edit that skill first.",
+      "tooManyAliases": "A skill can have up to {{max}} other command names. Remove some and save again.",
+      "tooManyTags": "A skill can have up to {{max}} search words or phrases. Remove some and save again.",
+      "badTag": "Each search word or phrase must be at most {{max}} characters and stay on one line. Shorten it and save again.",
       "badName": "Use lowercase letters, digits and hyphens, like \"invoice-download\". The name \"new\" is reserved.",
       "noDescription": "Add a description. Without it, the model cannot see the skill.",
       "noBody": "Add instructions. An empty skill cannot tell the model what to do.",
       "descriptionTooLong": "The description is over {{max}} characters. Shorten it to a brief summary and put the steps in the instructions.",
       "bodyTooLong": "The instructions are over {{max}} characters. Shorten the steps or split them into two skills.",
       "reservedName": "A built-in slash command already uses that name. Pick another.",
-      "nameTaken": "A skill named \"{{name}}\" already exists. Pick another name or edit that skill.",
       "tooMany": "You have reached the limit of {{max}} skills. Delete one you no longer use before adding another."
     },
     "manageTitle": "Your skills",

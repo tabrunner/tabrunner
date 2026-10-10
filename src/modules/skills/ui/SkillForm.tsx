@@ -7,27 +7,38 @@ import { FieldShell } from "@/components/FieldShell";
 import { useStoredItem } from "@/components/useStoredItem";
 import { normalizeHostList } from "@/lib/host";
 import { truncateTo } from "@/lib/format";
-import { MAX_BODY_CHARS, MAX_DESCRIPTION_CHARS, normalizeSkillName } from "../types";
+import {
+  MAX_BODY_CHARS,
+  MAX_DESCRIPTION_CHARS,
+  normalizeSkillName,
+  type SkillMcpRef,
+} from "../types";
 import { saveSkill, skillsItem } from "../store";
-import type { ParsedSkillMd } from "../skill-md";
+import { parseSkillList, serializeSkillList, type ParsedSkillMd } from "../skill-md";
 
 /** Prefill for the form — a full skill (edit), a parsed import, or a distilled draft. */
 export interface SkillSeed {
   /** Present = editing this stored skill; absent = creating. */
   id?: string;
   name?: string;
+  aliases?: string[];
+  tags?: string[];
   description?: string;
   sites?: string[];
   body?: string;
   source?: { url: string };
+  mcpServers?: SkillMcpRef[];
 }
 
 /** A parsed SKILL.md as a form prefill — the import preview and the /skill new draft seed alike. */
 export function seedFromParsed(parsed: ParsedSkillMd, sourceUrl?: string): SkillSeed {
   return {
     ...(parsed.name ? { name: parsed.name } : {}),
+    ...(parsed.aliases !== undefined ? { aliases: parsed.aliases } : {}),
+    ...(parsed.tags !== undefined ? { tags: parsed.tags } : {}),
     ...(parsed.description ? { description: parsed.description } : {}),
     sites: parsed.sites,
+    ...(parsed.mcpServers.length > 0 ? { mcpServers: parsed.mcpServers } : {}),
     body: parsed.body,
     ...(sourceUrl ? { source: { url: sourceUrl } } : {}),
   };
@@ -53,6 +64,12 @@ export function SkillForm({
   const { t } = useTranslation();
   const skills = useStoredItem(skillsItem);
   const [nameText, setNameText] = useState(seed?.name ?? "");
+  const [aliasesText, setAliasesText] = useState<string | undefined>(
+    seed?.aliases !== undefined ? serializeSkillList(seed.aliases) : undefined,
+  );
+  const [tagsText, setTagsText] = useState<string | undefined>(
+    seed?.tags !== undefined ? serializeSkillList(seed.tags) : undefined,
+  );
   const [description, setDescription] = useState(seed?.description ?? "");
   const [sitesText, setSitesText] = useState(seed?.sites?.join(", ") ?? "");
   const [body, setBody] = useState(seed?.body ?? "");
@@ -63,6 +80,10 @@ export function SkillForm({
   const collision = liveName
     ? skills.find((s) => s.name === liveName && s.id !== seed?.id)
     : undefined;
+  const base =
+    skills.find((s) => s.id === seed?.id) ?? (replaceOnCollision ? collision : undefined);
+  const aliasesValue = aliasesText ?? serializeSkillList(base?.aliases ?? []);
+  const tagsValue = tagsText ?? serializeSkillList(base?.tags ?? []);
 
   const [saving, setSaving] = useState(false);
 
@@ -82,15 +103,16 @@ export function SkillForm({
     // Editing keeps its record; a sanctioned collision (re-import) takes over
     // the existing one — same id, so enabled state and createdAt survive
     // (the store owns the timestamps).
-    const base =
-      skills.find((s) => s.id === seed?.id) ?? (replaceOnCollision ? collision : undefined);
     const source = seed?.source ?? base?.source;
     setSaving(true);
     const result = await saveSkill({
       id: base?.id ?? crypto.randomUUID(),
       name: liveName,
+      aliases: parseSkillList(aliasesValue),
+      tags: parseSkillList(tagsValue),
       description: description.trim(),
       ...(sites.length > 0 ? { sites } : {}),
+      mcpServers: seed?.mcpServers ?? base?.mcpServers,
       body: body.trim(),
       enabled: base?.enabled ?? true,
       ...(source ? { source } : {}),
@@ -113,6 +135,12 @@ export function SkillForm({
         placeholder="invoice-download"
         onChange={(e) => setNameText(e.target.value)}
       />
+      <TextField
+        label={t("skills.form.aliases")}
+        hint={t("skills.form.aliasesHint")}
+        value={aliasesValue}
+        onChange={(e) => setAliasesText(e.target.value)}
+      />
       <FieldShell label={t("skills.form.description")} hint={t("skills.form.descriptionHint")}>
         <TextArea
           rows={2}
@@ -122,6 +150,12 @@ export function SkillForm({
           onChange={(e) => setDescription(e.target.value)}
         />
       </FieldShell>
+      <TextField
+        label={t("skills.form.tags")}
+        hint={t("skills.form.tagsHint")}
+        value={tagsValue}
+        onChange={(e) => setTagsText(e.target.value)}
+      />
       <TextField
         label={t("skills.form.sites")}
         hint={t("skills.form.sitesHint")}
@@ -152,7 +186,7 @@ export function SkillForm({
       {/* Keyed on the message: two saves can fail for different reasons, and a
           swap in place would look like the second one did nothing. */}
       {error && (
-        <p key={error} className="arrive text-xs text-red-600 dark:text-red-400">
+        <p key={error} role="alert" className="arrive text-xs text-red-600 dark:text-red-400">
           {error}
         </p>
       )}
