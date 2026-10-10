@@ -62,7 +62,14 @@ export async function scheduleTask(
   caller: AgentCaller,
 ): Promise<Result> {
   const recurrence = recurrenceFromArgs(args.recurrence);
-  if (!recurrence) return fail(i18n.t("schedule.errors.badRecurrence"));
+  if (!recurrence) {
+    const raw = args.recurrence;
+    const hasMinute =
+      raw !== null && typeof raw === "object" && ("minute_of_hour" in raw || "minuteOfHour" in raw);
+    return fail(
+      i18n.t(hasMinute ? "schedule.errors.badMinuteOfHour" : "schedule.errors.badRecurrence"),
+    );
+  }
   const now = Date.now();
   const invalid = validateRecurrence(recurrence, now);
   if (invalid) return fail(invalid);

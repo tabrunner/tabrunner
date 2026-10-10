@@ -326,6 +326,8 @@
     "lateNote": "This run was scheduled for {{scheduled}} and is starting late, because the browser was closed until now. Take the delay into account, and say so in your summary if it changes the answer.",
     "historyLostNote": "The earlier conversation for this schedule is no longer stored, so there is no record of what its previous runs found. Treat this as a first run. Do not assume any work was already done.",
     "desc": {
+      "hourly": "Every hour at minute {{minute}}",
+      "hourlyWindow": "Every hour at minute {{minute}}, {{from}}–{{to}}",
       "once": "Once, {{when}}",
       "daily": "Every day at {{time}}",
       "dailyDays": "{{days}} at {{time}}",
@@ -339,6 +341,7 @@
       "cancelledBare": "Schedule cancelled"
     },
     "errors": {
+      "badMinuteOfHour": "minute_of_hour must be a whole number from 0 to 59. Use it only with kind \"interval\" and every_minutes 60. For other intervals, omit it.",
       "pastFire": "That time has already passed. Pick a future time.",
       "badDays": "days must be numbers from 0 (Sunday) to 6 (Saturday).",
       "badTime": "\"{{value}}\" is not a valid time. Use 24-hour HH:MM, like \"09:00\".",

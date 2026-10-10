@@ -326,6 +326,8 @@
     "lateNote": "Esta ejecución estaba programada para {{scheduled}} y empieza tarde, porque el navegador estuvo cerrado hasta ahora. Ten en cuenta el retraso y dilo en tu resumen si cambia la respuesta.",
     "historyLostNote": "La conversación anterior de esta tarea programada ya no está almacenada, así que no hay registro de lo que encontraron las ejecuciones anteriores. Trata esta como la primera ejecución. No asumas que se ha hecho ningún trabajo.",
     "desc": {
+      "hourly": "Cada hora, en el minuto {{minute}}",
+      "hourlyWindow": "Cada hora, en el minuto {{minute}}, de {{from}} a {{to}}",
       "once": "Una vez, {{when}}",
       "daily": "Todos los días a las {{time}}",
       "dailyDays": "{{days}} a las {{time}}",
@@ -339,6 +341,7 @@
       "cancelledBare": "Programación cancelada"
     },
     "errors": {
+      "badMinuteOfHour": "minute_of_hour debe ser un número entero de 0 a 59. Úsalo solo con kind \"interval\" y every_minutes 60. Para otros intervalos, omite este campo.",
       "pastFire": "Esa hora ya ha pasado. Elige una hora futura.",
       "badDays": "days deben ser números de 0 (domingo) a 6 (sábado).",
       "badTime": "\"{{value}}\" no es una hora válida. Usa HH:MM en formato de 24 horas, como \"09:00\".",

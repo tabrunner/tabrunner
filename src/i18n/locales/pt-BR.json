@@ -326,6 +326,8 @@
     "lateNote": "Esta execução estava agendada para {{scheduled}} e está começando atrasada, porque o navegador esteve fechado até agora. Leve o atraso em conta e diga isso no seu resumo se mudar a resposta.",
     "historyLostNote": "A conversa anterior deste agendamento não está mais armazenada, então não há registro do que as execuções anteriores encontraram. Trate esta como a primeira execução. Não presuma que algo já tenha sido feito.",
     "desc": {
+      "hourly": "A cada hora, no minuto {{minute}}",
+      "hourlyWindow": "A cada hora, no minuto {{minute}}, das {{from}} às {{to}}",
       "once": "Uma vez, {{when}}",
       "daily": "Todo dia às {{time}}",
       "dailyDays": "{{days}} às {{time}}",
@@ -339,6 +341,7 @@
       "cancelledBare": "Agendamento cancelado"
     },
     "errors": {
+      "badMinuteOfHour": "minute_of_hour precisa ser um número inteiro de 0 a 59. Use apenas com kind \"interval\" e every_minutes 60. Para outros intervalos, não envie esse campo.",
       "pastFire": "Esse horário já passou. Escolha um horário no futuro.",
       "badDays": "days precisa ser números de 0 (domingo) a 6 (sábado).",
       "badTime": "\"{{value}}\" não é um horário válido. Use HH:MM no formato de 24 horas, como \"09:00\".",

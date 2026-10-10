@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cancelSchedule, scheduleTask } from "../agent-tools";
 import { listSchedules, saveSchedule, MAX_CHAIN, MAX_SCHEDULES } from "../store";
 import type { Schedule } from "../types";
@@ -50,6 +50,48 @@ describe("schedule_task from the panel", () => {
     // A 3am run must never land in the chat the user is reading.
     expect(stored?.conversationId).toBeTruthy();
     expect(stored?.nextFireAt).toBeGreaterThan(Date.now());
+  });
+
+  it("stores and arms a fixed hourly minute", async () => {
+    const armed = vi.spyOn(chrome.alarms, "create");
+    const res = await scheduleTask(
+      {
+        task: "check the inbox",
+        recurrence: { kind: "interval", every_minutes: 60, minute_of_hour: 17 },
+      },
+      panel,
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.data).toMatchObject({ recurrence: "Every hour at minute 17" });
+    const [stored] = await listSchedules();
+    expect(stored?.recurrence).toEqual({ kind: "interval", everyMinutes: 60, minuteOfHour: 17 });
+    expect(new Date(stored!.nextFireAt).getMinutes()).toBe(17);
+    expect(stored!.nextFireAt).toBeGreaterThan(Date.now());
+    expect(armed).toHaveBeenCalledWith(`schedule:${stored!.id}`, { when: stored!.nextFireAt });
+    armed.mockRestore();
+  });
+
+  it("rejects invalid fixed minutes with a useful error before storing or arming", async () => {
+    const armed = vi.spyOn(chrome.alarms, "create");
+    const invalid = [
+      { kind: "interval", every_minutes: 60, minute_of_hour: "17" },
+      { kind: "interval", every_minutes: 60, minute_of_hour: null },
+      { kind: "interval", every_minutes: 60, minute_of_hour: 17.5 },
+      { kind: "interval", every_minutes: 60, minute_of_hour: -1 },
+      { kind: "interval", every_minutes: 60, minute_of_hour: 60 },
+      { kind: "interval", every_minutes: 30, minute_of_hour: 17 },
+      { kind: "daily", time: "09:00", minute_of_hour: 17 },
+      { kind: "once", at: "2030-01-01T09:00", minute_of_hour: 17 },
+      { kind: "interval", every_minutes: 60, minuteOfHour: 17 },
+    ];
+    for (const recurrence of invalid) {
+      const res = await scheduleTask({ task: "check the inbox", recurrence }, panel);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error).toMatch(/minute_of_hour.*0 to 59/);
+    }
+    expect(await listSchedules()).toHaveLength(0);
+    expect(armed).not.toHaveBeenCalled();
+    armed.mockRestore();
   });
 
   it("refuses a rule that would misfire, and says which field", async () => {
