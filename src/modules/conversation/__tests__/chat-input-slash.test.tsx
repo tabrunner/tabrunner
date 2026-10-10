@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The composer half of the slash commands: the menu opens and filters with the
 // draft, Enter completes an arg-taking command instead of firing it, Enter on
@@ -14,6 +14,13 @@ import { ChatInput } from "../ui/ChatInput";
 import { useConversationStore } from "../ui/store";
 import { useProvidersStore } from "@/modules/providers/ui";
 import type { ProviderConfig } from "@/modules/providers/types";
+import type { Skill } from "@/modules/skills";
+import { fireStorageWatch } from "@/test-setup";
+import ptBR from "@/i18n/locales/pt-BR.json";
+
+vi.mock("../ui/image", () => ({
+  toAttachment: vi.fn(async () => "data:image/png;base64,cHJldmlldw=="),
+}));
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -57,9 +64,9 @@ async function type(text: string) {
   await act(async () => useConversationStore.getState().setDraft(text));
 }
 
-async function press(area: HTMLTextAreaElement, key: string) {
+async function press(area: HTMLTextAreaElement, key: string, options: KeyboardEventInit = {}) {
   await act(async () => {
-    area.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+    area.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...options }));
   });
 }
 
@@ -168,6 +175,117 @@ describe("ChatInput slash menu", () => {
     const s = useConversationStore.getState();
     expect(s.draft).toBe("");
     expect(s.messages[s.messages.length - 1]?.content).toContain("→ high");
+    await unmount(h);
+  });
+
+  it("refreshes skill matches and dispatch when storage changes without a draft edit", async () => {
+    const send = vi.fn();
+    useConversationStore.setState({ sendTask: send });
+    const h = await renderInput();
+    await type("/bill");
+    expect(menu(h)).toBeNull();
+    expect(h.container.querySelector('[role="status"]')?.textContent).toContain(
+      "type / to see the full list",
+    );
+    const skill: Skill = {
+      id: "invoices",
+      name: "get-invoices",
+      description: "Download invoices",
+      body: "Download them",
+      aliases: ["bills"],
+      tags: ["billing"],
+      enabled: true,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    await act(async () => fireStorageWatch("skills", [skill]));
+    expect(useConversationStore.getState().draft).toBe("/bill");
+    expect(menu(h)?.textContent).toContain("/get-invoices");
+    await type("/bills for March");
+    await press(h.area, "Enter");
+    expect(send).toHaveBeenCalledWith('Use the "get-invoices" skill for this task: for March');
+    await type("/bill");
+    await act(async () => fireStorageWatch("skills", [{ ...skill, enabled: false }]));
+    expect(menu(h)).toBeNull();
+    expect(useConversationStore.getState().draft).toBe("/bill");
+    await unmount(h);
+  });
+
+  it("refreshes translated search words without a draft edit", async () => {
+    const h = await renderInput();
+    await type("/guia");
+    expect(menu(h)).toBeNull();
+    i18n.addResourceBundle("pt-BR", "translation", ptBR);
+    try {
+      await act(async () => {
+        await i18n.changeLanguage("pt-BR");
+      });
+      expect(useConversationStore.getState().draft).toBe("/guia");
+      expect(menu(h)?.textContent).toContain("/document");
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+      await unmount(h);
+    }
+  });
+
+  it("retains an argument when a search result completes by Tab or Enter", async () => {
+    const h = await renderInput();
+    await type("/cron every 1h at minute 5 say hi");
+    await press(h.area, "Tab");
+    expect(useConversationStore.getState().draft).toBe("/loop every 1h at minute 5 say hi");
+    await type("/repea every 1h say hi");
+    await press(h.area, "Enter");
+    expect(useConversationStore.getState().draft).toBe("/loop every 1h say hi");
+    await unmount(h);
+  });
+
+  it("does not consume IME Enter or Shift+Enter as a command", async () => {
+    const send = vi.fn();
+    useConversationStore.setState({ sendTask: send });
+    const h = await renderInput();
+    await type("/loop every 1h say hi");
+    await press(h.area, "Enter", { isComposing: true });
+    await press(h.area, "Enter", { shiftKey: true });
+    expect(send).not.toHaveBeenCalled();
+    expect(useConversationStore.getState().draft).toBe("/loop every 1h say hi");
+    await unmount(h);
+  });
+
+  it("keeps Alt's chat-only scope on an exact alias with no candidate menu", async () => {
+    const h = await renderInput();
+    await type("/llm custom-model");
+    await press(h.area, "Enter", { altKey: true });
+    const s = useConversationStore.getState();
+    expect(s.draftEngine?.model).toBe("custom-model");
+    expect(s.messages.at(-1)?.content).toContain("This chat only");
+    await unmount(h);
+  });
+
+  it("does not send or clear an image when running a local command", async () => {
+    const send = vi.fn();
+    useConversationStore.setState({ sendTask: send });
+    const h = await renderInput();
+    await act(async () => {
+      const paste = new Event("paste", { bubbles: true, cancelable: true });
+      Object.defineProperty(paste, "clipboardData", {
+        value: {
+          files: [new File(["preview"], "chart.png", { type: "image/png" })],
+          getData: () => "",
+        },
+      });
+      h.area.dispatchEvent(paste);
+    });
+    expect(h.container.querySelector("img")).not.toBeNull();
+    await type("/commands");
+    await press(h.area, "Enter");
+    expect(send).not.toHaveBeenCalled();
+    expect(h.container.querySelector("img")).not.toBeNull();
+    expect(useConversationStore.getState().draft).toBe("[Image #1]");
+    await type("Read [Image #1]");
+    await press(h.area, "Enter");
+    expect(send).toHaveBeenCalledWith("Read [Image #1]", ["data:image/png;base64,cHJldmlldw=="]);
     await unmount(h);
   });
 

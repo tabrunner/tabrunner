@@ -25,10 +25,6 @@ export function listSkills(): Promise<Skill[]> {
   return skillsItem.get();
 }
 
-export function watchSkills(cb: (list: Skill[]) => void): () => void {
-  return skillsItem.watch(cb);
-}
-
 export type SaveSkillResult = { ok: true; skill: Skill } | { ok: false; error: string };
 
 /** What callers hand in — the store owns the clock (createdAt survives a replace). */

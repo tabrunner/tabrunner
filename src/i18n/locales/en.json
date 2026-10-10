@@ -685,6 +685,30 @@
     "copied": "Copied"
   },
   "commands": {
+    "ambiguous": "More than one command matches /{{name}}. Type / and choose one from the list.",
+    "tags": {
+      "stop": ["abort", "end", "running"],
+      "background": ["foreground", "mode", "panel"],
+      "effort": ["thinking", "reasoning", "level"],
+      "model": ["ai", "engine", "auto"],
+      "provider": ["account", "connection", "vendor"],
+      "rename": ["name", "title", "chat"],
+      "usage": ["quota", "limits", "subscription", "spend"],
+      "mcp": ["tools", "servers", "connection"],
+      "document": ["guide", "instructions", "screenshots"],
+      "skill": ["recipe", "run", "instructions"],
+      "compact": ["summary", "context", "memory", "summarize"],
+      "new": ["chat", "conversation", "start"],
+      "skills": ["library", "recipes", "import"],
+      "help": ["shortcuts", "commands", "keyboard"],
+      "loop": ["recurring", "repeat", "schedule", "cron", "hourly"]
+    },
+    "loop": {
+      "description": "Repeat a task on a schedule you describe",
+      "hint": "Type when and what to repeat: /loop every 1h at minute 5 say hi. Approve the plan to save it. Chrome must be running, but you can close this panel. Pause or delete it in Settings → Schedules.",
+      "task": "Create a recurring schedule for this request: {{request}}\n\nUse schedule_task to save it. Do not perform the repeated action now. If the task or timing is missing or unsupported, ask me to clarify; do not guess or substitute another frequency. For an hourly request at a specific minute, use kind \"interval\", every_minutes 60 and minute_of_hour with that minute. The approval plan must name the task and timing. Explain that Chrome must be running, the panel can be closed, and a missed run happens once when Chrome returns. The schedule stays until paused or cancelled in Settings → Schedules."
+    },
+    "noMatch": "No command found. Try another word or type / to see the full list.",
     "menuAria": "Commands",
     "current": "Current",
     "unknown": "No command /{{name}}. Type / to see the list.",
@@ -781,6 +805,8 @@
     }
   },
   "help": {
+    "aliases": "Also: {{names}}",
+    "commandSearch": "Type / and a word you remember. The list searches names, other names, search words and descriptions. Choose a row to use its command.",
     "title": "Help & shortcuts",
     "shortcuts": "Shortcuts",
     "commands": "Commands",
@@ -975,9 +1001,9 @@
     "board": "Another chat's task appears under Tasks at the top. Open its tab or stop it there.",
     "memory": "Review or delete facts TabRunner learned in Settings → Memory.",
     "usage": "With a subscription, see 5-hour and weekly use at the bottom of the model picker.",
-    "slashCommands": "Type / for commands to change provider, model or effort during a chat.",
+    "slashCommands": "Type / and a word you remember. /cancel is /stop; /repeat is /loop.",
     "compact": "/compact sends a summary instead of older messages. Your chat history stays.",
-    "schedule": "Ask “every weekday at 9am, check my inbox”. Manage scheduled tasks in Settings.",
+    "schedule": "/loop every 1h at minute 5 say hi. Manage saved tasks in Settings → Schedules.",
     "skills": "Taught it something in this chat? /skill new saves the recipe for next time.",
     "siteInstructions": "In Instructions, a “## site: acme.com” line scopes everything under it to that site.",
     "enginePicker": "Pick provider, model and effort for this chat next to Send. /model also works.",

@@ -11,7 +11,7 @@ import { expandText, insertToken, linesOf, nextToken, shouldCollapse } from "./p
 import { RunModeToggle } from "./RunModeToggle";
 import { SlashMenu } from "./SlashMenu";
 import { openHelp } from "./help-open";
-import { executeSlash, findCommand, runSlash, slashItems } from "./slash-commands";
+import { completeSlash, executeSlash, findCommand, runSlash, slashItems } from "./slash-commands";
 import type { SlashItem } from "./slash-commands";
 import { TipLine } from "@/modules/tips/ui";
 import { EnginePicker } from "@/modules/providers/ui";
@@ -19,6 +19,8 @@ import { TextArea } from "@/components/TextArea";
 import { Button } from "@/components/Button";
 import { Icon, XIcon } from "@/components/Icon";
 import { ZoomableImage } from "@/components/ZoomableImage";
+import { useStoredItem } from "@/components/useStoredItem";
+import { skillsItem } from "@/modules/skills/store";
 
 interface Attachment {
   /** The "[Image #1]" token that stands in for this image inside the task text. */
@@ -122,7 +124,9 @@ export function ChatInput() {
   // line). Esc dismisses until the next edit; the highlight lands on the
   // current value and resets whenever the item list changes. Render-time
   // adjustment, like the plan card's — no effects ferrying keystrokes.
-  const slash = useMemo(() => slashItems(text), [text]);
+  const skills = useStoredItem(skillsItem);
+  // Read on render so skill edits and language changes refresh an unchanged draft.
+  const slash = slashItems(text, skills);
   const slashKey = slash?.items.map((i) => i.key).join(" ") ?? "";
   const [slashState, setSlashState] = useState({ key: "", index: 0 });
   if (slashState.key !== slashKey) {
@@ -294,14 +298,12 @@ export function ChatInput() {
     setText(text.replaceAll(token, "").replace(/ {2,}/g, " ").trim());
   };
 
-  /** A sent message (or a fired command) leaves a pristine composer. */
-  const resetComposer = () => {
-    setText("");
-    // setDraft("") above pruned everything and armed the inline override; a sent
-    // message is a fresh draft, so the fold is fair game again.
+  /** Commands leave unsent images available for the next message. */
+  const resetComposer = (keepAttachments = false) => {
+    setText(keepAttachments ? attachments.map((a) => a.token).join(" ") : "");
     clearPastedTexts();
     setAttachError(null);
-    setAttachments([]);
+    if (!keepAttachments) setAttachments([]);
   };
 
   /** Click/Enter on a menu row: a candidate runs its command with the row's
@@ -310,30 +312,30 @@ export function ChatInput() {
   const acceptSlash = (item: SlashItem, thisChatOnly = false) => {
     if (!slash) return;
     if (slash.kind === "candidates") {
-      runSlash(slash.command, item.key, thisChatOnly);
-      resetComposer();
+      runSlash(slash.command, item.key, thisChatOnly, skills);
+      resetComposer(true);
       return;
     }
-    const command = findCommand(item.key);
+    const command = findCommand(item.key, skills);
     if (!command) return;
     if (command.takesArg) {
-      setText(`/${command.name} `);
+      setText(completeSlash(command, text));
     } else {
-      runSlash(command, undefined);
-      resetComposer();
+      runSlash(command, undefined, thisChatOnly, skills);
+      resetComposer(true);
     }
   };
 
-  const submit = () => {
+  const submit = (thisChatOnly = false) => {
     // Collapse tokens expand to their full text before the message goes out —
     // the model never sees a "[Pasted 5 lines]" placeholder.
     const task = expandText(text, pastedTexts).trim();
     if (!task) return;
     // A leading "/" is a local command — it runs against the panel's stores
     // and never reaches the model, not even as mid-run steering.
-    const outcome = executeSlash(task);
+    const outcome = executeSlash(task, thisChatOnly, skills);
     if (outcome !== "not-slash") {
-      if (outcome === "executed") resetComposer();
+      if (outcome === "executed") resetComposer(true);
       else setText(outcome.complete);
       return;
     }
@@ -355,6 +357,7 @@ export function ChatInput() {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
     // "?" on a pristine composer opens the help sheet instead of starting a
     // draft — the GitHub/Linear (and Claude Code) convention. A task that
     // genuinely starts with "?" types any other character first, or pastes.
@@ -383,8 +386,8 @@ export function ChatInput() {
         if (slash.kind === "candidates") {
           setText(`/${slash.command.name} ${slashActive.key}`);
         } else {
-          const command = findCommand(slashActive.key);
-          if (command) setText(`/${command.name}${command.takesArg ? " " : ""}`);
+          const command = findCommand(slashActive.key, skills);
+          if (command) setText(completeSlash(command, text));
         }
         return;
       }
@@ -401,13 +404,13 @@ export function ChatInput() {
         // ⌥ Enter scopes the pick to this chat, exactly as ⌥ does in the
         // engine picker — the same gesture, the same meaning, both ways in.
         if (slashActive) acceptSlash(slashActive, e.altKey);
-        else submit();
+        else submit(e.altKey);
         return;
       }
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      submit();
+      submit(e.altKey);
       return;
     }
     // One backspace deletes a whole collapse token, not just its last bracket.
@@ -520,6 +523,11 @@ export function ChatInput() {
             onPick={acceptSlash}
           />
         )}
+        {slash?.kind === "commands" && slash.items.length === 0 && slashDismissedFor === null && (
+          <p role="status" className="px-3 pt-2 text-xs text-neutral-600 dark:text-neutral-400">
+            {t("commands.noMatch")}
+          </p>
+        )}
         <TextArea
           bare
           ref={areaRef}
@@ -572,7 +580,7 @@ export function ChatInput() {
             <Button
               size="icon"
               className="ml-auto shrink-0"
-              onClick={submit}
+              onClick={() => submit()}
               disabled={!text.trim()}
               title={
                 parkedAtPlan

@@ -685,6 +685,30 @@
     "copied": "Copiado"
   },
   "commands": {
+    "ambiguous": "Más de un comando coincide con /{{name}}. Escribe / y elige uno de la lista.",
+    "tags": {
+      "stop": ["parar", "detener", "cancelar"],
+      "background": ["segundo plano", "primer plano", "panel"],
+      "effort": ["razonamiento", "pensar", "nivel"],
+      "model": ["modelo", "ia", "automático"],
+      "provider": ["proveedor", "cuenta", "conexión"],
+      "rename": ["renombrar", "nombre", "título"],
+      "usage": ["uso", "cuota", "límite", "suscripción"],
+      "mcp": ["herramientas", "servidores", "conexión"],
+      "document": ["documentar", "guía", "capturas"],
+      "skill": ["habilidad", "receta", "instrucciones"],
+      "compact": ["resumir", "resumen", "contexto", "memoria"],
+      "new": ["nuevo", "conversación", "empezar"],
+      "skills": ["habilidades", "biblioteca", "importar"],
+      "help": ["ayuda", "atajos", "teclado"],
+      "loop": ["repetir", "programar", "recurrente", "cron", "hora"]
+    },
+    "loop": {
+      "description": "Repite una tarea con la frecuencia que indiques",
+      "hint": "Indica cuándo y qué repetir: /loop cada 1h, en el minuto 5, di hola. Aprueba el plan para guardar. Chrome debe estar abierto, pero puedes cerrar el panel. Pausa o elimina la tarea en Configuración → Programaciones.",
+      "task": "Crea una tarea programada recurrente para esta petición: {{request}}\n\nUsa schedule_task para guardarla. No hagas ahora la tarea que se va a repetir. Si falta la tarea o el horario, o si el horario no se admite, pídeme que lo aclare. No adivines ni cambies la frecuencia. Para una tarea cada hora en un minuto concreto, usa kind \"interval\", every_minutes 60 y minute_of_hour con ese minuto. El plan de aprobación debe indicar la tarea y el horario. Explica que Chrome debe estar abierto, el panel puede estar cerrado y una ejecución perdida ocurre una sola vez cuando Chrome vuelve. La programación sigue hasta que se pausa o cancela en Configuración → Programaciones."
+    },
+    "noMatch": "No se encontró ningún comando. Prueba otra palabra o escribe / para ver la lista completa.",
     "menuAria": "Comandos",
     "current": "Actual",
     "unknown": "El comando /{{name}} no existe. Escribe / para ver la lista.",
@@ -781,6 +805,8 @@
     }
   },
   "help": {
+    "aliases": "También: {{names}}",
+    "commandSearch": "Escribe / y una palabra que recuerdes. La lista busca nombres, otros nombres, palabras de búsqueda y descripciones. Elige una fila para usar el comando.",
     "title": "Ayuda y atajos",
     "shortcuts": "Atajos",
     "commands": "Comandos",
@@ -975,9 +1001,9 @@
     "board": "La tarea de otro chat aparece en Tareas, arriba. Abre su pestaña o detenla allí.",
     "memory": "Revisa o borra lo que TabRunner ha aprendido en Configuración → Memoria.",
     "usage": "Con una suscripción, consulta el uso de 5 horas y semanal al final del selector de modelos.",
-    "slashCommands": "Escribe / para ver comandos y cambiar de proveedor, modelo o esfuerzo durante el chat.",
+    "slashCommands": "Escribe / y una palabra que recuerdes. /cancel es /stop; /repeat es /loop.",
     "compact": "/compact envía un resumen en lugar de mensajes antiguos. Tu historial se conserva.",
-    "schedule": "Pide «cada día laborable a las 9, mira mi correo». Gestiona las tareas en Configuración.",
+    "schedule": "/loop cada 1h, en el minuto 5, di hola. Revisa las tareas en Configuración → Programaciones.",
     "skills": "¿Le enseñaste algo en este chat? /skill new guarda la receta para la próxima.",
     "siteInstructions": "En Instrucciones, una línea “## site: acme.com” limita todo lo que sigue a ese sitio.",
     "enginePicker": "Elige proveedor, modelo y esfuerzo de este chat junto a Enviar. /model también funciona.",

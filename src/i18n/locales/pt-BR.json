@@ -685,6 +685,30 @@
     "copied": "Copiado"
   },
   "commands": {
+    "ambiguous": "Mais de um comando corresponde a /{{name}}. Digite / e escolha um na lista.",
+    "tags": {
+      "stop": ["parar", "interromper", "cancelar"],
+      "background": ["segundo plano", "primeiro plano", "painel"],
+      "effort": ["raciocínio", "pensar", "nível"],
+      "model": ["modelo", "ia", "automático"],
+      "provider": ["provedor", "conta", "conexão"],
+      "rename": ["renomear", "nome", "título"],
+      "usage": ["uso", "cota", "limite", "assinatura"],
+      "mcp": ["ferramentas", "servidores", "conexão"],
+      "document": ["documentar", "guia", "capturas"],
+      "skill": ["habilidade", "receita", "instruções"],
+      "compact": ["resumir", "resumo", "contexto", "memória"],
+      "new": ["nova", "conversa", "começar"],
+      "skills": ["habilidades", "biblioteca", "importar"],
+      "help": ["ajuda", "atalhos", "teclado"],
+      "loop": ["repetir", "agendar", "recorrente", "cron", "hora"]
+    },
+    "loop": {
+      "description": "Repita uma tarefa nos horários que você pedir",
+      "hint": "Diga quando e o que repetir: /loop a cada 1h, no minuto 5, diga oi. Aprove o plano para salvar. O Chrome precisa estar aberto, mas o painel pode ficar fechado. Pause ou exclua em Configurações → Agendamentos.",
+      "task": "Crie um agendamento recorrente para este pedido: {{request}}\n\nUse schedule_task para salvar. Não execute a tarefa repetida agora. Se faltar a tarefa ou o horário, ou se o horário não for aceito, peça que eu esclareça. Não adivinhe nem troque a frequência. Para uma tarefa a cada hora em um minuto específico, use kind \"interval\", every_minutes 60 e minute_of_hour com esse minuto. O plano de aprovação precisa mostrar a tarefa e os horários. Explique que o Chrome precisa estar aberto, o painel pode ficar fechado e uma execução perdida acontece uma única vez quando o Chrome volta. O agendamento continua até ser pausado ou cancelado em Configurações → Agendamentos."
+    },
+    "noMatch": "Nenhum comando encontrado. Tente outra palavra ou digite / para ver a lista completa.",
     "menuAria": "Comandos",
     "current": "Atual",
     "unknown": "O comando /{{name}} não existe. Digite / para ver a lista.",
@@ -781,6 +805,8 @@
     }
   },
   "help": {
+    "aliases": "Também: {{names}}",
+    "commandSearch": "Digite / e uma palavra que lembrar. A lista busca nomes, outros nomes, palavras de busca e descrições. Escolha uma linha para usar o comando.",
     "title": "Ajuda e atalhos",
     "shortcuts": "Atalhos",
     "commands": "Comandos",
@@ -975,9 +1001,9 @@
     "board": "A tarefa de outra conversa aparece em Tarefas, no topo. Abra a aba ou pare a tarefa ali.",
     "memory": "Revise ou apague o que o TabRunner aprendeu em Configurações → Memória.",
     "usage": "Com uma assinatura, confira o uso de 5 horas e semanal no fim do seletor de modelos.",
-    "slashCommands": "Digite / para ver comandos e trocar provedor, modelo ou esforço durante a conversa.",
+    "slashCommands": "Digite / e uma palavra que lembrar. /cancel é /stop; /repeat é /loop.",
     "compact": "/compact envia um resumo no lugar de mensagens antigas. Seu histórico continua salvo.",
-    "schedule": "Peça “todo dia útil às 9h, veja meu e-mail”. Gerencie os agendamentos em Configurações.",
+    "schedule": "/loop a cada 1h, no minuto 5, diga oi. Veja as tarefas em Configurações → Agendamentos.",
     "skills": "Ensinou algo nesta conversa? /skill new salva a receita para a próxima.",
     "siteInstructions": "Em Instruções, uma linha “## site: acme.com” limita tudo abaixo dela àquele site.",
     "enginePicker": "Escolha provedor, modelo e esforço desta conversa ao lado de Enviar. /model também funciona.",
