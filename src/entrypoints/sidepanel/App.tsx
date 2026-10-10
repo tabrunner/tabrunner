@@ -14,7 +14,7 @@ import {
   boardRunHere,
 } from "@/modules/conversation/ui";
 import { Onboarding, useProvidersStore } from "@/modules/providers/ui";
-import { initSkillsCatalog, SkillDraftDialog, SkillsManageDialog } from "@/modules/skills/ui";
+import { SkillDraftDialog, SkillsManageDialog } from "@/modules/skills/ui";
 import { SettingsMenu } from "./SettingsMenu";
 import { mark } from "./boot";
 import { notePanelOpen, refreshTip } from "@/modules/tips/ui";
@@ -137,11 +137,6 @@ export default function App() {
     boot.addEventListener("transitionend", () => boot.remove(), { once: true });
     boot.classList.add("done");
   }, [loaded, hydrated]);
-
-  // The slash menu's skill picker reads synchronously — warm its mirror once.
-  useEffect(() => {
-    initSkillsCatalog();
-  }, []);
 
   // Tip rotation boundaries — Claude Code re-picks per turn; our run is the
   // turn: once per panel open, then again each time a run ends. A conversation

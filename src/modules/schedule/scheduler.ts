@@ -4,7 +4,7 @@ import { defaultStartUrl } from "@/lib/prefs";
 import { getActiveRun } from "@/modules/agent/active-runs";
 import { listQueue, submitRun } from "@/modules/agent/run-queue";
 import { startAgentRun } from "@/modules/agent/start-run";
-import { openScheduledConversation } from "@/modules/conversation/conversations";
+import { appendMessageTo, openScheduledConversation } from "@/modules/conversation/conversations";
 import { TranscriptWriter } from "@/modules/conversation/transcript";
 import type { Event } from "@/shared/protocol";
 import { armSchedule, disarmSchedule, isScheduleAlarm, scheduleIdFromAlarm } from "./alarms";
@@ -146,6 +146,15 @@ async function fireSchedule(id: string, opts: { manual?: boolean } = {}): Promis
   // Never the tab the user is on: a scheduled run always names its own start
   // page, which is what keeps `resolveRunTab` out of the adoption branch.
   const url = schedule.url || (await defaultStartUrl.get());
+
+  // History excludes the latest user message as the task about to launch.
+  // Store it before submission, including when this fire waits in the queue.
+  await appendMessageTo(schedule.conversationId, {
+    id: crypto.randomUUID(),
+    role: "user",
+    content: task,
+    timestamp: now,
+  });
 
   submitRun({
     conversationId: schedule.conversationId,

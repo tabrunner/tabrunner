@@ -158,6 +158,10 @@
     "editTitle": "Edit \"{{name}}\"",
     "newTitle": "New skill",
     "form": {
+      "aliases": "Other command names",
+      "aliasesHint": "Optional. Separate names with commas, like bills, get-invoices. Use lowercase letters, numbers and hyphens.",
+      "tags": "Search words",
+      "tagsHint": "Optional. Separate words or phrases with commas. They help you find this skill but do not run it.",
       "name": "Name",
       "nameHint": "Use lowercase letters, digits and hyphens. This is the name /skill and the model use.",
       "description": "Description",
@@ -230,13 +234,20 @@
       "errorEmpty": "The model answered with nothing to save. Try again, or write the skill by hand."
     },
     "errors": {
+      "badAlias": "\"{{alias}}\" is not a valid command name. Use 1–{{max}} lowercase letters, numbers or hyphens, starting with a letter or number.",
+      "aliasReserved": "/{{alias}} is a built-in command. Choose another name.",
+      "aliasSelf": "/{{name}} already runs this skill. Remove it from Other command names.",
+      "aliasRepeated": "/{{alias}} is listed twice. Keep it only once.",
+      "commandTaken": "/{{name}} belongs to {{skill}}, even if that skill is off. Choose another name or edit that skill first.",
+      "tooManyAliases": "A skill can have up to {{max}} other command names. Remove some and save again.",
+      "tooManyTags": "A skill can have up to {{max}} search words or phrases. Remove some and save again.",
+      "badTag": "Each search word or phrase must be at most {{max}} characters and stay on one line. Shorten it and save again.",
       "badName": "Use lowercase letters, digits and hyphens, like \"invoice-download\". The name \"new\" is reserved.",
       "noDescription": "Add a description. Without it, the model cannot see the skill.",
       "noBody": "Add instructions. An empty skill cannot tell the model what to do.",
       "descriptionTooLong": "The description is over {{max}} characters. Shorten it to a brief summary and put the steps in the instructions.",
       "bodyTooLong": "The instructions are over {{max}} characters. Shorten the steps or split them into two skills.",
       "reservedName": "A built-in slash command already uses that name. Pick another.",
-      "nameTaken": "A skill named \"{{name}}\" already exists. Pick another name or edit that skill.",
       "tooMany": "You have reached the limit of {{max}} skills. Delete one you no longer use before adding another."
     },
     "manageTitle": "Your skills",
@@ -326,6 +337,8 @@
     "lateNote": "This run was scheduled for {{scheduled}} and is starting late, because the browser was closed until now. Take the delay into account, and say so in your summary if it changes the answer.",
     "historyLostNote": "The earlier conversation for this schedule is no longer stored, so there is no record of what its previous runs found. Treat this as a first run. Do not assume any work was already done.",
     "desc": {
+      "hourly": "Every hour at minute {{minute}}",
+      "hourlyWindow": "Every hour at minute {{minute}}, {{from}}–{{to}}",
       "once": "Once, {{when}}",
       "daily": "Every day at {{time}}",
       "dailyDays": "{{days}} at {{time}}",
@@ -339,6 +352,7 @@
       "cancelledBare": "Schedule cancelled"
     },
     "errors": {
+      "badMinuteOfHour": "minute_of_hour must be a whole number from 0 to 59. Use it only with kind \"interval\" and every_minutes 60. For other intervals, omit it.",
       "pastFire": "That time has already passed. Pick a future time.",
       "badDays": "days must be numbers from 0 (Sunday) to 6 (Saturday).",
       "badTime": "\"{{value}}\" is not a valid time. Use 24-hour HH:MM, like \"09:00\".",
@@ -671,6 +685,30 @@
     "copied": "Copied"
   },
   "commands": {
+    "ambiguous": "More than one command matches /{{name}}. Type / and choose one from the list.",
+    "tags": {
+      "stop": ["abort", "end", "running"],
+      "background": ["foreground", "mode", "panel"],
+      "effort": ["thinking", "reasoning", "level"],
+      "model": ["ai", "engine", "auto"],
+      "provider": ["account", "connection", "vendor"],
+      "rename": ["name", "title", "chat"],
+      "usage": ["quota", "limits", "subscription", "spend"],
+      "mcp": ["tools", "servers", "connection"],
+      "document": ["guide", "instructions", "screenshots"],
+      "skill": ["recipe", "run", "instructions"],
+      "compact": ["summary", "context", "memory", "summarize"],
+      "new": ["chat", "conversation", "start"],
+      "skills": ["library", "recipes", "import"],
+      "help": ["shortcuts", "commands", "keyboard"],
+      "loop": ["recurring", "repeat", "schedule", "cron", "hourly"]
+    },
+    "loop": {
+      "description": "Repeat a task on a schedule you describe",
+      "hint": "Type when and what to repeat: /loop every 1h at minute 5 say hi. Approve the plan to save it. Chrome must be running, but you can close this panel. Pause or delete it in Settings → Schedules.",
+      "task": "Create a recurring schedule for this request: {{request}}\n\nUse schedule_task to save it. Do not perform the repeated action now. If the task or timing is missing or unsupported, ask me to clarify; do not guess or substitute another frequency. For an hourly request at a specific minute, use kind \"interval\", every_minutes 60 and minute_of_hour with that minute. The approval plan must name the task and timing. Explain that Chrome must be running, the panel can be closed, and a missed run happens once when Chrome returns. The schedule stays until paused or cancelled in Settings → Schedules."
+    },
+    "noMatch": "No command found. Try another word or type / to see the full list.",
     "menuAria": "Commands",
     "current": "Current",
     "unknown": "No command /{{name}}. Type / to see the list.",
@@ -767,6 +805,8 @@
     }
   },
   "help": {
+    "aliases": "Also: {{names}}",
+    "commandSearch": "Type / and a word you remember. The list searches names, other names, search words and descriptions. Choose a row to use its command.",
     "title": "Help & shortcuts",
     "shortcuts": "Shortcuts",
     "commands": "Commands",
@@ -961,9 +1001,9 @@
     "board": "Another chat's task appears under Tasks at the top. Open its tab or stop it there.",
     "memory": "Review or delete facts TabRunner learned in Settings → Memory.",
     "usage": "With a subscription, see 5-hour and weekly use at the bottom of the model picker.",
-    "slashCommands": "Type / for commands to change provider, model or effort during a chat.",
+    "slashCommands": "Type / and a word you remember. /cancel is /stop; /repeat is /loop.",
     "compact": "/compact sends a summary instead of older messages. Your chat history stays.",
-    "schedule": "Ask “every weekday at 9am, check my inbox”. Manage scheduled tasks in Settings.",
+    "schedule": "/loop every 1h at minute 5 say hi. Manage saved tasks in Settings → Schedules.",
     "skills": "Taught it something in this chat? /skill new saves the recipe for next time.",
     "siteInstructions": "In Instructions, a “## site: acme.com” line scopes everything under it to that site.",
     "enginePicker": "Pick provider, model and effort for this chat next to Send. /model also works.",

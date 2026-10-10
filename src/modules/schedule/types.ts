@@ -19,6 +19,8 @@ export type Recurrence =
   | {
       kind: "interval";
       everyMinutes: number;
+      /** Fixed local minute (0..59), only with everyMinutes = 60. Omit for elapsed intervals. */
+      minuteOfHour?: number;
       /** Active-hours window. `from` without `to` runs to midnight; a window
        *  that would cross midnight is rejected at validation. */
       from?: string;

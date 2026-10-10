@@ -10,8 +10,8 @@ import { MAX_MCP_PER_SKILL, normalizeSkillName } from "./types";
  * The grammar is a deliberate subset of YAML frontmatter, hand-rolled (no YAML
  * dependency exists in this repo and one file format doesn't earn one):
  * `key: value` split on the FIRST colon so prose colons survive, `- item`
- * block lists, `[a, b]` inline lists — lists only for site keys, so a
- * description that happens to start with "[" stays prose. Tolerance is the
+ * block lists and `[a, b]` inline lists for metadata. Descriptions stay prose,
+ * even when they start with "[". Tolerance is the
  * contract: a Claude Code SKILL.md with `allowed-tools`, `model`, or any
  * future key must import cleanly — unknown keys are reported, never fatal,
  * and a file with no frontmatter at all is just a body.
@@ -20,6 +20,10 @@ export interface ParsedSkillMd {
   /** Normalized, valid name — absent when the file named nothing usable. */
   name?: string;
   description?: string;
+  /** Other command names. Invalid entries survive until the store can reject them. */
+  aliases?: string[];
+  /** Search words or phrases. Never executable. */
+  tags?: string[];
   /** Normalized hosts, deduped. */
   sites: string[];
   body: string;
@@ -43,6 +47,14 @@ const LIST_ITEM = /^\s*-\s+(.*)$/;
 function unquote(value: string): string {
   const t = value.trim();
   const q = t[0];
+  if (q === '"' && t.endsWith(q)) {
+    try {
+      const parsed: unknown = JSON.parse(t);
+      if (typeof parsed === "string") return parsed;
+    } catch {
+      // Other quoted frontmatter remains accepted by the existing subset.
+    }
+  }
   return (q === '"' || q === "'") && t.length >= 2 && t.endsWith(q) ? t.slice(1, -1) : t;
 }
 
@@ -66,7 +78,7 @@ function parseFrontmatter(lines: string[]): Map<string, FrontValue> {
     const key = match[1].toLowerCase().replaceAll("-", "_");
     const value = (match[2] ?? "").trim();
     if (value) {
-      entries.set(key, unquote(value));
+      entries.set(key, value);
       continue;
     }
     // A bare `key:` opens a block list. The `- key: value` shape starts a
@@ -111,13 +123,24 @@ function parseFrontmatter(lines: string[]): Map<string, FrontValue> {
   return entries;
 }
 
-/** `[a, b]` / block list / bare scalar → list of raw entries. Mini-map lists never feed this. */
-function asList(value: FrontValue): string[] {
-  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
-  if (typeof value !== "string") return [];
+/** `[a, b]` / block list / bare scalar. Also used by the editor's comma-separated fields. */
+export function parseSkillList(value: FrontValue): string[] {
+  if (Array.isArray(value)) {
+    // Malformed scalar lists must reach validation, not quietly lose map rows.
+    return value.flatMap((v) =>
+      typeof v === "string" ? [v] : v.fields.map(([key, text]) => `${key}: ${text}`),
+    );
+  }
   const inline = /^\[(.*)\]$/.exec(value.trim());
-  const parts = inline?.[1] !== undefined ? inline[1].split(",") : [value];
-  return parts.map((p) => unquote(p)).filter(Boolean);
+  const text = inline?.[1] ?? value;
+  const parts = text.match(/\s*(?:"(?:\\.|[^"\\])*"|'[^']*'|[^,]+)/g) ?? [];
+  return parts.filter((p) => p.trim()).map((p) => unquote(p));
+}
+
+export function serializeSkillList(values: readonly string[]): string {
+  return values
+    .map((value) => (!value.trim() || /[,"'[\]\\]/.test(value) ? JSON.stringify(value) : value))
+    .join(", ");
 }
 
 function asScalar(value: FrontValue): string {
@@ -126,7 +149,7 @@ function asScalar(value: FrontValue): string {
       .filter((v): v is string => typeof v === "string")
       .join(" ")
       .trim();
-  return typeof value === "string" ? value : "";
+  return unquote(value);
 }
 
 export function parseSkillMd(text: string): ParsedSkillMd {
@@ -150,7 +173,7 @@ export function parseSkillMd(text: string): ParsedSkillMd {
 
   const rawSites = ["site", "sites"].flatMap((key) => {
     const value = front.get(key);
-    return value === undefined ? [] : asList(value);
+    return value === undefined ? [] : parseSkillList(value);
   });
   const { hosts: sites, dropped: droppedSites } = normalizeHostList(rawSites);
 
@@ -165,7 +188,22 @@ export function parseSkillMd(text: string): ParsedSkillMd {
   const h1 = /^#\s+(.+)$/m.exec(body)?.[1] ?? "";
   const name = normalizeSkillName(rawName) ?? normalizeSkillName(h1) ?? undefined;
 
-  const known = new Set(["name", "description", "site", "sites", "when_to_use", "mcp_servers"]);
+  const aliases = front.has("aliases")
+    ? parseSkillList(front.get("aliases") ?? []).map((alias) => alias.trim().toLowerCase())
+    : undefined;
+  const tags = front.has("tags")
+    ? parseSkillList(front.get("tags") ?? []).map((tag) => tag.trim())
+    : undefined;
+  const known = new Set([
+    "name",
+    "description",
+    "aliases",
+    "tags",
+    "site",
+    "sites",
+    "when_to_use",
+    "mcp_servers",
+  ]);
   const ignoredKeys = [...front.keys()].filter((k) => !known.has(k));
 
   // mcp_servers → refs. A row without a name or URL is dropped and named in
@@ -209,6 +247,8 @@ export function parseSkillMd(text: string): ParsedSkillMd {
   return {
     ...(name ? { name } : {}),
     ...(description ? { description } : {}),
+    ...(aliases !== undefined ? { aliases } : {}),
+    ...(tags !== undefined ? { tags } : {}),
     sites,
     body,
     ignoredKeys,
@@ -224,6 +264,10 @@ export function serializeSkillMd(skill: Skill): string {
   const front = [
     `name: ${skill.name}`,
     `description: ${description}`,
+    ...(skill.aliases !== undefined ? [`aliases: [${skill.aliases.join(", ")}]`] : []),
+    ...(skill.tags !== undefined
+      ? [`tags: [${skill.tags.map((tag) => JSON.stringify(tag)).join(", ")}]`]
+      : []),
     ...(skill.sites?.length ? [`sites: [${skill.sites.join(", ")}]`] : []),
   ];
   if (skill.mcpServers?.length) {

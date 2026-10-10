@@ -1,15 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   COMMANDS,
-  executeSlash,
-  parseSlash,
+  completeSlash,
+  executeSlash as dispatchSlash,
+  findCommand,
+  parseSlash as parseCommand,
   resolveSlashArg,
-  slashItems,
+  slashItems as listSlashItems,
 } from "../ui/slash-commands";
 import { useConversationStore } from "../ui/store";
 import { useProvidersStore } from "@/modules/providers/ui";
 import { getProviders, saveProvider } from "@/modules/providers";
 import type { ProviderConfig } from "@/modules/providers/types";
+import type { Skill } from "@/modules/skills";
+import { i18n } from "@/i18n";
+import ptBR from "@/i18n/locales/pt-BR.json";
+import es from "@/i18n/locales/es.json";
 
 const PROVIDER: ProviderConfig = {
   id: "p1",
@@ -19,6 +25,18 @@ const PROVIDER: ProviderConfig = {
   apiKey: "sk-test",
   createdAt: 0,
 };
+
+function skill(name: string, enabled = true): Skill {
+  return {
+    id: name,
+    name,
+    description: `does ${name}`,
+    body: "steps",
+    enabled,
+    createdAt: 0,
+    updatedAt: 0,
+  };
+}
 
 function command(name: string) {
   const found = COMMANDS.find((c) => c.name === name);
@@ -35,11 +53,13 @@ function lastNote(): string {
 }
 
 beforeEach(() => {
+  skillsUi.skills.length = 0;
   useProvidersStore.setState({ providers: [PROVIDER], activeId: "p1", loaded: true });
   useConversationStore.setState({
     messages: [],
     runMode: "foreground",
     status: "idle",
+    deferred: null,
     queuedRun: null,
     board: { queue: [] },
     // The engine pick of a conversation that has no id yet — a picker write
@@ -200,7 +220,7 @@ describe("executeSlash", () => {
 describe("slashItems", () => {
   it("lists everything on a bare slash and filters by prefix", () => {
     expect(slashItems("/")?.items).toHaveLength(COMMANDS.length);
-    expect(slashItems("/mo")?.items.map((i) => i.key)).toEqual(["model"]);
+    expect(slashItems("/mo")?.items[0]?.key).toBe("model");
     expect(slashItems("just text")).toBeNull();
   });
 
@@ -261,26 +281,20 @@ describe("/stop", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// /skill — the catalog mirror and the draft dialog are skills/ui's; both are
-// mocked so this file stays about the command's own resolution and routing.
+// The command tests supply the same stored snapshot that the composer reads.
 const skillsUi = vi.hoisted(() => {
-  const skills: {
-    id: string;
-    name: string;
-    description: string;
-    body: string;
-    enabled: boolean;
-    createdAt: number;
-    updatedAt: number;
-  }[] = [];
+  const skills: Skill[] = [];
   return { skills, openSkillDraft: vi.fn(), openSkillsManage: vi.fn() };
 });
 vi.mock("@/modules/skills/ui", () => ({
-  loadedSkills: () => skillsUi.skills,
   openSkillDraft: skillsUi.openSkillDraft,
   openSkillsManage: skillsUi.openSkillsManage,
 }));
+
+const executeSlash = (text: string, thisChatOnly = false) =>
+  dispatchSlash(text, thisChatOnly, skillsUi.skills);
+const parseSlash = (text: string) => parseCommand(text, skillsUi.skills);
+const slashItems = (text: string) => listSlashItems(text, skillsUi.skills);
 
 describe("/document", () => {
   let sent: string[];
@@ -319,15 +333,6 @@ describe("/document", () => {
 });
 
 describe("/skill", () => {
-  const skill = (name: string, enabled = true) => ({
-    id: name,
-    name,
-    description: `does ${name}`,
-    body: "steps",
-    enabled,
-    createdAt: 0,
-    updatedAt: 0,
-  });
   let sent: string[];
 
   beforeEach(() => {
@@ -378,15 +383,6 @@ describe("/skill", () => {
 });
 
 describe("per-skill commands", () => {
-  const skill = (name: string, enabled = true) => ({
-    id: name,
-    name,
-    description: `does ${name}`,
-    body: "steps",
-    enabled,
-    createdAt: 0,
-    updatedAt: 0,
-  });
   let sent: string[];
 
   beforeEach(() => {
@@ -451,6 +447,130 @@ describe("/skills", () => {
  * Scope: a pick lands on the open conversation, and — unless ⌥ says otherwise —
  * also becomes the stored default that the next new conversation starts on.
  */
+describe("aliases and search words", () => {
+  it("resolves every built-in alias to one canonical action", () => {
+    for (const canonical of COMMANDS) {
+      expect(canonical.aliases?.length).toBeGreaterThan(0);
+      for (const alias of canonical.aliases ?? []) {
+        expect(findCommand(alias)?.name).toBe(canonical.name);
+        expect(parseSlash(`/${alias.toUpperCase()} arg`)?.command).toBe(canonical);
+      }
+    }
+  });
+
+  it("completes bare argument-taking aliases and retains arguments on completion", () => {
+    expect(executeSlash("/llm")).toEqual({ complete: "/model " });
+    expect(executeSlash("/repeat")).toEqual({ complete: "/loop " });
+    expect(executeSlash("/loo every 1h at minute 5 say hi")).toEqual({
+      complete: "/loop every 1h at minute 5 say hi",
+    });
+    expect(completeSlash(command("model"), "/llm custom-model")).toBe("/model custom-model");
+    expect(slashItems("/llm")?.items.map((i) => i.key)).toEqual(["model"]);
+  });
+
+  it("shows canonical rows for aliases, tags and descriptions, never duplicate rows", () => {
+    expect(slashItems("/walk")?.items[0]?.key).toBe("document");
+    expect(slashItems("/cron")?.items.map((i) => i.key)).toContain("loop");
+    expect(slashItems("/shareable")?.items.map((i) => i.key)).toContain("document");
+    const keys = slashItems("/re")?.items.map((i) => i.key) ?? [];
+    expect(keys[0]).toBe("rename");
+    expect(new Set(keys).size).toBe(keys.length);
+    executeSlash("/cron");
+    expect(lastNote()).toContain("No command /cron");
+  });
+
+  it("searches translated words without requiring accents", async () => {
+    i18n.addResourceBundle("pt-BR", "translation", ptBR);
+    i18n.addResourceBundle("es", "translation", es);
+    try {
+      await i18n.changeLanguage("pt-BR");
+      expect(slashItems("/RACIOCINIO")?.items[0]?.key).toBe("effort");
+      expect(slashItems("/capturas")?.items[0]?.key).toBe("document");
+      await i18n.changeLanguage("es");
+      expect(slashItems("/suscripcion")?.items[0]?.key).toBe("usage");
+      expect(slashItems("/guia")?.items[0]?.key).toBe("document");
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("canonicalizes skill aliases, including /skill arguments", () => {
+    skillsUi.skills.push({ ...skill("pay-rent"), aliases: ["rent"], tags: ["housing"] });
+    const send = vi.fn();
+    useConversationStore.setState({ sendTask: send });
+    executeSlash("/rent for August");
+    executeSlash("/skill rent for September");
+    expect(send.mock.calls.map(([task]) => task)).toEqual([
+      'Use the "pay-rent" skill for this task: for August',
+      'Use the "pay-rent" skill for this task: for September',
+    ]);
+    expect(slashItems("/housing")?.items.map((i) => i.key)).toEqual(["pay-rent"]);
+    expect(slashItems("/skill rent")?.items.map((i) => i.key)).toEqual(["pay-rent"]);
+  });
+
+  it("keeps exact canonical names ahead of legacy aliases and rejects ambiguous aliases", () => {
+    const send = vi.fn();
+    useConversationStore.setState({ sendTask: send });
+    skillsUi.skills.push(
+      { ...skill("rent"), aliases: ["shared"] },
+      { ...skill("other"), aliases: ["rent", "shared"] },
+    );
+    expect(findCommand("rent", skillsUi.skills)?.name).toBe("rent");
+    executeSlash("/shared now");
+    expect(lastNote()).toContain("More than one command");
+    expect(send).not.toHaveBeenCalled();
+    executeSlash("/skill shared now");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("keeps old reserved skill names usable through /skill only", () => {
+    const send = vi.fn();
+    useConversationStore.setState({ sendTask: send });
+    skillsUi.skills.push(skill("doc"), { ...skill("invoice"), aliases: ["llm"] });
+    expect(slashItems("/")?.items.map((i) => i.key)).not.toContain("doc");
+    expect(findCommand("doc", skillsUi.skills)?.name).toBe("document");
+    expect(findCommand("llm", skillsUi.skills)?.name).toBe("model");
+    executeSlash("/skill doc");
+    expect(send).toHaveBeenCalledWith('Use the "doc" skill.');
+  });
+});
+
+describe("/loop", () => {
+  it("asks to save a recurring schedule, not run the action immediately", () => {
+    const send = vi.fn();
+    useConversationStore.setState({ sendTask: send });
+    executeSlash("/loop every 1h at minute 5 say hi");
+    expect(send).toHaveBeenCalledTimes(1);
+    const task: string = send.mock.calls[0]?.[0] ?? "";
+    expect(task).toContain("every 1h at minute 5 say hi");
+    expect(task).toContain("schedule_task");
+    expect(task).toContain("Do not perform the repeated action now");
+    expect(task).toContain("minute_of_hour");
+    expect(task).toContain("ask me to clarify");
+  });
+
+  it("explains timing, approval and browser requirements when run bare", () => {
+    const send = vi.fn();
+    useConversationStore.setState({ sendTask: send });
+    executeSlash("/loop");
+    expect(send).not.toHaveBeenCalled();
+    expect(lastNote()).toContain("/loop every 1h at minute 5 say hi");
+    expect(lastNote()).toContain("Chrome must be running");
+    expect(lastNote()).toContain("Approve the plan");
+  });
+
+  it("parks behind a live run and keeps the canonical command name", () => {
+    const send = vi.fn();
+    useConversationStore.setState({ status: "running", sendTask: send, deferred: null });
+    executeSlash("/repeat every 1h at minute 5 say hi");
+    expect(send).not.toHaveBeenCalled();
+    const deferred = useConversationStore.getState().deferred;
+    expect(deferred?.name).toBe("loop");
+    deferred?.run();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("engine scope", () => {
   const pin = () => useConversationStore.getState().draftEngine;
   /** What was actually persisted — the store only mirrors it through a watch. */

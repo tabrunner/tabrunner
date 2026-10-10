@@ -158,6 +158,10 @@
     "editTitle": "Editar \"{{name}}\"",
     "newTitle": "Nova habilidade",
     "form": {
+      "aliases": "Outros nomes de comando",
+      "aliasesHint": "Opcional. Separe os nomes com vírgulas, como contas, baixar-faturas. Use letras minúsculas, números e hífens.",
+      "tags": "Palavras de busca",
+      "tagsHint": "Opcional. Separe palavras ou frases com vírgulas. Elas ajudam a encontrar esta habilidade, mas não a executam.",
       "name": "Nome",
       "nameHint": "Use letras minúsculas, números e hífens. Esse é o nome usado pelo /skill e pelo modelo.",
       "description": "Descrição",
@@ -230,13 +234,20 @@
       "errorEmpty": "O modelo respondeu sem nada para salvar. Tente de novo, ou escreva a habilidade à mão."
     },
     "errors": {
+      "badAlias": "\"{{alias}}\" não é um nome de comando válido. Use de 1 a {{max}} letras minúsculas, números ou hífens. Comece com uma letra ou um número.",
+      "aliasReserved": "/{{alias}} é um comando do TabRunner. Escolha outro nome.",
+      "aliasSelf": "/{{name}} já executa esta habilidade. Remova esse nome de Outros nomes de comando.",
+      "aliasRepeated": "/{{alias}} aparece mais de uma vez. Deixe esse nome só uma vez.",
+      "commandTaken": "/{{name}} pertence à habilidade {{skill}}, mesmo desativada. Escolha outro nome ou edite essa habilidade primeiro.",
+      "tooManyAliases": "Uma habilidade pode ter até {{max}} outros nomes de comando. Remova alguns e salve de novo.",
+      "tooManyTags": "Uma habilidade pode ter até {{max}} palavras ou frases de busca. Remova algumas e salve de novo.",
+      "badTag": "Cada palavra ou frase de busca pode ter até {{max}} caracteres e deve ficar em uma linha. Encurte o texto e salve de novo.",
       "badName": "Use letras minúsculas, números e hífens, como \"baixar-fatura\". O nome \"new\" é reservado.",
       "noDescription": "Adicione uma descrição. Sem ela, o modelo não vê a habilidade.",
       "noBody": "Adicione instruções. Uma habilidade vazia não diz ao modelo o que fazer.",
       "descriptionTooLong": "A descrição passa de {{max}} caracteres. Resuma o que a habilidade faz e coloque os passos nas instruções.",
       "bodyTooLong": "As instruções passam de {{max}} caracteres. Encurte os passos ou divida em duas habilidades.",
       "reservedName": "Um comando integrado iniciado com / já usa esse nome. Escolha outro.",
-      "nameTaken": "Já existe uma habilidade chamada \"{{name}}\". Escolha outro nome ou edite essa habilidade.",
       "tooMany": "Você atingiu o limite de {{max}} habilidades. Exclua uma que não usa mais antes de adicionar outra."
     },
     "manageTitle": "Suas habilidades",
@@ -326,6 +337,8 @@
     "lateNote": "Esta execução estava agendada para {{scheduled}} e está começando atrasada, porque o navegador esteve fechado até agora. Leve o atraso em conta e diga isso no seu resumo se mudar a resposta.",
     "historyLostNote": "A conversa anterior deste agendamento não está mais armazenada, então não há registro do que as execuções anteriores encontraram. Trate esta como a primeira execução. Não presuma que algo já tenha sido feito.",
     "desc": {
+      "hourly": "A cada hora, no minuto {{minute}}",
+      "hourlyWindow": "A cada hora, no minuto {{minute}}, das {{from}} às {{to}}",
       "once": "Uma vez, {{when}}",
       "daily": "Todo dia às {{time}}",
       "dailyDays": "{{days}} às {{time}}",
@@ -339,6 +352,7 @@
       "cancelledBare": "Agendamento cancelado"
     },
     "errors": {
+      "badMinuteOfHour": "minute_of_hour precisa ser um número inteiro de 0 a 59. Use apenas com kind \"interval\" e every_minutes 60. Para outros intervalos, não envie esse campo.",
       "pastFire": "Esse horário já passou. Escolha um horário no futuro.",
       "badDays": "days precisa ser números de 0 (domingo) a 6 (sábado).",
       "badTime": "\"{{value}}\" não é um horário válido. Use HH:MM no formato de 24 horas, como \"09:00\".",
@@ -671,6 +685,30 @@
     "copied": "Copiado"
   },
   "commands": {
+    "ambiguous": "Mais de um comando corresponde a /{{name}}. Digite / e escolha um na lista.",
+    "tags": {
+      "stop": ["parar", "interromper", "cancelar"],
+      "background": ["segundo plano", "primeiro plano", "painel"],
+      "effort": ["raciocínio", "pensar", "nível"],
+      "model": ["modelo", "ia", "automático"],
+      "provider": ["provedor", "conta", "conexão"],
+      "rename": ["renomear", "nome", "título"],
+      "usage": ["uso", "cota", "limite", "assinatura"],
+      "mcp": ["ferramentas", "servidores", "conexão"],
+      "document": ["documentar", "guia", "capturas"],
+      "skill": ["habilidade", "receita", "instruções"],
+      "compact": ["resumir", "resumo", "contexto", "memória"],
+      "new": ["nova", "conversa", "começar"],
+      "skills": ["habilidades", "biblioteca", "importar"],
+      "help": ["ajuda", "atalhos", "teclado"],
+      "loop": ["repetir", "agendar", "recorrente", "cron", "hora"]
+    },
+    "loop": {
+      "description": "Repita uma tarefa nos horários que você pedir",
+      "hint": "Diga quando e o que repetir: /loop a cada 1h, no minuto 5, diga oi. Aprove o plano para salvar. O Chrome precisa estar aberto, mas o painel pode ficar fechado. Pause ou exclua em Configurações → Agendamentos.",
+      "task": "Crie um agendamento recorrente para este pedido: {{request}}\n\nUse schedule_task para salvar. Não execute a tarefa repetida agora. Se faltar a tarefa ou o horário, ou se o horário não for aceito, peça que eu esclareça. Não adivinhe nem troque a frequência. Para uma tarefa a cada hora em um minuto específico, use kind \"interval\", every_minutes 60 e minute_of_hour com esse minuto. O plano de aprovação precisa mostrar a tarefa e os horários. Explique que o Chrome precisa estar aberto, o painel pode ficar fechado e uma execução perdida acontece uma única vez quando o Chrome volta. O agendamento continua até ser pausado ou cancelado em Configurações → Agendamentos."
+    },
+    "noMatch": "Nenhum comando encontrado. Tente outra palavra ou digite / para ver a lista completa.",
     "menuAria": "Comandos",
     "current": "Atual",
     "unknown": "O comando /{{name}} não existe. Digite / para ver a lista.",
@@ -767,6 +805,8 @@
     }
   },
   "help": {
+    "aliases": "Também: {{names}}",
+    "commandSearch": "Digite / e uma palavra que lembrar. A lista busca nomes, outros nomes, palavras de busca e descrições. Escolha uma linha para usar o comando.",
     "title": "Ajuda e atalhos",
     "shortcuts": "Atalhos",
     "commands": "Comandos",
@@ -961,9 +1001,9 @@
     "board": "A tarefa de outra conversa aparece em Tarefas, no topo. Abra a aba ou pare a tarefa ali.",
     "memory": "Revise ou apague o que o TabRunner aprendeu em Configurações → Memória.",
     "usage": "Com uma assinatura, confira o uso de 5 horas e semanal no fim do seletor de modelos.",
-    "slashCommands": "Digite / para ver comandos e trocar provedor, modelo ou esforço durante a conversa.",
+    "slashCommands": "Digite / e uma palavra que lembrar. /cancel é /stop; /repeat é /loop.",
     "compact": "/compact envia um resumo no lugar de mensagens antigas. Seu histórico continua salvo.",
-    "schedule": "Peça “todo dia útil às 9h, veja meu e-mail”. Gerencie os agendamentos em Configurações.",
+    "schedule": "/loop a cada 1h, no minuto 5, diga oi. Veja as tarefas em Configurações → Agendamentos.",
     "skills": "Ensinou algo nesta conversa? /skill new salva a receita para a próxima.",
     "siteInstructions": "Em Instruções, uma linha “## site: acme.com” limita tudo abaixo dela àquele site.",
     "enginePicker": "Escolha provedor, modelo e esforço desta conversa ao lado de Enviar. /model também funciona.",

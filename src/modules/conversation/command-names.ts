@@ -1,22 +1,26 @@
-/**
- * The built-in slash-command names, as data. A leaf module on purpose: a skill
- * cannot claim one of these names, and skills/store.ts needs that rule without
- * importing from ui/ — this file stays React-free so the service worker can
- * load it. Kept in lockstep with COMMANDS by a parity test.
- */
-export const SLASH_COMMAND_NAMES: readonly string[] = [
-  "stop",
-  "background",
-  "effort",
-  "model",
-  "provider",
-  "rename",
-  "usage",
-  "mcp",
-  "document",
-  "skill",
-  "compact",
-  "new",
-  "skills",
-  "help",
-];
+/** Command tokens stay React-free: skill validation and the panel share one namespace. */
+export const BUILTIN_COMMAND_ALIASES = {
+  stop: ["cancel", "halt"],
+  background: ["bg"],
+  effort: ["reasoning", "think"],
+  model: ["models", "llm"],
+  provider: ["providers", "vendor"],
+  rename: ["title"],
+  usage: ["quota", "limits"],
+  mcp: ["servers"],
+  document: ["doc", "walkthrough"],
+  skill: ["recipe"],
+  compact: ["summarize", "summarise"],
+  new: ["new-chat"],
+  skills: ["recipes", "library"],
+  help: ["commands", "shortcuts"],
+  loop: ["repeat", "schedule"],
+} satisfies Record<string, readonly string[]>;
+
+export type BuiltinCommandName = keyof typeof BUILTIN_COMMAND_ALIASES;
+
+export const SLASH_COMMAND_NAMES: readonly string[] = Object.keys(BUILTIN_COMMAND_ALIASES);
+
+export const RESERVED_SLASH_NAMES: readonly string[] = Object.entries(
+  BUILTIN_COMMAND_ALIASES,
+).flatMap(([name, aliases]) => [name, ...aliases]);

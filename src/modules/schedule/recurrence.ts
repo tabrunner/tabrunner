@@ -75,9 +75,42 @@ export function nextFireAt(rec: Recurrence, after: number): number | null {
     return null;
   }
 
-  const step = Math.max(1, Math.round(rec.everyMinutes)) * 60_000;
   const from = parseHHMM(rec.from);
   const to = parseHHMM(rec.to);
+  if (rec.minuteOfHour !== undefined) {
+    if (
+      rec.everyMinutes !== 60 ||
+      !Number.isInteger(rec.minuteOfHour) ||
+      rec.minuteOfHour < 0 ||
+      rec.minuteOfHour > 59
+    ) {
+      return null;
+    }
+    const base = new Date(after);
+    const opens = from ? from.h * 60 + from.m : 0;
+    const closes = to ? to.h * 60 + to.m : 24 * 60 - 1;
+    for (let day = 0; day <= MAX_LOOKAHEAD_DAYS; day++) {
+      for (let h = 0; h < 24; h++) {
+        const minute = h * 60 + rec.minuteOfHour;
+        if (minute < opens || minute > closes) continue;
+        const candidate = atLocal(base, { h, m: rec.minuteOfHour }, day);
+        const local = new Date(candidate);
+        // Date picks the first repeated hour. Reject gap normalization too,
+        // including half-hour DST shifts that preserve the hour but not the minute.
+        if (
+          candidate > after &&
+          local.getHours() === h &&
+          local.getMinutes() === rec.minuteOfHour &&
+          dayAllowed(candidate, rec.days)
+        ) {
+          return candidate;
+        }
+      }
+    }
+    return null;
+  }
+
+  const step = Math.max(1, Math.round(rec.everyMinutes)) * 60_000;
   let candidate = after + step;
   if (!from && !to && !rec.days) return candidate;
 
@@ -105,6 +138,17 @@ export function nextFireAt(rec: Recurrence, after: number): number | null {
  * "invalid" leaves it guessing at which field.
  */
 export function validateRecurrence(rec: Recurrence, now: number): string | undefined {
+  if (
+    "minuteOfHour" in rec &&
+    (rec.kind !== "interval" ||
+      rec.everyMinutes !== 60 ||
+      typeof rec.minuteOfHour !== "number" ||
+      !Number.isInteger(rec.minuteOfHour) ||
+      rec.minuteOfHour < 0 ||
+      rec.minuteOfHour > 59)
+  ) {
+    return i18n.t("schedule.errors.badMinuteOfHour");
+  }
   if (rec.kind === "once") {
     return rec.at > now ? undefined : i18n.t("schedule.errors.pastFire");
   }
@@ -170,6 +214,19 @@ function formatClock(value: string): string {
 export function recurrenceFromArgs(raw: unknown): Recurrence | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const a = raw as Record<string, unknown>;
+  if ("minuteOfHour" in a) return undefined;
+  const hasMinute = "minute_of_hour" in a;
+  const minuteOfHour = a.minute_of_hour;
+  if (
+    hasMinute &&
+    (a.kind !== "interval" ||
+      typeof minuteOfHour !== "number" ||
+      !Number.isInteger(minuteOfHour) ||
+      minuteOfHour < 0 ||
+      minuteOfHour > 59)
+  ) {
+    return undefined;
+  }
   const days = Array.isArray(a.days)
     ? (a.days.filter((d) => typeof d === "number" && d >= 0 && d <= 6) as Weekday[])
     : undefined;
@@ -184,13 +241,20 @@ export function recurrenceFromArgs(raw: unknown): Recurrence | undefined {
     return time ? { kind: "daily", time, ...(days ? { days } : {}) } : undefined;
   }
   if (a.kind === "interval") {
-    const everyMinutes = Number(a.every_minutes ?? a.everyMinutes);
-    if (!Number.isFinite(everyMinutes)) return undefined;
+    const rawMinutes = a.every_minutes ?? a.everyMinutes;
+    const everyMinutes = Number(rawMinutes);
+    if (
+      !Number.isFinite(everyMinutes) ||
+      (hasMinute && (typeof rawMinutes !== "number" || everyMinutes !== 60))
+    ) {
+      return undefined;
+    }
     const from = str(a.from);
     const to = str(a.to);
     return {
       kind: "interval",
       everyMinutes,
+      ...(typeof minuteOfHour === "number" ? { minuteOfHour } : {}),
       ...(from ? { from } : {}),
       ...(to ? { to } : {}),
       ...(days ? { days } : {}),
@@ -217,13 +281,21 @@ export function describeRecurrence(rec: Recurrence): string {
       : i18n.t("schedule.desc.daily", { time });
   }
   const every = formatEvery(rec.everyMinutes);
+  const minute = rec.minuteOfHour?.toString().padStart(2, "0");
   const base =
     rec.from || rec.to
-      ? i18n.t("schedule.desc.intervalWindow", {
+      ? i18n.t(
+          minute !== undefined ? "schedule.desc.hourlyWindow" : "schedule.desc.intervalWindow",
+          {
+            every,
+            minute,
+            from: formatClock(rec.from ?? "00:00"),
+            to: formatClock(rec.to ?? "23:59"),
+          },
+        )
+      : i18n.t(minute !== undefined ? "schedule.desc.hourly" : "schedule.desc.interval", {
           every,
-          from: formatClock(rec.from ?? "00:00"),
-          to: formatClock(rec.to ?? "23:59"),
-        })
-      : i18n.t("schedule.desc.interval", { every });
+          minute,
+        });
   return onDays ? i18n.t("schedule.desc.onDays", { base, days: onDays }) : base;
 }

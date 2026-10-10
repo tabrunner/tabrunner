@@ -22,6 +22,10 @@ export interface Skill {
   id: string;
   /** Kebab-case identity, unique across the store: what the catalog lists and the tool loads. */
   name: string;
+  /** Other slash command names. The model's skill tool still uses `name`. */
+  aliases?: string[];
+  /** Words or phrases used only to find this skill, never to run it. */
+  tags?: string[];
   /** What it does and when to use it — a skill with no description is invisible to the model. */
   description: string;
   /** Normalized hosts (lib/host rules). Absent or empty = offered on every site. */
@@ -47,6 +51,9 @@ export interface Skill {
 export const MAX_SKILLS = 50;
 export const MAX_BODY_CHARS = 20_000;
 export const MAX_DESCRIPTION_CHARS = 500;
+export const MAX_SKILL_ALIASES = 20;
+export const MAX_SKILL_TAGS = 20;
+export const MAX_SKILL_TAG_CHARS = 64;
 
 /** ponytail: one skill suggesting more than three servers is a bundle, not a
  *  recipe — the upgrade path is importing real bundles as a unit. */

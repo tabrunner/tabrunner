@@ -27,6 +27,8 @@ describe("seedBuiltinSkills", () => {
       id: current.id,
       description: "user's own wording",
       body: "user's own body",
+      aliases: ["tabrunner-guide"],
+      tags: ["setup", "troubleshooting"],
     });
 
     await seedBuiltinSkills("update");
@@ -36,6 +38,8 @@ describe("seedBuiltinSkills", () => {
     expect(after?.description).toContain("Answers questions about TabRunner");
     expect(after?.body).toContain("# TabRunner help");
     expect(after?.enabled).toBe(false);
+    expect(after?.aliases).toEqual(["tabrunner-guide"]);
+    expect(after?.tags).toEqual(["setup", "troubleshooting"]);
     expect(after?.createdAt).toBe(current.createdAt);
   });
 

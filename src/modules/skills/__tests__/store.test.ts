@@ -1,7 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { deleteSkill, listSkills, loadSkillsForRun, saveSkill, setSkillEnabled } from "../store";
+import {
+  deleteSkill,
+  listSkills,
+  loadSkillsForRun,
+  saveSkill,
+  setSkillEnabled,
+  skillsItem,
+  upsertBuiltinSkill,
+} from "../store";
 import type { SkillInput } from "../store";
-import { MAX_SKILLS } from "../types";
+import { RESERVED_SLASH_NAMES } from "@/modules/conversation/command-names";
+import { MAX_SKILL_ALIASES, MAX_SKILL_TAG_CHARS, MAX_SKILL_TAGS, MAX_SKILLS } from "../types";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
@@ -46,6 +55,115 @@ describe("saveSkill", () => {
     expect((await saveSkill(input("usage"))).ok).toBe(false);
     // A near-miss stays legal.
     expect((await saveSkill(input("usage-report"))).ok).toBe(true);
+  });
+
+  it("reserves built-in names and aliases for both skill names and other command names", async () => {
+    for (const name of RESERVED_SLASH_NAMES) {
+      expect((await saveSkill(input(name))).ok, name).toBe(false);
+      expect((await saveSkill(input("invoice-download", { aliases: [name] }))).ok, name).toBe(
+        false,
+      );
+    }
+  });
+
+  it("normalizes aliases but rejects invalid, repeated and self-referencing names", async () => {
+    const saved = await saveSkill(
+      input("invoice-download", { aliases: [" Bills ", "GET-INVOICES"] }),
+    );
+    expect(saved.ok && saved.skill.aliases).toEqual(["bills", "get-invoices"]);
+    for (const aliases of [
+      ["invalid name"],
+      ["bad/name"],
+      [""],
+      ["invoice-download"],
+      ["Bills", " bills "],
+    ]) {
+      const result = await saveSkill(input("invoice-download", { aliases }));
+      expect(result.ok, aliases.join(", ")).toBe(false);
+      if (!result.ok) expect(result.error).not.toMatch(/^skills\.errors\./);
+    }
+    expect((await listSkills())[0]?.aliases).toEqual(["bills", "get-invoices"]);
+  });
+
+  it("protects every skill's canonical name and aliases, including disabled records", async () => {
+    await seed(input("invoice-download", { aliases: ["bills"], enabled: false }));
+    expect((await saveSkill(input("bills"))).ok).toBe(false);
+    expect((await saveSkill(input("other", { aliases: ["invoice-download"] }))).ok).toBe(false);
+    expect((await saveSkill(input("other", { aliases: ["bills"] }))).ok).toBe(false);
+    // A record may keep its own aliases on edit, or make an old alias its name.
+    expect(
+      (await saveSkill(input("invoice-download", { aliases: ["bills"], description: "edited" })))
+        .ok,
+    ).toBe(true);
+    expect(
+      (
+        await saveSkill(
+          input("bills", { id: "id-invoice-download", aliases: ["invoice-download"] }),
+        )
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("lets old records keep an unchanged canonical name after a built-in claims it", async () => {
+    const legacy = { ...input("quota"), createdAt: 1, updatedAt: 1 };
+    await skillsItem.set([legacy]);
+    const edited = await saveSkill(input("quota", { description: "edited" }));
+    expect(edited.ok).toBe(true);
+    expect(edited.ok && edited.skill.createdAt).toBe(1);
+    expect((await saveSkill(input("other", { id: "id-quota", name: "limits" }))).ok).toBe(false);
+    expect((await saveSkill(input("other", { aliases: ["quota"] }))).ok).toBe(false);
+  });
+
+  it("trims and dedupes bounded search phrases without reserving them as commands", async () => {
+    const result = await saveSkill(
+      input("invoice-download", {
+        aliases: [],
+        tags: [" Finance ", "finance", "monthly invoices", "help", ""],
+      }),
+    );
+    expect(result.ok && result.skill.tags).toEqual(["finance", "monthly invoices", "help"]);
+    expect(result.ok && result.skill.aliases).toEqual([]);
+    expect((await saveSkill(input("finance"))).ok).toBe(true);
+    expect(
+      (await saveSkill(input("other", { tags: ["x".repeat(MAX_SKILL_TAG_CHARS + 1)] }))).ok,
+    ).toBe(false);
+    expect((await saveSkill(input("other", { tags: ["two\nlines"] }))).ok).toBe(false);
+    expect(
+      (
+        await saveSkill(
+          input("other", {
+            tags: Array.from({ length: MAX_SKILL_TAGS + 1 }, (_, i) => `tag ${i}`),
+          }),
+        )
+      ).ok,
+    ).toBe(false);
+    expect(
+      (
+        await saveSkill(
+          input("other", {
+            aliases: Array.from({ length: MAX_SKILL_ALIASES + 1 }, (_, i) => `alias-${i}`),
+          }),
+        )
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("does not add metadata to old records and retains explicit clears across builtin refresh", async () => {
+    const old = await saveSkill(input("old"));
+    expect(old.ok && old.skill.aliases).toBeUndefined();
+    expect(old.ok && old.skill.tags).toBeUndefined();
+    const builtin = {
+      ...input("builtin-guide", { aliases: ["guide"], tags: ["setup"] }),
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    await upsertBuiltinSkill(builtin);
+    await saveSkill(input("builtin-guide", { aliases: [], tags: [] }));
+    await upsertBuiltinSkill({ ...builtin, body: "new shipped instructions" });
+    const refreshed = (await listSkills()).find((skill) => skill.name === "builtin-guide");
+    expect(refreshed?.aliases).toEqual([]);
+    expect(refreshed?.tags).toEqual([]);
+    expect(refreshed?.body).toBe("new shipped instructions");
   });
 
   it("stores suggested MCP refs only for well-formed rows", async () => {

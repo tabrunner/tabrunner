@@ -14,26 +14,27 @@ import { fetchProviderUsage, supportsUsage } from "@/modules/providers/usage";
 import type { UsageWindow } from "@/modules/providers/usage";
 import { useProvidersStore } from "@/modules/providers/ui";
 import type { Skill } from "@/modules/skills";
-import { SLASH_COMMAND_NAMES } from "@/modules/conversation/command-names";
-import { loadedSkills, openSkillDraft, openSkillsManage } from "@/modules/skills/ui";
+import {
+  BUILTIN_COMMAND_ALIASES,
+  RESERVED_SLASH_NAMES,
+} from "@/modules/conversation/command-names";
+import type { BuiltinCommandName } from "@/modules/conversation/command-names";
+import { openSkillDraft, openSkillsManage } from "@/modules/skills/ui";
 import { truncateTo } from "@/lib/format";
 import { openHelp } from "./help-open";
 import { runsHere, useConversationStore } from "./store";
 import { engineNow } from "./hooks";
 
 /**
- * Slash commands — /stop, /background, /effort, /model, /provider, /new, /help.
- * A draft whose first character is "/" (and that stays on one line) is a
- * command, not a task: it runs LOCALLY against the panel's stores and is never
- * sent to the model, never written to the transcript (the transcript is the
- * model's memory — a settings echo would pose as a turn). Each result lands as
- * a display-only note row (a tool-less step message), gone on panel reopen —
- * /help excepted: its reference sheet (HelpDialog) is no use as a line that
- * scrolls away.
+ * A single-line draft starting with "/" routes through this registry. Local
+ * commands use the panel's stores and write display-only notes, not model
+ * messages. Task-producing commands (/document, /loop and skills) use the
+ * normal send path with a localized task. /help opens a reference sheet instead
+ * of a note that scrolls away.
  *
- * A command is chrome, not conversation, so it never joins the run queue —
- * queueing /help behind a three-minute run helps nobody, and /model is exactly
- * what you reach for WHILE watching a run go wrong. What a command touches
+ * A panel-local command never joins the run queue. Queueing /help behind a
+ * three-minute run helps nobody, and /model is exactly what you reach for
+ * while watching a run go wrong. What a command touches
  * decides its class, and there are three:
  *
  * - **Panel-local** (/help, /new, /rename, /usage) and **settings the next run
@@ -58,26 +59,19 @@ export interface SlashCandidate {
   label: string;
   /** A quiet second column (e.g. the model "auto" actually resolves to). */
   secondary?: string;
+  aliases?: readonly string[];
+  tags?: readonly string[];
 }
 
-type CommandDescriptionKey =
-  | "commands.stop.description"
-  | "commands.background.description"
-  | "commands.effort.description"
-  | "commands.model.description"
-  | "commands.provider.description"
-  | "commands.rename.description"
-  | "commands.usage.description"
-  | "commands.mcp.description"
-  | "commands.document.description"
-  | "commands.skill.description"
-  | "commands.compact.description"
-  | "commands.new.description"
-  | "commands.skills.description"
-  | "commands.help.description";
+type CommandDescriptionKey = `commands.${BuiltinCommandName}.description`;
+type CommandTagsKey = `commands.tags.${BuiltinCommandName}`;
 
 export interface SlashCommand {
   name: string;
+  /** Executable alternate names. Search tags never dispatch a command. */
+  aliases?: readonly string[];
+  tagsKey?: CommandTagsKey;
+  tags?: readonly string[];
   /** Built-ins describe themselves through i18n — a closed union, so a missing
    *  key is a compile error. Skill-derived commands carry the user's own
    *  description instead (user content is never translated). */
@@ -86,7 +80,7 @@ export interface SlashCommand {
   /** Takes an optional argument — running it bare reports the current value. */
   takesArg?: boolean;
   /** A closed arg set (effort levels, configured providers) — powers the picker menu. */
-  candidates?: () => SlashCandidate[];
+  candidates?: (skills: readonly Skill[]) => SlashCandidate[];
   /** The candidate value in effect right now — the menu checks it and lands
    *  the highlight on it, so Enter on an untouched picker is a harmless no-op. */
   current?: () => string | undefined;
@@ -95,13 +89,13 @@ export interface SlashCommand {
   deferWhileBusy?: boolean;
   /** `thisChatOnly` is the ⌥ gesture the engine picker carries — the same
    *  modifier means the same thing at both ends of the same choice. */
-  run: (arg: string | undefined, thisChatOnly?: boolean) => void;
+  run: (arg: string | undefined, thisChatOnly?: boolean, skills?: readonly Skill[]) => void;
 }
 
 export interface ParsedSlash {
   /** Name fragment being typed (lowercased) — the menu's filter. */
   fragment: string;
-  /** Set only on an exact command-name match. */
+  /** Set on an exact canonical name or unambiguous alias. */
   command?: SlashCommand;
   /** Text after "/name ", trimmed — undefined while the name is still being typed. */
   arg?: string;
@@ -168,7 +162,7 @@ function windowLine(label: string, window: UsageWindow): string {
     : `${label}: ${used} · ${i18n.t("usage.resets", { reset: formatResetRelative(window.resetsAtMs, Date.now()) })}`;
 }
 
-export const COMMANDS: readonly SlashCommand[] = [
+const BUILTIN_COMMANDS: readonly (SlashCommand & { name: BuiltinCommandName })[] = [
   {
     name: "stop",
     descriptionKey: "commands.stop.description",
@@ -495,23 +489,39 @@ export const COMMANDS: readonly SlashCommand[] = [
     },
   },
   {
+    name: "loop",
+    descriptionKey: "commands.loop.description",
+    takesArg: true,
+    deferWhileBusy: true,
+    run: (arg) => {
+      if (!arg) {
+        note(i18n.t("commands.loop.hint"));
+        return;
+      }
+      useConversationStore.getState().sendTask(i18n.t("commands.loop.task", { request: arg }));
+    },
+  },
+  {
     name: "skill",
     descriptionKey: "commands.skill.description",
     takesArg: true,
     // Both forms leave the panel-local class — running a skill sends a task,
     // and "new" costs a model call — so runSlash parks them, the /compact rule.
     deferWhileBusy: true,
-    candidates: () => [
-      // First row = what Enter on a bare "/skill" does; the menu shows exactly
-      // that, and the draft dialog it opens is reviewable and cancellable —
-      // unlike the alternative default of starting some skill's run.
+    candidates: (skills) => [
+      // The draft dialog is reviewable; a bare picker must not start a skill.
       { value: "new", label: i18n.t("commands.skill.newLabel") },
-      ...loadedSkills()
+      ...skills
         .filter((s) => s.enabled)
-        .map((s) => ({ value: s.name, label: s.name, secondary: truncateTo(s.description, 60) })),
+        .map((s) => ({
+          value: s.name,
+          label: s.name,
+          aliases: s.aliases,
+          tags: s.tags,
+          secondary: truncateTo(s.description, 60),
+        })),
     ],
-    run: (arg) => {
-      const skills = loadedSkills();
+    run: (arg, _thisChatOnly, skills = []) => {
       const enabledNames = skills.filter((s) => s.enabled).map((s) => s.name);
       if (!arg) {
         // Reachable only past a dismissed menu (Esc, then Enter) — the report form.
@@ -537,7 +547,9 @@ export const COMMANDS: readonly SlashCommand[] = [
       // Resolved here, not by resolveSlashArg — a name with trailing args
       // passes through raw, and this lookup runs against all skills so a
       // disabled one gets its own answer instead of "unknown".
-      const pick = uniquePick(skills, query, (s) => [s.name]);
+      const pick =
+        skills.find((s) => s.name === query) ??
+        uniquePick(skills, query, (s) => [s.name, ...(s.aliases ?? [])]);
       if (!pick) {
         note(
           enabledNames.length > 0
@@ -596,6 +608,12 @@ export const COMMANDS: readonly SlashCommand[] = [
   },
 ];
 
+export const COMMANDS: readonly SlashCommand[] = BUILTIN_COMMANDS.map((command) => ({
+  ...command,
+  aliases: BUILTIN_COMMAND_ALIASES[command.name],
+  tagsKey: `commands.tags.${command.name}`,
+}));
+
 /**
  * Every enabled skill is its own command — typing "/pay-rent invoicing" is
  * sugar for "/skill pay-rent invoicing", resolved to the same localized
@@ -615,6 +633,8 @@ function runSkillTask(name: string, rest?: string): void {
 function skillCommand(s: Skill): SlashCommand {
   return {
     name: s.name,
+    aliases: s.aliases?.filter((alias) => !RESERVED_SLASH_NAMES.includes(alias)),
+    tags: s.tags,
     description: s.description,
     takesArg: true,
     deferWhileBusy: true,
@@ -622,33 +642,52 @@ function skillCommand(s: Skill): SlashCommand {
   };
 }
 
-/** Built-ins first, then one derived command per enabled skill that does not
- *  collide with a built-in's name (saveSkill rejects those going forward;
- *  pre-existing records keep working via /skill and lose only their menu slot). */
-function allCommands(): readonly SlashCommand[] {
-  const derived = loadedSkills()
-    .filter((s) => s.enabled && !SLASH_COMMAND_NAMES.includes(s.name))
-    .map(skillCommand);
-  return [...COMMANDS, ...derived];
+/** Old reserved names stay usable through /skill, without shadowing built-ins. */
+function allCommands(skills: readonly Skill[]): readonly SlashCommand[] {
+  return [
+    ...COMMANDS,
+    ...skills.filter((s) => s.enabled && !RESERVED_SLASH_NAMES.includes(s.name)).map(skillCommand),
+  ];
 }
 
-export function findCommand(name: string): SlashCommand | undefined {
-  return allCommands().find((c) => c.name === name.toLowerCase());
+export function findCommand(name: string, skills: readonly Skill[] = []): SlashCommand | undefined {
+  const commands = allCommands(skills);
+  const token = name.toLowerCase();
+  const canonical = commands.find((c) => c.name === token);
+  if (canonical) return canonical;
+  const aliases = commands.filter((c) => c.aliases?.includes(token));
+  return aliases.length === 1 ? aliases[0] : undefined;
 }
 
-/** The description text for any command — built-in (i18n'd) or skill-derived
- *  (the user's own words). One resolver so the menu and the help sheet agree. */
+/** One description for the menu and help; user-authored text stays untranslated. */
 export function commandDescription(c: SlashCommand): string {
   return c.description ?? (c.descriptionKey ? i18n.t(c.descriptionKey) : "");
 }
 
-export function parseSlash(text: string): ParsedSlash | null {
-  if (!text.startsWith("/") || text.includes("\n")) return null;
+function searchText(text: string): string {
+  return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
+function commandRank(command: SlashCommand, query: string): number {
+  const name = searchText(command.name);
+  const aliases = (command.aliases ?? []).map(searchText);
+  if (name === query) return 0;
+  if (aliases.includes(query)) return 1;
+  if (name.startsWith(query)) return 2;
+  if (aliases.some((alias) => alias.startsWith(query))) return 3;
+  const tags =
+    command.tags ?? (command.tagsKey ? i18n.t(command.tagsKey, { returnObjects: true }) : []);
+  if (tags.some((tag) => searchText(tag).includes(query))) return 4;
+  return searchText(commandDescription(command)).includes(query) ? 5 : Infinity;
+}
+
+export function parseSlash(text: string, skills: readonly Skill[] = []): ParsedSlash | null {
+  if (!text.startsWith("/") || /[\r\n]/.test(text)) return null;
   const body = text.slice(1);
   if (/^\s/.test(body)) return null;
   const space = body.search(/\s/);
   const fragment = (space === -1 ? body : body.slice(0, space)).toLowerCase();
-  const command = findCommand(fragment);
+  const command = findCommand(fragment, skills);
   return {
     fragment,
     ...(command ? { command } : {}),
@@ -656,22 +695,41 @@ export function parseSlash(text: string): ParsedSlash | null {
   };
 }
 
-/**
- * What the menu shows for a draft: command matches while the name is being
- * typed; the command's candidates once the name is exact — a bare "/effort"
- * opens the picker straight away, no trailing space needed. An exact name with
- * no candidates (or none matching the typed arg) shows nothing — Enter runs it.
- */
-export function slashItems(text: string): SlashMenuState | null {
-  const parsed = parseSlash(text);
+/** Canonicalize the name without dropping the argument already in the draft. */
+export function completeSlash(command: SlashCommand, text: string): string {
+  const arg = parseSlash(text)?.arg;
+  if (arg) return `/${command.name} ${arg}`;
+  return `/${command.name}${command.takesArg ? " " : ""}`;
+}
+
+/** Name search shows canonical rows; an exact picker opens its arguments. */
+export function slashItems(text: string, skills: readonly Skill[] = []): SlashMenuState | null {
+  const parsed = parseSlash(text, skills);
   if (!parsed) return null;
   if (parsed.command) {
     const command = parsed.command;
+    // A bare arg-taking alias teaches the canonical name before opening its picker.
+    if (command.takesArg && parsed.fragment !== command.name && !parsed.arg) {
+      return {
+        kind: "commands",
+        items: [
+          {
+            key: command.name,
+            primary: `/${command.name}`,
+            secondary: commandDescription(command),
+          },
+        ],
+      };
+    }
     const current = command.current?.();
-    const q = (parsed.arg ?? "").toLowerCase();
-    const items = (command.candidates?.() ?? [])
+    const q = searchText(parsed.arg ?? "");
+    const items = (command.candidates?.(skills) ?? [])
       .filter(
-        (c) => !q || c.value.toLowerCase().startsWith(q) || c.label.toLowerCase().startsWith(q),
+        (c) =>
+          !q ||
+          [c.value, c.label, ...(c.aliases ?? []), ...(c.tags ?? [])].some((key) =>
+            searchText(key).startsWith(q),
+          ),
       )
       .map((c) => ({
         key: c.value,
@@ -681,97 +739,102 @@ export function slashItems(text: string): SlashMenuState | null {
       }));
     return { kind: "candidates", command, items };
   }
+  const query = searchText(parsed.fragment);
   return {
     kind: "commands",
-    items: allCommands()
-      .filter((c) => c.name.startsWith(parsed.fragment))
-      .map((c) => ({
-        key: c.name,
-        primary: `/${c.name}`,
-        secondary: commandDescription(c),
+    items: allCommands(skills)
+      .map((command) => ({ command, rank: commandRank(command, query) }))
+      .filter(({ rank }) => Number.isFinite(rank))
+      .sort((a, b) => a.rank - b.rank)
+      .map(({ command }) => ({
+        key: command.name,
+        primary: `/${command.name}`,
+        secondary: commandDescription(command),
       })),
   };
 }
 
-/**
- * Exact match, else unique prefix, against any of an item's keys — the one
- * resolution policy, shared by the dispatcher (resolveSlashArg) and the
- * commands that split or re-scope their arg themselves (/provider, /skill).
- */
-function uniquePick<T>(items: T[], q: string, keys: (item: T) => string[]): T | undefined {
-  const exact = items.find((item) => keys(item).includes(q));
-  if (exact) return exact;
+/** An ambiguous exact alias must not fall back to an arbitrary first match. */
+function uniquePick<T>(items: readonly T[], q: string, keys: (item: T) => string[]): T | undefined {
+  const exact = items.filter((item) => keys(item).includes(q));
+  if (exact.length > 0) return exact.length === 1 ? exact[0] : undefined;
   const prefix = items.filter((item) => keys(item).some((k) => k.startsWith(q)));
   return prefix.length === 1 ? prefix[0] : undefined;
 }
 
-/**
- * The typed arg → what the command receives. Empty stays empty (the report
- * form); a candidate wins on an exact or unique-prefix match against either
- * its value or its label; anything else passes through raw so the command's
- * own validation can answer with the options.
- */
+/** Empty stays empty; unknown arguments reach the command's own validation. */
 export function resolveSlashArg(
   command: SlashCommand,
   raw: string | undefined,
+  skills: readonly Skill[] = [],
 ): string | undefined {
   if (raw === undefined || raw === "") return undefined;
-  const candidates = command.candidates?.() ?? [];
-  if (candidates.length === 0) return raw;
-  const q = raw.toLowerCase();
-  const pick = uniquePick(candidates, q, (c) => [c.value.toLowerCase(), c.label.toLowerCase()]);
+  const candidates = command.candidates?.(skills) ?? [];
+  const q = searchText(raw);
+  const pick =
+    candidates.find((c) => searchText(c.value) === q) ??
+    uniquePick(candidates, q, (c) => [c.value, c.label, ...(c.aliases ?? [])].map(searchText));
   return pick?.value ?? raw;
 }
 
-/**
- * The one place a command is fired — Enter and the menu's click both come
- * through here, so the deferral gate cannot be bypassed by picking a row. A
- * parked command is not lost and not refused: the composer shows it as a card
- * waiting its turn, and the store fires it the moment the conversation is quiet.
- */
+/** The shared dispatch gate for keyboard, button and mouse selection. */
 export function runSlash(
   command: SlashCommand,
   arg: string | undefined,
   thisChatOnly = false,
+  skills: readonly Skill[] = [],
 ): void {
   const store = useConversationStore.getState();
   if (command.deferWhileBusy && runsHere(store)) {
-    store.deferCommand(command.name, () => command.run(arg, thisChatOnly));
+    store.deferCommand(command.name, () => command.run(arg, thisChatOnly, skills));
     return;
   }
-  command.run(arg, thisChatOnly);
+  command.run(arg, thisChatOnly, skills);
 }
 
 export type SlashOutcome = "not-slash" | "executed" | { complete: string };
 
-/**
- * Enter on a slash draft. An exact command runs (its arg resolved); a unique
- * arg-taking fragment completes into the draft instead of executing, so
- * "/mo" Enter never fires a half-typed "/model gpt-5". Anything else is an
- * unknown command — answered with a note, never sent as a task.
- */
-export function executeSlash(text: string, thisChatOnly = false): SlashOutcome {
-  const parsed = parseSlash(text);
+/** Search tags discover commands in the menu, but only names and aliases execute. */
+export function executeSlash(
+  text: string,
+  thisChatOnly = false,
+  skills: readonly Skill[] = [],
+): SlashOutcome {
+  const parsed = parseSlash(text, skills);
   if (!parsed) return "not-slash";
   if (parsed.command) {
-    runSlash(parsed.command, resolveSlashArg(parsed.command, parsed.arg), thisChatOnly);
+    if (parsed.command.takesArg && parsed.fragment !== parsed.command.name && !parsed.arg) {
+      return { complete: completeSlash(parsed.command, text) };
+    }
+    runSlash(
+      parsed.command,
+      resolveSlashArg(parsed.command, parsed.arg, skills),
+      thisChatOnly,
+      skills,
+    );
     return "executed";
   }
-  if (!parsed.fragment) return "executed"; // a bare "/" — the menu already said everything
-  // Completion prefers built-ins: "/re" completing to /rename predates skill
-  // commands, and a skill named resume-* must not turn that into "ambiguous".
-  // Skills join only when no built-in carries the fragment.
-  const builtins = COMMANDS.filter((c) => c.name.startsWith(parsed.fragment));
-  const matches =
-    builtins.length > 0
-      ? builtins
-      : allCommands().filter((c) => c.name.startsWith(parsed.fragment));
+  if (!parsed.fragment) return "executed";
+  const commands = allCommands(skills);
+  const exactAliases = commands.filter((c) => c.aliases?.includes(parsed.fragment));
+  // Keep canonical built-in prefix completion ahead of skill and alias prefixes.
+  const builtinNames = COMMANDS.filter((c) => c.name.startsWith(parsed.fragment));
+  const prefix = commands.filter((c) =>
+    [c.name, ...(c.aliases ?? [])].some((token) => token.startsWith(parsed.fragment)),
+  );
+  let matches = prefix;
+  if (builtinNames.length > 0) matches = builtinNames;
+  if (exactAliases.length > 0) matches = exactAliases;
   if (matches.length === 1 && matches[0]) {
     const command = matches[0];
-    if (command.takesArg) return { complete: `/${command.name} ` };
-    runSlash(command, undefined);
+    if (command.takesArg) return { complete: completeSlash(command, text) };
+    runSlash(command, undefined, thisChatOnly, skills);
     return "executed";
   }
-  note(i18n.t("commands.unknown", { name: parsed.fragment }));
+  note(
+    i18n.t(matches.length > 1 ? "commands.ambiguous" : "commands.unknown", {
+      name: parsed.fragment,
+    }),
+  );
   return "executed";
 }

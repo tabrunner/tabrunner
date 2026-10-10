@@ -7,6 +7,11 @@ const DOC = `---
 name: invoice-download
 description: Pulls the latest invoice PDF from the billing portal
 sites: [acme.com]
+aliases: [bills, get-invoices]
+tags: [billing, "monthly invoices"]
+mcp_servers:
+  - name: billing-mcp
+    url: https://mcp.example.com
 ---
 
 # Invoice download
@@ -28,6 +33,37 @@ describe("handleSaveSkill", () => {
     expect(stored?.enabled).toBe(true);
     expect(stored?.body).toContain("Open the billing page.");
     expect(stored?.source?.url).toContain("raw.githubusercontent.com");
+    expect(stored?.aliases).toEqual(["bills", "get-invoices"]);
+    expect(stored?.tags).toEqual(["billing", "monthly invoices"]);
+    expect(stored?.sites).toEqual(["acme.com"]);
+    expect(stored?.mcpServers).toEqual([{ name: "billing-mcp", url: "https://mcp.example.com" }]);
+  });
+
+  it("keeps command metadata with overrides and returns useful alias failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => new Response(DOC)),
+    );
+    const result = await handleSaveSkill({
+      url: "https://example.com/SKILL.md",
+      name: "monthly-billing",
+      sites: ["billing.example.com"],
+    });
+    expect(result.ok).toBe(true);
+    const stored = (await listSkills())[0];
+    expect(stored?.name).toBe("monthly-billing");
+    expect(stored?.aliases).toEqual(["bills", "get-invoices"]);
+    expect(stored?.tags).toEqual(["billing", "monthly invoices"]);
+    expect(stored?.sites).toEqual(["billing.example.com"]);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => new Response(DOC.replace("bills, get-invoices", "help"))),
+    );
+    const rejected = await handleSaveSkill({ url: "https://example.com/other.md", name: "other" });
+    expect(rejected.ok).toBe(false);
+    if (!rejected.ok) expect(rejected.error).toContain("/help");
+    expect(await listSkills()).toHaveLength(1);
   });
 
   it("a name override covers files whose frontmatter names nothing usable", async () => {

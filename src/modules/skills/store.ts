@@ -2,9 +2,18 @@ import { createWriteQueue, defineItem } from "@/lib/storage";
 import { i18n } from "@/i18n";
 import { hostMatches, normalizeHostList, scopeHostOf } from "@/lib/host";
 import { validOutboundUrl } from "@/lib/url";
-import { SLASH_COMMAND_NAMES } from "@/modules/conversation/command-names";
-import { MAX_MCP_PER_SKILL, type Skill } from "./types";
-import { isValidSkillName, MAX_BODY_CHARS, MAX_DESCRIPTION_CHARS, MAX_SKILLS } from "./types";
+import { RESERVED_SLASH_NAMES } from "@/modules/conversation/command-names";
+import {
+  isValidSkillName,
+  MAX_BODY_CHARS,
+  MAX_DESCRIPTION_CHARS,
+  MAX_MCP_PER_SKILL,
+  MAX_SKILL_ALIASES,
+  MAX_SKILL_TAG_CHARS,
+  MAX_SKILL_TAGS,
+  MAX_SKILLS,
+  type Skill,
+} from "./types";
 
 /** One flat array, read-modify-written whole — see the ponytail note in types.ts. */
 export const skillsItem = defineItem<Skill[]>("skills", []);
@@ -14,10 +23,6 @@ const serialized = createWriteQueue();
 
 export function listSkills(): Promise<Skill[]> {
   return skillsItem.get();
-}
-
-export function watchSkills(cb: (list: Skill[]) => void): () => void {
-  return skillsItem.watch(cb);
 }
 
 export type SaveSkillResult = { ok: true; skill: Skill } | { ok: false; error: string };
@@ -36,9 +41,12 @@ export function saveSkill(input: SkillInput): Promise<SaveSkillResult> {
     if (!isValidSkillName(input.name)) {
       return { ok: false, error: i18n.t("skills.errors.badName") };
     }
-    // Built-in slash commands keep their names — an enabled skill named like
-    // one would never surface in the menu.
-    if (SLASH_COMMAND_NAMES.includes(input.name)) {
+    const list = await skillsItem.get();
+    const existing = list.findIndex((s) => s.id === input.id);
+    const current = list[existing];
+    // New names cannot shadow built-ins. Keeping a legacy name still allows
+    // edits when an extension update adds a command with that name.
+    if (RESERVED_SLASH_NAMES.includes(input.name) && current?.name !== input.name) {
       return { ok: false, error: i18n.t("skills.errors.reservedName") };
     }
     if (!input.description.trim()) {
@@ -56,12 +64,53 @@ export function saveSkill(input: SkillInput): Promise<SaveSkillResult> {
     if (input.body.length > MAX_BODY_CHARS) {
       return { ok: false, error: i18n.t("skills.errors.bodyTooLong", { max: MAX_BODY_CHARS }) };
     }
-    const list = await skillsItem.get();
-    if (list.some((s) => s.id !== input.id && s.name === input.name)) {
-      return { ok: false, error: i18n.t("skills.errors.nameTaken", { name: input.name }) };
+    const aliases = (input.aliases ?? []).map((alias) => alias.trim().toLowerCase());
+    if (aliases.length > MAX_SKILL_ALIASES) {
+      return {
+        ok: false,
+        error: i18n.t("skills.errors.tooManyAliases", { max: MAX_SKILL_ALIASES }),
+      };
     }
-    const existing = list.findIndex((s) => s.id === input.id);
-    const current = list[existing];
+    const commands = new Set([input.name]);
+    for (const alias of aliases) {
+      if (RESERVED_SLASH_NAMES.includes(alias)) {
+        return { ok: false, error: i18n.t("skills.errors.aliasReserved", { alias }) };
+      }
+      if (!isValidSkillName(alias)) {
+        return { ok: false, error: i18n.t("skills.errors.badAlias", { alias, max: 64 }) };
+      }
+      if (alias === input.name) {
+        return { ok: false, error: i18n.t("skills.errors.aliasSelf", { name: input.name }) };
+      }
+      if (commands.has(alias)) {
+        return { ok: false, error: i18n.t("skills.errors.aliasRepeated", { alias }) };
+      }
+      commands.add(alias);
+    }
+    for (const other of list) {
+      if (other.id === input.id) continue;
+      const taken = [other.name, ...(other.aliases ?? [])].find((name) => commands.has(name));
+      if (taken) {
+        return {
+          ok: false,
+          error: i18n.t("skills.errors.commandTaken", { name: taken, skill: other.name }),
+        };
+      }
+    }
+    const tags = [
+      ...new Map(
+        (input.tags ?? [])
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+          .map((tag) => [tag.toLowerCase(), tag]),
+      ).values(),
+    ];
+    if (tags.length > MAX_SKILL_TAGS) {
+      return { ok: false, error: i18n.t("skills.errors.tooManyTags", { max: MAX_SKILL_TAGS }) };
+    }
+    if (tags.some((tag) => tag.length > MAX_SKILL_TAG_CHARS || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(tag))) {
+      return { ok: false, error: i18n.t("skills.errors.badTag", { max: MAX_SKILL_TAG_CHARS }) };
+    }
     if (!current && list.length >= MAX_SKILLS) {
       return { ok: false, error: i18n.t("skills.errors.tooMany", { max: MAX_SKILLS }) };
     }
@@ -69,13 +118,21 @@ export function saveSkill(input: SkillInput): Promise<SaveSkillResult> {
     // callers that want to report unusable entries check before saving. MCP
     // refs validate like sites: garbage rows drop quietly here because the
     // INSTALL consent dialog is where a bad row gets its reckoning.
-    const { sites: rawSites, mcpServers: rawMcp, ...rest } = input;
+    const {
+      sites: rawSites,
+      mcpServers: rawMcp,
+      aliases: rawAliases,
+      tags: rawTags,
+      ...rest
+    } = input;
     const sites = normalizeHostList(rawSites ?? []).hosts;
     const mcpServers = (rawMcp ?? [])
       .filter((s) => s.name.trim() !== "" && validOutboundUrl(s.url))
       .slice(0, MAX_MCP_PER_SKILL);
     const skill: Skill = {
       ...rest,
+      ...(rawAliases !== undefined ? { aliases } : {}),
+      ...(rawTags !== undefined ? { tags } : {}),
       ...(sites.length > 0 ? { sites } : {}),
       ...(mcpServers.length > 0 ? { mcpServers } : {}),
       createdAt: current?.createdAt ?? Date.now(),
@@ -119,6 +176,10 @@ export async function upsertBuiltinSkill(skill: Skill): Promise<void> {
     await skillsItem.set(
       list.with(i, {
         ...skill,
+        // Absent means this old record has never set the field. An explicit
+        // empty array means the user cleared it, which an update must respect.
+        ...(current.aliases !== undefined ? { aliases: current.aliases } : {}),
+        ...(current.tags !== undefined ? { tags: current.tags } : {}),
         enabled: current.enabled,
         createdAt: current.createdAt,
         updatedAt: Date.now(),

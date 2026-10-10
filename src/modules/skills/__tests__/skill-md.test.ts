@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSkillMd, serializeSkillMd } from "../skill-md";
+import { parseSkillList, parseSkillMd, serializeSkillList, serializeSkillMd } from "../skill-md";
 import type { Skill } from "../types";
 
 describe("parseSkillMd", () => {
@@ -30,6 +30,47 @@ when_to_use: whenever invoices come up
     expect(inline.droppedSites).toEqual(["not a host"]);
     const block = parseSkillMd(`---\nsites:\n  - acme.com\n  - acme.com\n---\nbody`);
     expect(block.sites).toEqual(["acme.com"]);
+  });
+
+  it("reads command names and search words as inline, block or scalar lists", () => {
+    const inline = parseSkillMd(`---
+name: invoice-download
+aliases: [ Bills, GET-INVOICES ]
+tags: [finance, "monthly invoices", "receipts, invoices"]
+---
+body`);
+    expect(inline.aliases).toEqual(["bills", "get-invoices"]);
+    expect(inline.tags).toEqual(["finance", "monthly invoices", "receipts, invoices"]);
+    expect(inline.ignoredKeys).toEqual([]);
+    const block = parseSkillMd(`---
+aliases:
+  - Bills
+  - invalid name
+  - ""
+tags:
+  - "customer's billing"
+  - finance
+---
+body`);
+    expect(block.aliases).toEqual(["bills", "invalid name", ""]);
+    expect(block.tags).toEqual(["customer's billing", "finance"]);
+    const scalar = parseSkillMd(`---\naliases: Bills\ntags: "receipts, invoices"\n---\nbody`);
+    expect(scalar.aliases).toEqual(["bills"]);
+    expect(scalar.tags).toEqual(["receipts, invoices"]);
+  });
+
+  it("keeps malformed alias map rows for validation instead of losing them", () => {
+    const parsed = parseSkillMd(`---\naliases:\n  - name: bills\n---\nbody`);
+    expect(parsed.aliases).toEqual(["name: bills"]);
+  });
+
+  it("leaves old files without metadata unchanged and retains explicit empty lists", () => {
+    const old = parseSkillMd("# Invoice download\n\nbody");
+    expect(old.aliases).toBeUndefined();
+    expect(old.tags).toBeUndefined();
+    const empty = parseSkillMd("---\naliases: []\ntags: []\n---\nbody");
+    expect(empty.aliases).toEqual([]);
+    expect(empty.tags).toEqual([]);
   });
 
   it("uses when_to_use only when description is absent", () => {
@@ -80,6 +121,26 @@ describe("serializeSkillMd", () => {
     const text = serializeSkillMd(everywhere);
     expect(text).not.toContain("sites:");
     expect(text).toContain("description: line one line two");
+  });
+
+  it("round-trips aliases and search phrases without turning words into commands", () => {
+    const metadata = {
+      ...skill,
+      aliases: ["bills", "get-invoices"],
+      tags: ["finance", "monthly invoices", "receipts, invoices", 'say "paid"', "customer's bills"],
+    };
+    const parsed = parseSkillMd(serializeSkillMd(metadata));
+    expect(parsed.aliases).toEqual(metadata.aliases);
+    expect(parsed.tags).toEqual(metadata.tags);
+    expect(parsed.ignoredKeys).toEqual([]);
+    const empty = parseSkillMd(serializeSkillMd({ ...skill, aliases: [], tags: [] }));
+    expect(empty.aliases).toEqual([]);
+    expect(empty.tags).toEqual([]);
+  });
+
+  it("round-trips the editor's comma-separated fields, including invalid names", () => {
+    const values = ["bills", "monthly invoices", "receipts, invoices", 'say "paid"', "", "[]"];
+    expect(parseSkillList(serializeSkillList(values))).toEqual(values);
   });
 
   it("round-trips servers the skill suggests installing", () => {

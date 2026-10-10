@@ -35,7 +35,7 @@ export function HelpDialog() {
       <Dialog.Portal>
         <Dialog.Backdrop className={`${scrim} ${scrimMotion}`} />
         <Dialog.Popup
-          className={`fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-80 -translate-x-1/2 -translate-y-1/2 overflow-y-auto p-4 ${overlayCard} ${overlayMotion}`}
+          className={`fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-80 max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto p-4 ${overlayCard} ${overlayMotion}`}
         >
           <div className="flex items-start justify-between gap-2">
             <Dialog.Title className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
@@ -68,15 +68,23 @@ export function HelpDialog() {
           <div className="mt-4 text-[11px] font-medium tracking-wide text-neutral-400 uppercase dark:text-neutral-500">
             {t("help.commands")}
           </div>
-          <div className="mt-1">
+          <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
+            {t("help.commandSearch")}
+          </p>
+          <div className="mt-2">
             {COMMANDS.map((c) => (
-              <div key={c.name} className="flex items-baseline gap-2.5 py-0.5">
+              <div key={c.name} className="flex items-baseline gap-2.5 py-1">
                 <span className="w-20 shrink-0 font-mono text-xs text-brand-600 dark:text-brand-400">
                   /{c.name}
                 </span>
-                <span className="min-w-0 flex-1 text-xs text-neutral-600 dark:text-neutral-400">
-                  {commandDescription(c)}
-                </span>
+                <div className="min-w-0 flex-1 text-xs text-neutral-600 dark:text-neutral-400">
+                  <p>{commandDescription(c)}</p>
+                  <p className="mt-0.5 break-words text-[11px]">
+                    {t("help.aliases", {
+                      names: c.aliases?.map((alias) => `/${alias}`).join(", "),
+                    })}
+                  </p>
+                </div>
               </div>
             ))}
           </div>

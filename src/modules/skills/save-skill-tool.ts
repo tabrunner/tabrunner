@@ -46,8 +46,11 @@ export async function handleSaveSkill(args: {
   const result = await saveSkill({
     id: crypto.randomUUID(),
     name,
+    ...(parsed.aliases !== undefined ? { aliases: parsed.aliases } : {}),
+    ...(parsed.tags !== undefined ? { tags: parsed.tags } : {}),
     description: parsed.description ?? name,
-    ...(overrides.length > 0 ? { sites: overrides } : {}),
+    sites: overrides.length > 0 ? overrides : parsed.sites,
+    ...(parsed.mcpServers.length > 0 ? { mcpServers: parsed.mcpServers } : {}),
     body: parsed.body,
     enabled: true,
     source: { url: source.url },
