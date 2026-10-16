@@ -73,6 +73,13 @@ async function attach(tabId: TabId): Promise<void> {
     // by the time the model looks, the failing request is already in the log.
     await send("Network.enable");
     await send("Runtime.enable");
+    // A tab nobody can see (in the background, under another window, minimized)
+    // is hidden to Chrome too, and a hidden page holds mouse presses, keys and
+    // the wheel in a queue until someone shows it: every action answers ok and
+    // nothing happens. Focus emulation makes the page behave as visible and
+    // focused, so the work lands without moving the user's screen. Puppeteer
+    // does the same for each page it drives. It ends with the attach.
+    await send("Emulation.setFocusEmulationEnabled", { enabled: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("Another debugger is already attached")) {
