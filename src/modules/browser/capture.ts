@@ -1,4 +1,5 @@
 import { i18n } from "@/i18n";
+import { isRestrictedPageError } from "./restricted-url";
 import type { TabId } from "@/shared/types";
 
 /** A JPEG of a visible tab, with the identity of what was actually captured. */
@@ -33,9 +34,17 @@ export async function captureVisibleTab(windowId?: number): Promise<VisibleCaptu
       quality: 80,
     });
     return { dataUrl, tabId: tab.id, title: tab.title ?? "", url: tab.url ?? "" };
-  } catch {
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
     // chrome:// and Web Store pages refuse capture the same way they refuse
-    // scripting — say which page and what to do, never a raw failure.
-    throw new Error(i18n.t("errors.restrictedPage"));
+    // scripting. Any other refusal (a minimized or covered window, a closed
+    // tab) is its own failure: calling it a restricted page sends the person
+    // looking for a problem that is not there.
+    throw new Error(
+      isRestrictedPageError(message)
+        ? i18n.t("errors.restrictedPage")
+        : i18n.t("errors.captureFailed", { message }),
+      { cause: e },
+    );
   }
 }

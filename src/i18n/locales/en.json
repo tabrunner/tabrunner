@@ -1147,6 +1147,7 @@
     "metaSetupAt": "Meta hasn't turned on Muse for this account yet. Finish setup at {{url}}, then sign in again.",
     "noResponseBody": "The provider sent an empty response.",
     "restrictedPage": "TabRunner cannot read this page. Chrome blocks extensions on chrome:// and Web Store pages. Open a regular page in this tab and resend the task.",
+    "captureFailed": "Chrome could not capture the window ({{message}}). The window has to be on screen, not minimized or covered by another one. Bring it to the front and try again.",
     "pageNavigating": "The page was still loading or navigating. Wait for it to finish and retry.",
     "snapshotFailed": "Could not read the page. It may have navigated, or Chrome may block it (chrome://, Web Store). Wait for it to finish loading and try again.",
     "refNotFound": "Element ref \"{{ref}}\" not found. Run snapshot first to get fresh refs.",

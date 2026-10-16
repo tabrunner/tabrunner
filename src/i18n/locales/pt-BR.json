@@ -1147,6 +1147,7 @@
     "metaSetupAt": "A Meta ainda não liberou o Muse nesta conta. Conclua a configuração em {{url}} e entre de novo.",
     "noResponseBody": "O provedor enviou uma resposta vazia.",
     "restrictedPage": "O TabRunner não consegue ler esta página. O Chrome bloqueia extensões em páginas chrome:// e da Web Store. Abra uma página comum nesta aba e reenvie a tarefa.",
+    "captureFailed": "O Chrome não conseguiu capturar a janela ({{message}}). A janela precisa estar à vista, sem estar minimizada nem coberta por outra. Traga-a para a frente e tente de novo.",
     "pageNavigating": "A página ainda estava carregando ou mudando de endereço. Aguarde terminar e tente de novo.",
     "snapshotFailed": "Não foi possível ler a página. Ela pode ter mudado de endereço ou ser bloqueada pelo Chrome (chrome://, Web Store). Espere terminar de carregar e tente de novo.",
     "refNotFound": "Referência de elemento \"{{ref}}\" não encontrada. Leia a página primeiro para obter referências atualizadas.",
