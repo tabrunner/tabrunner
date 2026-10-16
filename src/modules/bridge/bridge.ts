@@ -130,7 +130,10 @@ export class Bridge {
       case "browserStart":
         await this.guard(requestId, async () => {
           const client = str(params.agent) || i18n.t("history.unknownAgent");
-          const result = await this.direct.start(str(params.goal), client);
+          const result = await this.direct.start(str(params.goal), client, {
+            url: str(params.url) || undefined,
+            background: params.background !== false,
+          });
           // Only after the session actually opened — a refusal (already running,
           // no tab) must not claim the browser.
           this.setActivity("direct", client);
@@ -138,7 +141,9 @@ export class Bridge {
         });
         break;
       case "browserAct":
-        await this.guard(requestId, () => this.direct.act(str(params.tool), args(params.args)));
+        await this.guard(requestId, () =>
+          this.direct.act(str(params.tool), args(params.args), params.snapshot !== false),
+        );
         break;
       case "browserEnd":
         await this.direct.end();

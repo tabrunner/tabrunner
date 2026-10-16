@@ -80,6 +80,8 @@ beforeEach(() => {
   (globalThis.chrome as Record<string, unknown>).tabs = {
     query: () => Promise.resolve([{ id: 7, windowId: 1, title: "Inbox", url: "https://x.test/" }]),
     get: (id: number) => Promise.resolve({ id, title: "Form", url: "https://y.test/" }),
+    create: () => Promise.resolve({ id: 7 }),
+    remove: () => Promise.resolve(),
     onRemoved: { addListener: () => {}, removeListener: () => {} },
     onUpdated: { addListener: () => {}, removeListener: () => {} },
   };

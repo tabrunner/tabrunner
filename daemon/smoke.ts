@@ -467,6 +467,7 @@ check(
   clickRequest.params.tool === "click" &&
     (clickRequest.params.args as Record<string, unknown>).ref === "e1",
 );
+check("a plain click leaves snapshot unset", !("snapshot" in clickRequest.params));
 reply(clickRequest.requestId, { ok: true, data: { pageContent: '[ref=e7] link "invoice-q3"' } });
 check(
   "an action hands back the page it produced, with the staleness warning",
@@ -496,6 +497,40 @@ check(
 );
 reply(scrollRequest.requestId, { ok: true, data: {} });
 await scrolling;
+
+// The options that keep a session off the user's page and keep answers small
+// have to cross the wire, and only when they are set.
+const startingAt = rpc("tools/call", {
+  name: "browser_start",
+  arguments: { goal: "read the docs", url: "https://tabrunner.app/docs", background: false },
+});
+const startAtRequest = await awaitRequest("browserStart");
+check(
+  "browser_start passes url and background: false to the extension",
+  startAtRequest.params.url === "https://tabrunner.app/docs" &&
+    startAtRequest.params.background === false,
+);
+reply(startAtRequest.requestId, { ok: true, data: {} });
+await startingAt;
+
+const leanClick = rpc("tools/call", {
+  name: "browser_click",
+  arguments: { ref: "e2", snapshot: false },
+});
+const leanRequest = await awaitRequest("browserAct");
+check("snapshot: false crosses the wire", leanRequest.params.snapshot === false);
+reply(leanRequest.requestId, { ok: true, data: { url: "https://x.test/" } });
+await leanClick;
+
+const findingTabs = rpc("tools/call", { name: "browser_tabs", arguments: { query: "docs" } });
+const tabsRequest = await awaitRequest("browserAct");
+check(
+  "browser_tabs passes its query to list_tabs",
+  tabsRequest.params.tool === "list_tabs" &&
+    (tabsRequest.params.args as Record<string, unknown>).query === "docs",
+);
+reply(tabsRequest.requestId, { ok: true, data: { tabs: [] } });
+await findingTabs;
 
 // An extension-side refusal reaches the model as an oriented error, not a crash.
 const steered = rpc("tools/call", { name: "steer", arguments: { text: "use the search box" } });

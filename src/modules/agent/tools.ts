@@ -87,7 +87,12 @@ export async function executeTool(
 
       case "list_tabs": {
         const tabs = await driver.listTabs();
-        return { ok: true, data: { tabs } };
+        const query =
+          typeof call.args.query === "string" ? call.args.query.trim().toLowerCase() : "";
+        const shown = query
+          ? tabs.filter((t) => `${t.title} ${t.url}`.toLowerCase().includes(query))
+          : tabs;
+        return { ok: true, data: { tabs: shown } };
       }
 
       case "switch_tab": {

@@ -49,24 +49,28 @@ When in doubt, `run`. It's the reason this thing exists.
 
 Driving yourself:
 
-| Tool                                        | Use it for                                                                                       |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `browser_start(goal)`                       | Take the wheel. Returns the first snapshot; the goal names what the user sees in history.        |
-| `browser_snapshot()`                        | Read the page — an accessibility tree with a `ref` on every interactive element.                 |
-| `browser_network_requests(filter?, limit?)` | What the tab asked the network — method, URL, status, failures. No bodies.                       |
-| `browser_console_messages(errors?, limit?)` | The tab's console output and uncaught exceptions.                                                |
-| `browser_navigate(url)`                     | Go somewhere.                                                                                    |
-| `browser_click(ref)`                        | Click by ref, as a real trusted event.                                                           |
-| `browser_type(text)`                        | Type into whatever is focused — click the field first.                                           |
-| `browser_fill(ref, text)`                   | Set a field's value by ref — lands where typed keystrokes don't; `""` clears.                    |
-| `browser_evaluate(js)`                      | Run JS in the page — attributes, shadow DOM, the page's own fetch. Bounded, credential-stripped. |
-| `browser_press_key(key)`                    | `Enter`, `Escape`, `Tab`, an arrow.                                                              |
-| `browser_scroll(direction, amount?)`        | Below the fold isn't in a snapshot until you scroll to it.                                       |
-| `browser_tabs()` / `browser_switch_tab(id)` | Find another tab and re-target every later action at it.                                         |
-| `browser_end()`                             | Hand the browser back. Always call it when you're done.                                          |
+| Tool                                              | Use it for                                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `browser_start(goal, url?, background?)`          | Take the wheel in a new background tab. Returns the first snapshot; the goal names the history.  |
+| `browser_snapshot()`                              | Read the page — an accessibility tree with a `ref` on every interactive element.                 |
+| `browser_network_requests(filter?, limit?)`       | What the tab asked the network — method, URL, status, failures. No bodies.                       |
+| `browser_console_messages(errors?, limit?)`       | The tab's console output and uncaught exceptions.                                                |
+| `browser_navigate(url)`                           | Go somewhere.                                                                                    |
+| `browser_click(ref)`                              | Click by ref, as a real trusted event.                                                           |
+| `browser_type(text)`                              | Type into whatever is focused — click the field first.                                           |
+| `browser_fill(ref, text)`                         | Set a field's value by ref — lands where typed keystrokes don't; `""` clears.                    |
+| `browser_evaluate(js)`                            | Run JS in the page — attributes, shadow DOM, the page's own fetch. Bounded, credential-stripped. |
+| `browser_press_key(key)`                          | `Enter`, `Escape`, `Tab`, an arrow.                                                              |
+| `browser_scroll(direction, amount?)`              | Below the fold isn't in a snapshot until you scroll to it.                                       |
+| `browser_tabs(query?)` / `browser_switch_tab(id)` | Find another tab (filter it with `query`) and re-target every later action at it.                |
+| `browser_end()`                                   | Hand the browser back. Always call it when you're done.                                          |
 
 **Refs belong to the snapshot that made them.** Every action returns the page it produced — act on
-that, never on a ref you read two actions ago.
+that, never on a ref you read two actions ago. Pass `snapshot: false` to get only the action's result
+(far fewer tokens), then call `browser_snapshot` before your next ref.
+
+**Your own tab by default.** `browser_start` opens a background tab and leaves the user's page alone;
+pass `background: false` only when the task is about the page they are on.
 
 **Driving means the guardrail is yours.** TabRunner stops to ask before paying, sending on the
 user's behalf, deleting, or submitting — but that rule lives in _its_ model, which you have just
