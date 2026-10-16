@@ -47,10 +47,11 @@ never dials the port at all.
 curl -fsSL https://github.com/tabrunner/tabrunner/releases/latest/download/tabrunner-latest-mcp.js -o ~/.tabrunner-mcp.js
 ```
 
-**4. Register it** with your client:
+**4. Register it** with your client. `--scope user` makes it work in every project. Without it,
+Claude Code registers it for the current folder only:
 
 ```bash
-claude mcp add tabrunner -- bun ~/.tabrunner-mcp.js
+claude mcp add --scope user tabrunner -- bun ~/.tabrunner-mcp.js
 ```
 
 Developing on the repo instead? `.mcp.json` already points Claude Code at `daemon/src/index.ts`.
@@ -62,6 +63,14 @@ you exactly what to do if it isn't.
 The daemon starts when your client starts it; there's nothing to leave running. Re-run the curl to
 update it. To run it by hand (to watch its log, say): `bun ~/.tabrunner-mcp.js`; inside this repo,
 `bun run bridge`.
+
+To remove it, use the same scope you added it with:
+
+```bash
+claude mcp remove --scope user tabrunner
+```
+
+That unregisters it. The file stays at `~/.tabrunner-mcp.js` until you delete it.
 
 ### Configuration
 

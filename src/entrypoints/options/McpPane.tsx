@@ -14,10 +14,14 @@ import { StatusDot } from "./StatusStrip";
  * home, then register it. No placeholders — the release alias is stable and
  * `~/.tabrunner-mcp.js` is a path we chose, so the command runs as copied.
  * (bun runs the file as-is; the daemon's own id check defaults to the release
- * build's extension id, so no env var is needed here.)
+ * build's extension id, so no env var is needed here.) `--scope user` is what
+ * makes it work in every project: the default scope is the current folder only.
  */
 const SETUP_COMMANDS = `curl -fsSL ${LINKS.mcpDaemon} -o ~/.tabrunner-mcp.js
-claude mcp add tabrunner -- bun ~/.tabrunner-mcp.js`;
+claude mcp add --scope user tabrunner -- bun ~/.tabrunner-mcp.js`;
+
+/** The undo for the register line above, in the same scope. */
+const REMOVE_COMMAND = "claude mcp remove --scope user tabrunner";
 
 /** Copy with a moment of confirmation, then back to a quiet button. */
 function CopyButton({ text }: { text: string }) {
@@ -42,6 +46,18 @@ function CopyButton({ text }: { text: string }) {
         t("settings.mcp.copy")
       )}
     </Button>
+  );
+}
+
+/** A paste-ready command with its copy button. */
+function CommandBlock({ text }: { text: string }) {
+  return (
+    <div className="mt-2 flex items-center gap-2 rounded-lg bg-neutral-50 px-3 py-2 dark:bg-neutral-900/50">
+      <code className="min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-pre text-neutral-800 dark:text-neutral-200">
+        {text}
+      </code>
+      <CopyButton text={text} />
+    </div>
   );
 }
 
@@ -158,12 +174,11 @@ export function McpPane() {
           <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
             {t("settings.mcp.setupHelp")}
           </p>
-          <div className="mt-2 flex items-center gap-2 rounded-lg bg-neutral-50 px-3 py-2 dark:bg-neutral-900/50">
-            <code className="min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-pre text-neutral-800 dark:text-neutral-200">
-              {SETUP_COMMANDS}
-            </code>
-            <CopyButton text={SETUP_COMMANDS} />
-          </div>
+          <CommandBlock text={SETUP_COMMANDS} />
+          <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
+            {t("settings.mcp.removeHelp")}
+          </p>
+          <CommandBlock text={REMOVE_COMMAND} />
           <p className="mt-2 text-xs">
             <a
               href={LINKS.mcpDocs}
