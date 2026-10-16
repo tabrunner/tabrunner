@@ -14,6 +14,7 @@ import {
 import type { BrowserDriver } from "@/modules/browser";
 import { appendMessageTo, openAgentConversation } from "@/modules/conversation";
 import { createLogger, truncate } from "@/lib/logger";
+import { defaultStartUrl } from "@/lib/prefs";
 import type { TabId } from "@/shared/types";
 
 const log = createLogger("bridge");
@@ -80,28 +81,33 @@ export class DirectSession {
   }
 
   /**
-   * Opens a session on the active tab. The goal is written as the thread's
-   * first message, which makes it the conversation's title — a stated goal is
-   * a subject, so each session gets its own thread rather than appending to a
-   * previous one whose heading would then be a lie.
+   * Opens a session. Like `run`, it works a tab of its own by default (at `url`,
+   * else the start page) and leaves the page the user is reading alone: its
+   * snapshot goes to the client, and a client that was never told which page
+   * that is should not be handed it. `background: false` is the opt-in for a
+   * task that is about what the user is looking at. The goal is written as the
+   * thread's first message, which makes it the conversation's title — a stated
+   * goal is a subject, so each session gets its own thread rather than
+   * appending to a previous one whose heading would then be a lie.
    */
-  async start(goal: string, agent: string): Promise<ToolResult> {
+  async start(
+    goal: string,
+    agent: string,
+    where: { url?: string; background: boolean },
+  ): Promise<ToolResult> {
     const active = getActiveRun();
     if (active) throw new Error(alreadyRunning(active));
 
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) throw new Error(i18n.t("errors.noActiveTab"));
-    // A direct session drives what the user sees — refuse a page injection
-    // could never reach before claiming the slot, and give a still-loading
-    // page its chance to settle first.
-    if (isRestrictedUrl(tab.url)) throw new Error(i18n.t("errors.restrictedPage"));
-    if (tab.status === "loading") await waitForLoad(tab.id, 10_000);
+    const { tabId, opened } = await this.pickTab(where);
 
     const claim = acquireRun(crypto.randomUUID(), "bridge");
-    if (!claim.ok) throw new Error(alreadyRunning(claim.active));
+    if (!claim.ok) {
+      if (opened) void chrome.tabs.remove(tabId).catch(() => {});
+      throw new Error(alreadyRunning(claim.active));
+    }
 
     this.claim = claim.run;
-    this.tabId = tab.id;
+    this.tabId = tabId;
     this.conversationId = claim.run.conversationId;
     await openAgentConversation(this.conversationId, agent);
     await appendMessageTo(this.conversationId, {
@@ -112,7 +118,7 @@ export class DirectSession {
     });
 
     log.info("direct session opened", { agent, task: truncate(goal, 120) });
-    void showAgentIndicator(tab.id);
+    void showAgentIndicator(tabId);
     this.touch();
     // The opening snapshot: a session's first move is always to look, so
     // handing it back here saves a round trip and gives the client its refs.
@@ -123,8 +129,11 @@ export class DirectSession {
    * Runs one tool against the driven tab and records it. Mutating actions come
    * back with a fresh snapshot attached: every ref belongs to the snapshot that
    * produced it, so acting on stale refs is a correctness bug, not a slow path.
+   * A client that does not want the page back (a snapshot is thousands of
+   * tokens) says so, and then owns the staleness: it snapshots before its next
+   * ref.
    */
-  async act(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
+  async act(tool: string, args: Record<string, unknown>, withSnapshot = true): Promise<ToolResult> {
     if (!this.claim || this.tabId === null) {
       throw new Error(
         "No direct session is open. Call browser_start with what you're trying to do, then drive.",
@@ -132,7 +141,7 @@ export class DirectSession {
     }
     this.touch();
     const result = await this.run(tool, args);
-    if (!result.ok || !MUTATING.has(tool)) return result;
+    if (!result.ok || !MUTATING.has(tool) || !withSnapshot) return result;
 
     const snapshot = await this.run("snapshot", {}, { record: false });
     if (!snapshot.ok) return result;
@@ -157,6 +166,36 @@ export class DirectSession {
   }
 
   // ── Internals ─────────────────────────────────────────────────────
+
+  /** The tab a session drives: its own background tab, or the one the user is on. */
+  private async pickTab(where: {
+    url?: string;
+    background: boolean;
+  }): Promise<{ tabId: TabId; opened: boolean }> {
+    // A URL names its own page, so it never adopts — the same rule `run` follows.
+    if (!where.background && !where.url) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error(i18n.t("errors.noActiveTab"));
+      // Refuse a page injection could never reach before claiming the slot, and
+      // give a still-loading page its chance to settle first.
+      if (isRestrictedUrl(tab.url)) throw new Error(i18n.t("errors.restrictedPage"));
+      if (tab.status === "loading") await waitForLoad(tab.id, 10_000);
+      return { tabId: tab.id, opened: false };
+    }
+
+    const url = where.url || (await defaultStartUrl.get()) || defaultStartUrl.fallback;
+    if (isRestrictedUrl(url)) throw new Error(i18n.t("errors.restrictedPage"));
+    const created = await chrome.tabs.create({ active: false, url });
+    if (!created.id) throw new Error(i18n.t("errors.noActiveTab"));
+    try {
+      await waitForLoad(created.id);
+    } catch (e) {
+      // A tab the session never drove is litter.
+      void chrome.tabs.remove(created.id).catch(() => {});
+      throw e;
+    }
+    return { tabId: created.id, opened: true };
+  }
 
   /** One tool call against the current tab, optionally written to the thread. */
   private async run(

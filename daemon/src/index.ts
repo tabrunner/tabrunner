@@ -469,11 +469,25 @@ function clientName(): string {
   return info?.name ? `${info.name}` : "";
 }
 
-async function act(tool: string, toolArgs: Record<string, unknown> = {}) {
+/**
+ * A mutating action answers with the page as a fresh snapshot, because its refs
+ * go stale. A client that does not want those thousands of tokens turns it off
+ * and snapshots again before it needs a ref.
+ */
+const snapshotOption = {
+  snapshot: z
+    .boolean()
+    .optional()
+    .describe(
+      "Default true: the answer includes the page as a fresh snapshot (a few thousand tokens). false returns only this action's result and the URL; every ref you hold is then stale, so call browser_snapshot before the next click.",
+    ),
+};
+
+async function act(tool: string, toolArgs: Record<string, unknown> = {}, snapshot?: boolean) {
   return withLink(async () => {
     const result = await link.request<{ ok?: boolean; data?: unknown; error?: string }>(
       "browserAct",
-      { tool, args: toolArgs },
+      { tool, args: toolArgs, ...(snapshot === false ? { snapshot } : {}) },
     );
     return text(renderToolResult(tool, result));
   });
@@ -517,18 +531,30 @@ server.registerTool(
   {
     title: "Start driving the browser yourself",
     description:
-      "Open a direct-control session and get the first page snapshot. Use this instead of run when you want to drive step by step rather than hand TabRunner the whole task. run is still the better choice for anything long or open-ended, because TabRunner's own model plans it. State the goal: it names the chat the user will see in TabRunner's history, and every action you take is recorded under it. IMPORTANT: driving directly bypasses TabRunner's own model and its rule of stopping to ask before consequential actions, so paying, sending on the user's behalf, deleting, or submitting is yours to put to the user first.",
+      "Open a direct-control session and get the first page snapshot. Use this instead of run when you want to drive step by step rather than hand TabRunner the whole task. run is still the better choice for anything long or open-ended, because TabRunner's own model plans it. Like run, it works in a new background tab and leaves the page the user is reading alone; pass url to choose where it starts. Pass background: false only when the task is about the page the user is on. State the goal: it names the chat the user will see in TabRunner's history, and every action you take is recorded under it. IMPORTANT: driving directly bypasses TabRunner's own model and its rule of stopping to ask before consequential actions, so paying, sending on the user's behalf, deleting, or submitting is yours to put to the user first.",
     inputSchema: {
       goal: z
         .string()
         .describe("What you're setting out to do, in the user's terms. Titles the chat."),
+      url: z
+        .string()
+        .optional()
+        .describe("Absolute URL to open in the new tab. Defaults to the user's start page."),
+      background: z
+        .boolean()
+        .optional()
+        .describe(
+          "Default true: drive a new background tab. false drives the tab the user is on right now, and you receive its contents. Ignored when url is set.",
+        ),
     },
   },
-  async ({ goal }) =>
+  async ({ goal, url, background }) =>
     withLink(async () => {
       const result = await link.request<{ data?: unknown }>("browserStart", {
         goal,
         agent: clientName(),
+        ...(url ? { url } : {}),
+        ...(background === false ? { background } : {}),
       });
       return text(
         `Driving directly. The user sees this as "${goal}" in TabRunner's history, with every action under it.\n\n${renderToolResult("snapshot", result)}`,
@@ -587,9 +613,12 @@ server.registerTool(
   {
     title: "Go to a URL",
     description: "Navigate the driven tab and return the new page's snapshot.",
-    inputSchema: { url: z.string().describe("Absolute URL, including the scheme.") },
+    inputSchema: {
+      url: z.string().describe("Absolute URL, including the scheme."),
+      ...snapshotOption,
+    },
   },
-  async ({ url }) => act("navigate", { url }),
+  async ({ url, snapshot }) => act("navigate", { url }, snapshot),
 );
 
 server.registerTool(
@@ -598,9 +627,12 @@ server.registerTool(
     title: "Click an element",
     description:
       "Click by ref with a real trusted event, not a synthetic dispatch a site can ignore. Returns the resulting page. Take the ref from the most recent snapshot.",
-    inputSchema: { ref: z.string().describe('A ref from the latest snapshot, e.g. "e12".') },
+    inputSchema: {
+      ref: z.string().describe('A ref from the latest snapshot, e.g. "e12".'),
+      ...snapshotOption,
+    },
   },
-  async ({ ref }) => act("click", { ref }),
+  async ({ ref, snapshot }) => act("click", { ref }, snapshot),
 );
 
 server.registerTool(
@@ -609,9 +641,9 @@ server.registerTool(
     title: "Type text",
     description:
       "Type into whatever is focused. Click the field first. Real keystrokes, so a site's own handlers fire. Returns the resulting page.",
-    inputSchema: { text: z.string().describe("The text to type.") },
+    inputSchema: { text: z.string().describe("The text to type."), ...snapshotOption },
   },
-  async ({ text: body }) => act("type", { text: body }),
+  async ({ text: body, snapshot }) => act("type", { text: body }, snapshot),
 );
 
 server.registerTool(
@@ -623,9 +655,10 @@ server.registerTool(
     inputSchema: {
       ref: z.string().describe('A ref from the latest snapshot, e.g. "e12".'),
       text: z.string().describe("The value to set. An empty string clears the field."),
+      ...snapshotOption,
     },
   },
-  async ({ ref, text: body }) => act("fill", { ref, text: body }),
+  async ({ ref, text: body, snapshot }) => act("fill", { ref, text: body }, snapshot),
 );
 
 server.registerTool(
@@ -638,9 +671,10 @@ server.registerTool(
       expression: z
         .string()
         .describe("The JavaScript to run. Top-level await works; the last value is returned."),
+      ...snapshotOption,
     },
   },
-  async ({ expression }) => act("evaluate", { expression }),
+  async ({ expression, snapshot }) => act("evaluate", { expression }, snapshot),
 );
 
 server.registerTool(
@@ -649,9 +683,12 @@ server.registerTool(
     title: "Press a key",
     description:
       'A single key press: "Enter" to submit, "Escape" to dismiss, "Tab" to move on. Returns the resulting page.',
-    inputSchema: { key: z.string().describe('e.g. "Enter", "Escape", "Tab", "ArrowDown".') },
+    inputSchema: {
+      key: z.string().describe('e.g. "Enter", "Escape", "Tab", "ArrowDown".'),
+      ...snapshotOption,
+    },
   },
-  async ({ key }) => act("press_key", { key }),
+  async ({ key, snapshot }) => act("press_key", { key }, snapshot),
 );
 
 server.registerTool(
@@ -663,19 +700,31 @@ server.registerTool(
     inputSchema: {
       direction: z.enum(["down", "up"]).describe("Which way to scroll."),
       amount: z.number().optional().describe("Pixels; defaults to about one screenful."),
+      ...snapshotOption,
     },
   },
-  async ({ direction, amount }) =>
-    act(direction === "up" ? "scroll_up" : "scroll_down", amount === undefined ? {} : { amount }),
+  async ({ direction, amount, snapshot }) =>
+    act(
+      direction === "up" ? "scroll_up" : "scroll_down",
+      amount === undefined ? {} : { amount },
+      snapshot,
+    ),
 );
 
 server.registerTool(
   "browser_tabs",
   {
     title: "List open tabs",
-    description: "Every open tab with its id, title and URL. Find the one you need, then switch.",
+    description:
+      "Open tabs with their id, title and URL. These are all the tabs the user has open, so pass query to get only the ones you need. Find the one you need, then switch.",
+    inputSchema: {
+      query: z
+        .string()
+        .optional()
+        .describe("Only tabs whose title or URL contains this text, ignoring case."),
+    },
   },
-  async () => act("list_tabs"),
+  async ({ query }) => act("list_tabs", query ? { query } : {}),
 );
 
 server.registerTool(
@@ -683,7 +732,7 @@ server.registerTool(
   {
     title: "Switch tabs",
     description:
-      "Point every later action at another tab and bring it to the front. Trusted input needs the tab on screen, so this focuses it.",
+      "Point every later action at another tab. The tab does not need to be on screen: actions work on background tabs too. It comes to the front only while the user is watching the tab you leave; otherwise the work goes on without moving their screen.",
     inputSchema: { tab_id: z.number().describe("A tab id from browser_tabs.") },
   },
   async ({ tab_id }) => act("switch_tab", { tab_id }),

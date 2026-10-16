@@ -1,5 +1,6 @@
 import type { TabId } from "@/shared/types";
 import { i18n } from "@/i18n";
+import { isRestrictedPageError } from "./restricted-url";
 
 /**
  * Run a self-contained function in the page's MAIN world and return its result.
@@ -26,7 +27,7 @@ export async function runInPage<Args extends unknown[], R>(
     if (/frame was removed|No frame with id|tab was closed/i.test(msg)) {
       throw new Error(i18n.t("errors.pageNavigating"), { cause: e });
     }
-    if (/chrome:\/\/|Cannot access|extensions gallery|Web Store/i.test(msg)) {
+    if (isRestrictedPageError(msg)) {
       throw new Error(i18n.t("errors.restrictedPage"), { cause: e });
     }
     throw e;

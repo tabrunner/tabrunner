@@ -3,7 +3,7 @@ import { getActiveRun, releaseRun } from "@/modules/agent/active-runs";
 import { compactConversation } from "@/modules/agent/compact";
 import { cancelQueued, listQueue, onBoardChanged, submitRun } from "@/modules/agent/run-queue";
 import { startAgentRun } from "@/modules/agent/start-run";
-import { captureVisibleTab } from "@/modules/browser";
+import { attachedTab, captureVisibleTab, screenshot as captureAttached } from "@/modules/browser";
 import {
   appendMessageTo,
   getConversationMeta,
@@ -130,7 +130,10 @@ export class Bridge {
       case "browserStart":
         await this.guard(requestId, async () => {
           const client = str(params.agent) || i18n.t("history.unknownAgent");
-          const result = await this.direct.start(str(params.goal), client);
+          const result = await this.direct.start(str(params.goal), client, {
+            url: str(params.url) || undefined,
+            background: params.background !== false,
+          });
           // Only after the session actually opened — a refusal (already running,
           // no tab) must not claim the browser.
           this.setActivity("direct", client);
@@ -138,7 +141,9 @@ export class Bridge {
         });
         break;
       case "browserAct":
-        await this.guard(requestId, () => this.direct.act(str(params.tool), args(params.args)));
+        await this.guard(requestId, () =>
+          this.direct.act(str(params.tool), args(params.args), params.snapshot !== false),
+        );
         break;
       case "browserEnd":
         await this.direct.end();
@@ -328,6 +333,23 @@ export class Bridge {
       // A direct session drives the tab it opened on; a delegated run reports
       // its own. Either way "driven" must mean "this is the tab being worked".
       const driving = this.direct.drivenTab ?? this.status.driving?.tabId;
+      // A live debugger session sees its tab even when nobody can: in the
+      // background, under another window, minimized. captureVisibleTab reads
+      // only what is on screen, so it fails on the very tabs a background run
+      // works in, and on any other tab it would show a page the client is not
+      // working.
+      const attached = attachedTab();
+      if (attached !== null) {
+        const [dataUrl, tab] = await Promise.all([captureAttached(), chrome.tabs.get(attached)]);
+        this.respond(requestId, {
+          dataUrl,
+          tabId: attached,
+          title: tab.title ?? "",
+          url: tab.url ?? "",
+          driven: attached === driving,
+        });
+        return;
+      }
       const shot = await captureVisibleTab(this.status.driving?.windowId);
       this.respond(requestId, { ...shot, driven: shot.tabId === driving });
     } catch (e) {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { paintWidget, removeWidget, type WidgetState } from "../status-widget";
+import { paintWidget, removeWidget, settleState, type WidgetState } from "../status-widget";
 
 // The page-side half of the status widget, run directly in jsdom the way the
 // indicator is tested. The widget's shadow root is closed in production so the
@@ -20,7 +20,7 @@ const BASE: WidgetState = {
 };
 
 const SETTLED: Partial<WidgetState> = {
-  settle: { ok: true, text: "Task finished" },
+  settle: { ok: true, text: "Task finished", clearAfterMs: 6000 },
   hideLabel: "✕",
   hideHint: "Dismiss",
 };
@@ -250,7 +250,7 @@ describe("the settled receipt", () => {
   });
 
   it("a failed run settles into the ✗ receipt and wears its ring", () => {
-    paint({ ...SETTLED, settle: { ok: false, text: "Task failed" } });
+    paint({ ...SETTLED, settle: { ok: false, text: "Task failed", clearAfterMs: 6000 } });
 
     const { pill, open } = parts();
     expect(open.querySelector(".end.bad")?.textContent).toBe("✗");
@@ -277,5 +277,37 @@ describe("the settled receipt", () => {
     vi.advanceTimersByTime(6000);
     expect(document.getElementById(HOST_ID)).not.toBeNull();
     expect(parts().open.textContent).toContain("Summarize the thread");
+  });
+});
+
+// executeScript sends the painter to the page as source text: nothing from this
+// module comes along. A painter that read a module constant threw
+// "ReferenceError: <minified name> is not defined" on every receipt, in the
+// page, where no test in this file could see it.
+describe("the painter as the page receives it", () => {
+  const original = Element.prototype.attachShadow;
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    Element.prototype.attachShadow = function () {
+      return original.call(this, { mode: "open" });
+    };
+  });
+
+  afterEach(() => {
+    Element.prototype.attachShadow = original;
+    vi.useRealTimers();
+  });
+
+  it("paints and clears a receipt with nothing but its own arguments", () => {
+    vi.useFakeTimers();
+    const inPage = new Function(`return (${paintWidget.toString()})`)() as typeof paintWidget;
+    const state = settleState("done", "ambient");
+
+    inPage(HOST_ID, state);
+    expect(document.getElementById(HOST_ID)).not.toBeNull();
+
+    vi.advanceTimersByTime(state.settle!.clearAfterMs);
+    expect(document.getElementById(HOST_ID)).toBeNull();
   });
 });

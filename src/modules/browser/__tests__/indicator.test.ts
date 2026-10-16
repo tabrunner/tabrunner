@@ -214,7 +214,11 @@ describe("worker-driven favicon heartbeat", () => {
     // Favicon back to the page, then the receipt in the pill's place — the
     // same ✓ the strip's group title wears, instead of a silent vanish.
     const settle = paintCalls()[0]?.[1];
-    expect(settle?.settle).toEqual({ ok: true, text: expect.any(String) });
+    expect(settle?.settle).toEqual({
+      ok: true,
+      text: expect.any(String),
+      clearAfterMs: expect.any(Number),
+    });
     expect(
       executeScript.mock.calls.some((c) => (c[0] as { func: unknown }).func === restoreFavicon),
     ).toBe(true);

@@ -52,7 +52,11 @@ vi.mock("@/modules/browser", () => ({
   isRestrictedUrl: () => false,
   waitForLoad: () => Promise.resolve(),
   captureVisibleTab: () => Promise.resolve({ data: "data:image/jpeg;base64,AA==", tabId: 7 }),
+  attachedTab: () => attachedTabId,
+  screenshot: () => Promise.resolve("data:image/jpeg;base64,CC=="),
 }));
+/** The tab the debugger session holds, or null when no run or session is live. */
+let attachedTabId: number | null = null;
 let activeProvider: ProviderConfig | null = null;
 vi.mock("@/modules/providers", () => ({
   getActiveProvider: () => Promise.resolve(activeProvider),
@@ -71,9 +75,13 @@ beforeEach(() => {
   sendSpy.mockClear();
   emitRunEvent = null;
   activeProvider = null;
+  attachedTabId = null;
   delete socketHandlers.onMessage;
   (globalThis.chrome as Record<string, unknown>).tabs = {
     query: () => Promise.resolve([{ id: 7, windowId: 1, title: "Inbox", url: "https://x.test/" }]),
+    get: (id: number) => Promise.resolve({ id, title: "Form", url: "https://y.test/" }),
+    create: () => Promise.resolve({ id: 7 }),
+    remove: () => Promise.resolve(),
     onRemoved: { addListener: () => {}, removeListener: () => {} },
     onUpdated: { addListener: () => {}, removeListener: () => {} },
   };
@@ -300,5 +308,40 @@ describe("Bridge thread", () => {
     );
 
     expect(await runOnce(bridge, "t2")).not.toBe(first);
+  });
+});
+
+/**
+ * A screenshot of a tab nobody can see used to fail: captureVisibleTab only
+ * reads what is on screen, and a background run works off screen. While the
+ * debugger holds a tab, that tab is the one worth looking at.
+ */
+describe("Bridge screenshot", () => {
+  const shoot = async (requestId: string) => {
+    const bridge = new Bridge();
+    bridge.start();
+    socketHandlers.onMessage?.({ type: "request", requestId, method: "screenshot", params: {} });
+    await vi.waitFor(() =>
+      expect(sendSpy).toHaveBeenCalledWith(expect.objectContaining({ requestId })),
+    );
+    const call = sendSpy.mock.calls.find(
+      (c) => (c[0] as { requestId?: string }).requestId === requestId,
+    );
+    return (call?.[0] as { result: unknown }).result;
+  };
+
+  it("looks at the tab the debugger holds, even when it is off screen", async () => {
+    attachedTabId = 9;
+    expect(await shoot("s1")).toEqual({
+      dataUrl: "data:image/jpeg;base64,CC==",
+      tabId: 9,
+      title: "Form",
+      url: "https://y.test/",
+      driven: false,
+    });
+  });
+
+  it("falls back to the tab on screen when nothing is attached", async () => {
+    expect(await shoot("s2")).toMatchObject({ tabId: 7, data: "data:image/jpeg;base64,AA==" });
   });
 });

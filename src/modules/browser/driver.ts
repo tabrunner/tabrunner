@@ -124,10 +124,9 @@ export interface DriverOptions {
    * follow holds only while the user is sitting on the tab being left: once
    * they move to a tab of their own the run re-targets in silence. Nobody
    * watching means nothing moves — that is what "in background" promises, and
-   * CDP input reaches an inactive tab either way. The cost of an unfollowed
-   * switch is that a background tab gets no rAF ticks, so a page whose UI only
-   * advances on animation frames can stall — a reason to keep the panel open
-   * for one, not to steal focus for all.
+   * CDP input reaches an inactive tab either way: attach turns on focus
+   * emulation, which also makes the page act visible, so animation frames keep
+   * ticking and nothing here needs the tab on screen.
    */
   activateOnSwitch?: () => boolean;
 }

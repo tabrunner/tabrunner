@@ -377,16 +377,21 @@ const TOOL_DEFS: ToolDef[] = [
   {
     name: "list_tabs",
     description:
-      "List the browser's open tabs with id, title, url, and which one is active. Use it when the task may involve a page that is already open.",
+      "List the browser's open tabs with id, title, url, and which one is active. Use it when the task may involve a page that is already open. Pass query to keep only the tabs whose title or url contains it: the full list is every tab the user has open.",
     params: {
       type: "object",
-      properties: {},
+      properties: {
+        query: {
+          type: "string",
+          description: "Only tabs whose title or url contains this text, ignoring case",
+        },
+      },
     },
   },
   {
     name: "switch_tab",
     description:
-      "Make another open tab the one you drive: every later snapshot, click, type and screenshot acts on it, and it is brought to the front. Get the tab id from list_tabs.",
+      "Make another open tab the one you drive: every later snapshot, click, type and screenshot acts on it. The tab does not have to be on screen: it comes to the front only while the user is watching the tab you leave, and otherwise the work goes on in the background without moving their screen. Get the tab id from list_tabs.",
     params: {
       type: "object",
       properties: {

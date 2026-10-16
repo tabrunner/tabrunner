@@ -66,7 +66,7 @@ and can never drift from the panel's.
 ## Direct control
 
 `bridge/direct.ts` is the other half: a client that would rather drive than delegate calls
-`browser_start(goal)` and then the `browser_*` verbs.
+`browser_start(goal, url?, background?)` and then the `browser_*` verbs.
 
 - **Same `executeTool`, same driver.** The MCP verbs map 1:1 onto agent tool names, so
   there is one browser implementation and no second catalog. Discrete tools at the MCP
@@ -76,7 +76,15 @@ and can never drift from the panel's.
   own panel.
 - **Mutating actions re-snapshot.** A ref belongs to the snapshot that produced it, so
   acting on a stale ref is a correctness bug — every mutating verb returns the fresh page
-  with its result.
+  with its result. A client can pass `snapshot: false` (the daemon puts it on the
+  `browserAct` request, `DirectSession.act`'s third argument) and then owns the staleness.
+- **Its own tab by default.** The first snapshot goes to the client, so `browser_start`
+  follows `run`: a new background tab (at `url`, else the start page), and the user's
+  current tab only when the client sends `background: false` without a `url`.
+- **Hidden tabs work.** Attach turns on `Emulation.setFocusEmulationEnabled`, so a tab in
+  the background, under another window or minimized still takes the mouse press, keys and
+  wheel (a hidden page queues them otherwise). `screenshot` reads the tab the debugger
+  holds with `Page.captureScreenshot`; `captureVisibleTab` is the idle-browser path.
 - **No ask_user.** The consequential-action policy lives in the system prompt, which
   direct control bypasses; the client carries it (tool descriptions + SKILL.md), and
   PRIVACY.md says so plainly. The compensations are visibility: badge, tab dot, and a

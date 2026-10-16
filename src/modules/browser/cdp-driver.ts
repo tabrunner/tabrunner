@@ -73,6 +73,13 @@ async function attach(tabId: TabId): Promise<void> {
     // by the time the model looks, the failing request is already in the log.
     await send("Network.enable");
     await send("Runtime.enable");
+    // A tab nobody can see (in the background, under another window, minimized)
+    // is hidden to Chrome too, and a hidden page holds mouse presses, keys and
+    // the wheel in a queue until someone shows it: every action answers ok and
+    // nothing happens. Focus emulation makes the page behave as visible and
+    // focused, so the work lands without moving the user's screen. Puppeteer
+    // does the same for each page it drives. It ends with the attach.
+    await send("Emulation.setFocusEmulationEnabled", { enabled: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("Another debugger is already attached")) {
@@ -490,19 +497,14 @@ export function waitForLoad(tabId: TabId, timeoutMs = 30_000): Promise<void> {
     };
 
     const timer = setTimeout(
-      () =>
-        done(
-          new Error(
-            `Page load timed out after ${timeoutMs / 1000}s. The page may be slow or unresponsive. Try again.`,
-          ),
-        ),
+      () => done(new Error(i18n.t("errors.pageLoadTimeout", { seconds: timeoutMs / 1000 }))),
       timeoutMs,
     );
     const listener = (id: number, _info: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) => {
       if (id === tabId && check(tab)) done();
     };
     const removed = (id: number) => {
-      if (id === tabId) done(new Error(`Tab ${tabId} was closed while its page was loading.`));
+      if (id === tabId) done(new Error(i18n.t("errors.tabClosedWhileLoading")));
     };
 
     // Listening before the lookup, so a load that completes between the two is
@@ -513,7 +515,7 @@ export function waitForLoad(tabId: TabId, timeoutMs = 30_000): Promise<void> {
     // the status check would throw on. Reading it names the failure and keeps
     // Chrome from logging it as unchecked.
     chrome.tabs.get(tabId, (tab) => {
-      if (!tab) done(new Error(chrome.runtime.lastError?.message ?? `Tab ${tabId} is gone.`));
+      if (!tab) done(new Error(i18n.t("errors.tabGone")));
       else if (check(tab)) done();
     });
   });

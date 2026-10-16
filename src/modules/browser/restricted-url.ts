@@ -14,3 +14,12 @@ export function isRestrictedUrl(url: string | undefined): boolean {
     /^https?:\/\/chromewebstore\.google\.com/i.test(url)
   );
 }
+
+/**
+ * Whether a Chrome API rejection says the page is off limits, as opposed to any
+ * other failure. Injection and tab capture both refuse chrome:// and Web Store
+ * pages in these words, and both map them to errors.restrictedPage.
+ */
+export function isRestrictedPageError(message: string): boolean {
+  return /chrome:\/\/|Cannot access|extensions gallery|Web Store/i.test(message);
+}

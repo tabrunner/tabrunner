@@ -89,7 +89,7 @@ That unregisters it. The file stays at `~/.tabrunner-mcp.js` until you delete it
 | `answer(text)`                          | Reply to a question the run stopped on.                                                                                                                                                                                                                                                                                                                  |
 | `steer(text)`                           | Drop a note into a running task, such as a correction or an extra constraint. It lands between tool calls; the run doesn't restart.                                                                                                                                                                                                                      |
 | `stop()`                                | End the run and cancel any of this client's queued runs. Stopping is normal control flow, not an error.                                                                                                                                                                                                                                                  |
-| `screenshot()`                          | A picture of what the browser is showing right now, as an image the model can actually look at. Works run or no run.                                                                                                                                                                                                                                     |
+| `screenshot()`                          | A picture of what the browser is showing right now, as an image the model can actually look at. Works run or no run. While a run or a direct session is driving a tab, it shows that tab, even in the background.                                                                                                                                        |
 | `new_conversation()`                    | Forget the thread and start clean. Refused while this thread has a run active or queued. Stop it first.                                                                                                                                                                                                                                                  |
 | `compact()`                             | Summarize the thread's history so far. Runs then replay the summary instead of the whole transcript. Nothing is deleted; the raw messages stay in the user's panel. For long threads, or after a context-length error. Refused while a run is in flight.                                                                                                 |
 
@@ -99,21 +99,21 @@ Delegating is the better path for anything long or open-ended because TabRunner'
 you pay one MCP turn instead of one per click. But sometimes you want the clicks. `browser_start`
 opens a direct-control session, and every `browser_*` tool drives the real tab:
 
-| Tool                                             | What it does                                                                                          |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `browser_start(goal)`                            | Take the wheel, and get the first snapshot. The goal names the conversation the user sees.            |
-| `browser_snapshot()`                             | The page as an accessibility tree, with a `ref` on every interactive element.                         |
-| `browser_network_requests(url_filter?, limit?)`  | What the tab asked the network, with method, URL, status and failures. No bodies.                     |
-| `browser_console_messages(only_errors?, limit?)` | The tab's console output and uncaught exceptions.                                                     |
-| `browser_navigate(url)`                          | Go somewhere.                                                                                         |
-| `browser_click(ref)`                             | Click by ref with a real trusted event, not a synthetic dispatch.                                     |
-| `browser_type(text)`                             | Type into whatever is focused (click the field first).                                                |
-| `browser_fill(ref, text)`                        | Set a field's value by ref. Works where typed keystrokes don't; `""` clears.                          |
-| `browser_evaluate(expression)`                   | Run JS in the page for attributes, shadow DOM and the page's own fetch. Bounded, credential-stripped. |
-| `browser_press_key(key)`                         | `Enter`, `Escape`, `Tab`, an arrow.                                                                   |
-| `browser_scroll(direction, amount?)`             | Content below the fold isn't in a snapshot until you scroll to it.                                    |
-| `browser_tabs()` / `browser_switch_tab(tab_id)`  | Find another tab, re-target every later action at it.                                                 |
-| `browser_end()`                                  | Hand the browser back.                                                                                |
+| Tool                                                  | What it does                                                                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `browser_start(goal, url?, background?)`              | Take the wheel in a new background tab, and get the first snapshot. The goal names the conversation the user sees. |
+| `browser_snapshot()`                                  | The page as an accessibility tree, with a `ref` on every interactive element.                                      |
+| `browser_network_requests(url_filter?, limit?)`       | What the tab asked the network, with method, URL, status and failures. No bodies.                                  |
+| `browser_console_messages(only_errors?, limit?)`      | The tab's console output and uncaught exceptions.                                                                  |
+| `browser_navigate(url)`                               | Go somewhere.                                                                                                      |
+| `browser_click(ref)`                                  | Click by ref with a real trusted event, not a synthetic dispatch.                                                  |
+| `browser_type(text)`                                  | Type into whatever is focused (click the field first).                                                             |
+| `browser_fill(ref, text)`                             | Set a field's value by ref. Works where typed keystrokes don't; `""` clears.                                       |
+| `browser_evaluate(expression)`                        | Run JS in the page for attributes, shadow DOM and the page's own fetch. Bounded, credential-stripped.              |
+| `browser_press_key(key)`                              | `Enter`, `Escape`, `Tab`, an arrow.                                                                                |
+| `browser_scroll(direction, amount?)`                  | Content below the fold isn't in a snapshot until you scroll to it.                                                 |
+| `browser_tabs(query?)` / `browser_switch_tab(tab_id)` | Find another tab (`query` keeps only titles and URLs that contain it), re-target every later action at it.         |
+| `browser_end()`                                       | Hand the browser back.                                                                                             |
 
 Every verb goes through the **same `executeTool` the agent loop uses**: one browser
 implementation, no second catalog to drift. On the wire they all arrive as a single `browserAct`
@@ -121,7 +121,16 @@ method; they are discrete only at the MCP surface, because that is the shape mod
 
 **Refs belong to the snapshot that produced them.** Anything that changes the page invalidates
 them, so every mutating action returns the fresh snapshot alongside its result. Act on that, never
-on a ref you read two actions ago.
+on a ref you read two actions ago. A snapshot costs a few thousand tokens; pass `snapshot: false` to
+`browser_navigate`, `browser_click`, `browser_type`, `browser_fill`, `browser_evaluate`,
+`browser_press_key` or `browser_scroll` to get only the action's result, then call `browser_snapshot`
+before your next ref.
+
+**Where it works.** Like `run`, `browser_start` opens a new background tab (at `url`, else the user's
+start page) and leaves the page the user is reading alone. Pass `background: false` only when the task
+is about the page the user is on: you then receive that page's contents. The tabs work without being on
+screen: `browser_switch_tab` moves the user's screen only while they are watching the tab you leave.
+`browser_tabs` lists every tab the user has open, so pass `query` when you know what you need.
 
 **Direct control has no ask_user.** TabRunner's policy of stopping before consequential actions
 lives in its system prompt, and driving directly takes that prompt out of the loop. Paying, sending
