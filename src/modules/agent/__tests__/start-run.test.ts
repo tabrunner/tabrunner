@@ -2,12 +2,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   continuesThreadTab,
   createRunGroup,
+  hasPendingQuestion,
   labelRunTab,
   liveThreadGroup,
   reopenTargetFor,
   settleRunTab,
 } from "../start-run";
 import type { LastTab } from "@/modules/conversation/conversations";
+import type { Message } from "@/modules/conversation/types";
 
 // One thread, one strip per window: follow-up messages file their tab under the
 // group the thread already has in that window — found by content (the urls the
@@ -46,6 +48,32 @@ describe("continuesThreadTab", () => {
     expect(continuesThreadTab("bridge", false)).toBe(false);
     expect(continuesThreadTab("schedule", true)).toBe(true);
     expect(continuesThreadTab("bridge", true)).toBe(true);
+  });
+});
+
+describe("hasPendingQuestion", () => {
+  const msg = (role: Message["role"], extra: Partial<Message> = {}): Message => ({
+    id: crypto.randomUUID(),
+    role,
+    content: "",
+    timestamp: 0,
+    ...extra,
+  });
+  const ask = msg("step", { tool: "ask_user" });
+
+  // Every owner stores its task before the run starts, so an answer is already
+  // the last message when the run looks for the question it replies to.
+  it("finds the question an answer was just submitted for", () => {
+    expect(hasPendingQuestion([msg("user"), ask, msg("user")])).toBe(true);
+  });
+
+  it("a new task after a finished run is not an answer", () => {
+    expect(hasPendingQuestion([msg("user"), msg("assistant"), msg("user")])).toBe(false);
+  });
+
+  it("a question that was already answered is not pending again", () => {
+    const answered = [msg("user"), ask, msg("user"), msg("assistant"), msg("user")];
+    expect(hasPendingQuestion(answered)).toBe(false);
   });
 });
 

@@ -837,10 +837,16 @@ function tabLabel(tab: chrome.tabs.Tab): string {
  * conversation/ui/ask-gate.ts, which the runtime boundary keeps out of reach):
  * the newest ask_user with no user message after it is still awaiting an
  * answer — so this submission is a continuation, not a fresh task.
+ *
+ * The transcript already holds this submission: every owner stores its task
+ * before the run starts. That last user message IS the answer being judged, so
+ * it is left out — counted, it would end the walk at once and no answer could
+ * ever find its question.
  */
-function hasPendingQuestion(transcript: Message[]): boolean {
-  for (let i = transcript.length - 1; i >= 0; i--) {
-    const m = transcript[i];
+export function hasPendingQuestion(transcript: Message[]): boolean {
+  const before = transcript.at(-1)?.role === "user" ? transcript.slice(0, -1) : transcript;
+  for (let i = before.length - 1; i >= 0; i--) {
+    const m = before[i];
     if (m?.role === "user") return false;
     if (m?.role === "step" && m.tool === "ask_user") return true;
   }
