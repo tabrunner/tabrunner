@@ -70,8 +70,10 @@ export interface WidgetState {
    *  excerpt moves to the tooltip. */
   awaitingText: string;
   /** The run's receipt — painted where the working mark was; the page clears
-   *  it (SETTLE_MS), and the ✕ / a click on the pill clear it sooner. */
-  settle?: { ok: boolean; text: string };
+   *  it after `clearAfterMs`, and the ✕ / a click on the pill clear it sooner.
+   *  The delay rides in the state because the painter is serialized into the
+   *  page and cannot see this module's constants. */
+  settle?: { ok: boolean; text: string; clearAfterMs: number };
   hideLabel: string;
   /** The pill's own tooltip — clicking anywhere on it opens the panel. */
   openHint: string;
@@ -328,7 +330,7 @@ export function paintWidget(hostId: string, state: WidgetState): void {
     setTimeout(() => {
       const el = document.getElementById(hostId);
       if (el?.dataset.signature === signature) el.remove();
-    }, SETTLE_MS);
+    }, state.settle.clearAfterMs);
   }
 }
 
@@ -349,7 +351,11 @@ export function settleState(outcome: SettleOutcome, mode: "driven" | "ambient"):
     queuedText: "",
     awaiting: false,
     awaitingText: "",
-    settle: { ok, text: i18n.t(ok ? "widget.settledDone" : "widget.settledFailed") },
+    settle: {
+      ok,
+      text: i18n.t(ok ? "widget.settledDone" : "widget.settledFailed"),
+      clearAfterMs: SETTLE_MS,
+    },
     // The receipt's own way out. A glyph, not a word: "Hide" would promise the
     // collapse it no longer does, and ✕ needs no translating — the name behind
     // it does.
