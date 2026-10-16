@@ -1018,7 +1018,7 @@ async function resolveRunTab(
   }
   if (!tab.id) return { error: i18n.t("errors.noActiveTab") };
   try {
-    await waitForLoad(tab.id, 15_000);
+    await waitForLoad(tab.id);
   } catch (e) {
     // A tab the run never drove is litter — close it on the way out.
     void chrome.tabs.remove(tab.id).catch(() => {});

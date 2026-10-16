@@ -497,19 +497,14 @@ export function waitForLoad(tabId: TabId, timeoutMs = 30_000): Promise<void> {
     };
 
     const timer = setTimeout(
-      () =>
-        done(
-          new Error(
-            `Page load timed out after ${timeoutMs / 1000}s. The page may be slow or unresponsive. Try again.`,
-          ),
-        ),
+      () => done(new Error(i18n.t("errors.pageLoadTimeout", { seconds: timeoutMs / 1000 }))),
       timeoutMs,
     );
     const listener = (id: number, _info: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) => {
       if (id === tabId && check(tab)) done();
     };
     const removed = (id: number) => {
-      if (id === tabId) done(new Error(`Tab ${tabId} was closed while its page was loading.`));
+      if (id === tabId) done(new Error(i18n.t("errors.tabClosedWhileLoading")));
     };
 
     // Listening before the lookup, so a load that completes between the two is
@@ -520,7 +515,7 @@ export function waitForLoad(tabId: TabId, timeoutMs = 30_000): Promise<void> {
     // the status check would throw on. Reading it names the failure and keeps
     // Chrome from logging it as unchecked.
     chrome.tabs.get(tabId, (tab) => {
-      if (!tab) done(new Error(chrome.runtime.lastError?.message ?? `Tab ${tabId} is gone.`));
+      if (!tab) done(new Error(i18n.t("errors.tabGone")));
       else if (check(tab)) done();
     });
   });

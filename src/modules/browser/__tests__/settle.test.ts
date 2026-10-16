@@ -61,7 +61,7 @@ const runtime = { lastError: undefined as { message: string } | undefined };
   debugger: { onDetach: { addListener: () => {} }, onEvent: { addListener: () => {} } },
 };
 
-const { settleIfLoading } = await import("../cdp-driver");
+const { settleIfLoading, waitForLoad } = await import("../cdp-driver");
 
 /** Let every pending microtask and 0ms timer drain. */
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -148,5 +148,36 @@ describe("settleIfLoading", () => {
     await expect(settling).resolves.toBe(true);
     expect(Date.now() - before).toBeLessThan(1_000);
     expect(subscribed()).toBe(0);
+  });
+});
+
+// These reach the person (and the MCP client) as the run's error, so they are
+// catalog text in the user's language, not a code string.
+describe("waitForLoad errors", () => {
+  beforeEach(() => {
+    listeners.clear();
+    removedListeners.clear();
+    tab.status = "loading";
+    closed = false;
+  });
+
+  it("says how long it waited and what to do, in the catalog's words", async () => {
+    await expect(waitForLoad(1, 20)).rejects.toThrow(
+      "The page did not finish loading in 0.02 seconds. It may be slow, or this computer may be busy. Try again.",
+    );
+  });
+
+  it("names a tab that closed mid-load", async () => {
+    const outcome = expect(waitForLoad(1, 5_000)).rejects.toThrow(
+      "The tab was closed before its page finished loading.",
+    );
+    await flush();
+    await close();
+    await outcome;
+  });
+
+  it("names a tab that is already gone", async () => {
+    closed = true;
+    await expect(waitForLoad(1)).rejects.toThrow("That tab is gone.");
   });
 });
