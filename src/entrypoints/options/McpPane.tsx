@@ -10,15 +10,20 @@ import { LINKS } from "@/lib/links";
 import { StatusDot } from "./StatusStrip";
 
 /**
- * The whole setup, paste-ready: fetch the single-file daemon to a conventional
- * home, then register it. No placeholders — the release alias is stable and
- * `~/.tabrunner-mcp.js` is a path we chose, so the command runs as copied.
- * (bun runs the file as-is; the daemon's own id check defaults to the release
- * build's extension id, so no env var is needed here.) `--scope user` is what
- * makes it work in every project: the default scope is the current folder only.
+ * The plugin from this repo's own marketplace, in one step (Claude Code adds the
+ * marketplace on the way): the daemon plus the skill that tells the client when
+ * to delegate. Its server runs `bunx tabrunner-mcp@latest`, so it updates with
+ * each release and needs no download step.
  */
-const SETUP_COMMANDS = `curl -fsSL ${LINKS.mcpDaemon} -o ~/.tabrunner-mcp.js
-claude mcp add --scope user tabrunner -- bun ~/.tabrunner-mcp.js`;
+const PLUGIN_COMMAND = "claude plugin install tabrunner --marketplace tabrunner/tabrunner";
+
+/**
+ * The daemon alone, paste-ready: the npm package every release publishes. (The
+ * daemon's own id check defaults to the release build's extension id, so no env
+ * var is needed here.) `--scope user` is what makes it work in every project:
+ * the default scope is the current folder only.
+ */
+const SETUP_COMMAND = "claude mcp add --scope user tabrunner -- bunx tabrunner-mcp@latest";
 
 /** The undo for the register line above, in the same scope. */
 const REMOVE_COMMAND = "claude mcp remove --scope user tabrunner";
@@ -174,7 +179,11 @@ export function McpPane() {
           <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
             {t("settings.mcp.setupHelp")}
           </p>
-          <CommandBlock text={SETUP_COMMANDS} />
+          <CommandBlock text={PLUGIN_COMMAND} />
+          <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
+            {t("settings.mcp.manualHelp")}
+          </p>
+          <CommandBlock text={SETUP_COMMAND} />
           <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
             {t("settings.mcp.removeHelp")}
           </p>
