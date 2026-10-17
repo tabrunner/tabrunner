@@ -13,6 +13,7 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { BridgeError, BridgeLink, NOT_CONNECTED, QUICK_TIMEOUT_MS } from "./link";
 import type { BridgeProviderInfo, BridgeStatus, CaptureResult } from "./protocol";
@@ -164,10 +165,28 @@ function formatStatus(status: BridgeStatus): string {
 
 const server = new McpServer({ name: "tabrunner", version: pkg.version });
 
+/**
+ * Each tool's labels, so a client (and a plugin directory's review) knows what a
+ * call can do before making it. Claude's directory reads the title only from
+ * `annotations`, so it goes in both places.
+ */
+const labels = (title: string, hints: ToolAnnotations) => ({
+  title,
+  annotations: { title, ...hints },
+});
+/** Reads the browser or the run, changes nothing. */
+const READS = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
+/** Opens or moves a tab: nothing on a page is touched. */
+const OPENS = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
+/** Can act in the user's signed-in accounts: a click or a reply may send, pay or delete. */
+const ACTS = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
+/** Bookkeeping for the run, the chat or the session; no page is touched. */
+const MANAGES = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
+
 server.registerTool(
   "health",
   {
-    title: "TabRunner health",
+    ...labels("TabRunner health", READS),
     description:
       "Check that the browser agent is reachable before driving it. Reports whether the TabRunner extension is connected to this bridge, which extension it is, whether it has a provider ready to think with, and what to do when any of that is missing. Call this first, and again after any connection error.",
   },
@@ -227,7 +246,7 @@ const providerProblem = (p: BridgeProviderInfo): string =>
 server.registerTool(
   "run",
   {
-    title: "Run a browser task",
+    ...labels("Run a browser task", ACTS),
     description:
       "Give TabRunner a task to do in the user's real Chrome, with their existing logins and sessions to navigate, read pages, click, type, fill forms and extract data. Describe the goal in plain language, as you would to a person; TabRunner plans and executes the steps itself. Returns immediately: follow the task with get_status. By default the task opens its own background tab (optionally at url), leaving the user's current page alone; pass background: false only when the task is explicitly about what the user is looking at.",
     inputSchema: {
@@ -287,7 +306,7 @@ server.registerTool(
 server.registerTool(
   "get_status",
   {
-    title: "Follow the task",
+    ...labels("Follow the task", READS),
     description:
       "Where the current task stands: the plan and the steps taken; when it ends, the answer, the question it stopped on or the error. By default this WAITS for the next change instead of returning immediately, so following a ten-minute task costs one call per real event. Keep calling it until state is done, error, or question.",
     inputSchema: {
@@ -326,7 +345,7 @@ server.registerTool(
 server.registerTool(
   "answer",
   {
-    title: "Answer TabRunner's question",
+    ...labels("Answer TabRunner's question", ACTS),
     description:
       "Reply to the question a task stopped on (state: question) and let it continue. TabRunner stops to ask before consequential actions (paying, sending on the user's behalf, deleting or submitting), so relay the question to the user and send THEIR decision, never your own.",
     inputSchema: { text: z.string().describe("The user's answer, in their words.") },
@@ -354,7 +373,7 @@ server.registerTool(
 server.registerTool(
   "steer",
   {
-    title: "Steer the running task",
+    ...labels("Steer the running task", ACTS),
     description:
       "Send a note into a task that is already running, such as a correction, an extra constraint or a change of approach. It lands between tool calls, so the task absorbs it without restarting. Use this instead of stop+run when the goal is still the same.",
     inputSchema: { text: z.string().describe("The note for the running agent.") },
@@ -369,7 +388,7 @@ server.registerTool(
 server.registerTool(
   "stop",
   {
-    title: "Stop the task",
+    ...labels("Stop the task", MANAGES),
     description:
       "Stop the current task. Stopping is normal control flow, not an error, and it leaves the browser exactly as it is. Nothing is undone.",
   },
@@ -389,7 +408,7 @@ server.registerTool(
 server.registerTool(
   "screenshot",
   {
-    title: "See the browser",
+    ...labels("See the browser", READS),
     description:
       "A picture of what the browser is showing right now. Use it to check a result with your own eyes, or to see what a page looks like before describing a task. Works whether or not a task is running.",
   },
@@ -413,7 +432,7 @@ server.registerTool(
 server.registerTool(
   "new_conversation",
   {
-    title: "Start a fresh chat",
+    ...labels("Start a fresh chat", MANAGES),
     description:
       "Forget the current chat and start clean. TabRunner keeps one chat for this bridge. Each task continues the previous ones, so it remembers the pages it visited and what it found. Reset only when the new task has nothing to do with the old one.",
   },
@@ -428,7 +447,7 @@ server.registerTool(
 server.registerTool(
   "compact",
   {
-    title: "Compact the chat",
+    ...labels("Compact the chat", MANAGES),
     description:
       "Summarize this chat's history so far, so every task replays a summary instead of the whole transcript. The raw messages stay in the user's panel; only what the model re-reads changes, and nothing is deleted. Reach for it when a long chat's tasks get slow or one dies on a context-length error. Cannot run while a task is in flight.",
   },
@@ -529,7 +548,7 @@ function renderToolResult(
 server.registerTool(
   "browser_start",
   {
-    title: "Start driving the browser yourself",
+    ...labels("Start driving the browser yourself", OPENS),
     description:
       "Open a direct-control session and get the first page snapshot. Use this instead of run when you want to drive step by step rather than hand TabRunner the whole task. run is still the better choice for anything long or open-ended, because TabRunner's own model plans it. Like run, it works in a new background tab and leaves the page the user is reading alone; pass url to choose where it starts. Pass background: false only when the task is about the page the user is on. State the goal: it names the chat the user will see in TabRunner's history, and every action you take is recorded under it. IMPORTANT: driving directly bypasses TabRunner's own model and its rule of stopping to ask before consequential actions, so paying, sending on the user's behalf, deleting, or submitting is yours to put to the user first.",
     inputSchema: {
@@ -565,7 +584,7 @@ server.registerTool(
 server.registerTool(
   "browser_snapshot",
   {
-    title: "Read the page",
+    ...labels("Read the page", READS),
     description:
       "The current page as an accessibility tree with a ref on every interactive element. This is how you see, and where every ref you click comes from. Refs belong to the snapshot that produced them: after anything changes the page, re-read before acting.",
   },
@@ -575,7 +594,7 @@ server.registerTool(
 server.registerTool(
   "browser_network_requests",
   {
-    title: "List network requests",
+    ...labels("List network requests", READS),
     description:
       "The requests the driven tab has made since the session attached, with method, URL, status and failures. Tells 'the server answered with an error' apart from 'the page never sent it'. Response bodies are not captured; re-fetch a GET with browser_evaluate when the payload matters.",
     inputSchema: {
@@ -593,7 +612,7 @@ server.registerTool(
 server.registerTool(
   "browser_console_messages",
   {
-    title: "Read console output",
+    ...labels("Read console output", READS),
     description:
       "The driven tab's console messages and uncaught exceptions since the session attached. When a page misbehaves for no visible reason, the JavaScript error usually names the broken piece.",
     inputSchema: {
@@ -611,7 +630,7 @@ server.registerTool(
 server.registerTool(
   "browser_navigate",
   {
-    title: "Go to a URL",
+    ...labels("Go to a URL", OPENS),
     description: "Navigate the driven tab and return the new page's snapshot.",
     inputSchema: {
       url: z.string().describe("Absolute URL, including the scheme."),
@@ -624,7 +643,7 @@ server.registerTool(
 server.registerTool(
   "browser_click",
   {
-    title: "Click an element",
+    ...labels("Click an element", ACTS),
     description:
       "Click by ref with a real trusted event, not a synthetic dispatch a site can ignore. Returns the resulting page. Take the ref from the most recent snapshot.",
     inputSchema: {
@@ -638,7 +657,7 @@ server.registerTool(
 server.registerTool(
   "browser_type",
   {
-    title: "Type text",
+    ...labels("Type text", ACTS),
     description:
       "Type into whatever is focused. Click the field first. Real keystrokes, so a site's own handlers fire. Returns the resulting page.",
     inputSchema: { text: z.string().describe("The text to type."), ...snapshotOption },
@@ -649,7 +668,7 @@ server.registerTool(
 server.registerTool(
   "browser_fill",
   {
-    title: "Set a field's value",
+    ...labels("Set a field's value", ACTS),
     description:
       "Set the value of a field by ref. Supports text inputs, textareas, selects (by option label or value) and contenteditable. The value is set the way the page's own code notices, so it lands where typed keystrokes don't (pages that swallow key events, focus that won't stick). Pass an empty string to clear a field. Returns the resulting page.",
     inputSchema: {
@@ -664,7 +683,7 @@ server.registerTool(
 server.registerTool(
   "browser_evaluate",
   {
-    title: "Run JavaScript in the page",
+    ...labels("Run JavaScript in the page", ACTS),
     description:
       "Run JavaScript in the driven tab's page context and get the result back. Promises are awaited; return only JSON-serializable values, not DOM nodes. For what the other tools cannot do: reading an attribute the tree omits, piercing shadow DOM, calling the page's own functions, fetching an endpoint the page itself uses. Results are bounded and credential-shaped values are stripped. A direct session has no plan gate. The code runs exactly as written, so the consequential-action rule (paying, sending on the user's behalf, deleting, submitting, by fetch or any other means) is yours to put to the user first. Returns the resulting page.",
     inputSchema: {
@@ -680,7 +699,7 @@ server.registerTool(
 server.registerTool(
   "browser_press_key",
   {
-    title: "Press a key",
+    ...labels("Press a key", ACTS),
     description:
       'A single key press: "Enter" to submit, "Escape" to dismiss, "Tab" to move on. Returns the resulting page.',
     inputSchema: {
@@ -694,7 +713,7 @@ server.registerTool(
 server.registerTool(
   "browser_scroll",
   {
-    title: "Scroll the page",
+    ...labels("Scroll the page", READS),
     description:
       "Scroll the driven tab and return what is now in view. Content below the fold is not in a snapshot until you scroll to it.",
     inputSchema: {
@@ -714,7 +733,7 @@ server.registerTool(
 server.registerTool(
   "browser_tabs",
   {
-    title: "List open tabs",
+    ...labels("List open tabs", READS),
     description:
       "Open tabs with their id, title and URL. These are all the tabs the user has open, so pass query to get only the ones you need. Find the one you need, then switch.",
     inputSchema: {
@@ -730,7 +749,7 @@ server.registerTool(
 server.registerTool(
   "browser_switch_tab",
   {
-    title: "Switch tabs",
+    ...labels("Switch tabs", MANAGES),
     description:
       "Point every later action at another tab. The tab does not need to be on screen: actions work on background tabs too. It comes to the front only while the user is watching the tab you leave; otherwise the work goes on without moving their screen.",
     inputSchema: { tab_id: z.number().describe("A tab id from browser_tabs.") },
@@ -741,7 +760,7 @@ server.registerTool(
 server.registerTool(
   "browser_end",
   {
-    title: "Stop driving",
+    ...labels("Stop driving", MANAGES),
     description:
       "Close the direct-control session, drop the on-page 'being controlled' badge, and hand the browser back. Call it when you're done. It also frees TabRunner's panel to run tasks again. A session left open expires on its own after a few idle minutes.",
   },
