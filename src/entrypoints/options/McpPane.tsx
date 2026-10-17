@@ -12,8 +12,8 @@ import { StatusDot } from "./StatusStrip";
 /**
  * The plugin from this repo's own marketplace, in one step (Claude Code adds the
  * marketplace on the way): the daemon plus the skill that tells the client when
- * to delegate. Its server runs `bunx tabrunner-mcp@latest`, so it updates with
- * each release and needs no download step.
+ * to delegate. Its server runs `bunx tabrunner-mcp@<version>`, pinned by each
+ * release, and needs no download step.
  */
 const PLUGIN_COMMAND = "claude plugin install tabrunner --marketplace tabrunner/tabrunner";
 

@@ -42,7 +42,7 @@ jobs:
             dist/tabrunner-*.js
           generate_release_notes: true
       # The same daemon as the npm package `tabrunner-mcp`: what the plugin's server runs
-      # (`bunx tabrunner-mcp@latest`). npm trusts this workflow file to publish it (trusted
+      # (`bunx tabrunner-mcp@<version>`). npm trusts this workflow file to publish it (trusted
       # publishing), and `prepack` builds the bundle. After the release assets, so a refused
       # publish never holds them back.
       - name: Publish the daemon to npm
