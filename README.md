@@ -61,7 +61,12 @@ goes straight from the extension to your provider.
   TabRunner's model does the driving, or the client drives directly when the job is small and exact.
   TabRunner dials out too: connect remote MCP servers and their tools join every run behind the
   plan gate (`/mcp` reports what's connected), and run events can POST to your own webhook. See
-  [docs/mcp.md](docs/mcp.md).
+  [docs/mcp.md](docs/mcp.md). In Claude Code, the plugin sets it up in one line:
+
+  ```bash
+  claude plugin install tabrunner --marketplace tabrunner/tabrunner
+  ```
+
 - **Speaks your language, matches your theme**: English, Português (Brasil), and Español; light,
   dark, or follow the OS.
 - **Your data stays local**: provider configs and history live in `chrome.storage`. There is no

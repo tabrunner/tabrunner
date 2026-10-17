@@ -1,0 +1,17 @@
+{
+  "name": "tabrunner",
+  "owner": {
+    "name": "Gustavo Salomé",
+    "email": "gustavonips@gmail.com",
+    "url": "https://tabrunner.app"
+  },
+  "description": "The TabRunner plugin: it connects your AI client to the TabRunner browser agent in your own Chrome.",
+  "plugins": [
+    {
+      "name": "tabrunner",
+      "source": "./plugin",
+      "description": "Hand browser tasks to TabRunner, an agent in your own Chrome that uses the accounts you're signed in to, or click through a page yourself.",
+      "category": "productivity"
+    }
+  ]
+}

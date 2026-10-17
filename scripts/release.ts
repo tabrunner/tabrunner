@@ -5,12 +5,13 @@
  *   bun run release minor   # 0.1.0 → 0.2.0
  *   bun run release major   # 0.1.0 → 1.0.0
  *
- * package.json `version` is the single source of truth: the git tag (`v0.1.0`)
- * and the artifact names (`dist/tabrunner-0.1.0-chrome.zip`, `-mcp.js`) all
- * derive from it. Never pushes — pushing stays an explicit act;
- * the final line names the command. The push fires the Release workflow, which
- * rebuilds the artifacts and attaches them (plus `latest` aliases the website
- * hotlinks) to the tagged GitHub Release.
+ * package.json `version` is the single source of truth: the git tag (`v0.1.0`),
+ * the artifact names (`dist/tabrunner-0.1.0-chrome.zip`, `-mcp.js`) and the
+ * daemon's npm package (`tabrunner-mcp`, daemon/package.json) all derive from
+ * it. Never pushes — pushing stays an explicit act; the final line names the
+ * command. The push fires the Release workflow, which rebuilds the artifacts,
+ * attaches them (plus `latest` aliases the website hotlinks) to the tagged
+ * GitHub Release, and publishes the daemon to npm and the MCP Registry.
  */
 import { $ } from "bun";
 import { fileURLToPath } from "node:url";
@@ -20,6 +21,19 @@ import { fileURLToPath } from "node:url";
 process.chdir(fileURLToPath(new URL("..", import.meta.url)));
 
 const USAGE = "Usage: bun run release <patch|minor|major>";
+/**
+ * Every other file that names the release, so the extension, the daemon's npm
+ * package (`bunx tabrunner-mcp`), the plugin that starts it and its MCP Registry
+ * entry (which also pins the package version) all say one version.
+ */
+const FOLLOWERS = [
+  "daemon/package.json",
+  "daemon/server.json",
+  "plugin/.claude-plugin/plugin.json",
+  "plugin/plugin.json",
+];
+/** What the bump writes: every version, and the lockfile line that records the daemon's. */
+const BUMPED = ["package.json", ...FOLLOWERS, "bun.lock"];
 
 const bump = process.argv[2];
 if (bump !== "patch" && bump !== "minor" && bump !== "major") {
@@ -41,9 +55,9 @@ if (status) {
   );
   console.error(status);
   console.error(
-    "If package.json is the only change, a previous release was interrupted — discard it:",
+    `If ${BUMPED.join(", ")} are the only changes, a previous release was interrupted. Discard them:`,
   );
-  console.error("  git restore --staged --worktree package.json — then re-run.");
+  console.error(`  git restore --staged --worktree ${BUMPED.join(" ")}, then re-run.`);
   process.exit(1);
 }
 
@@ -89,17 +103,38 @@ if ((await $`git rev-parse -q --verify ${`v${next}`}`.quiet().nothrow()).exitCod
   process.exit(1);
 }
 
+// A follower that drifted would keep its old version through the replace below,
+// so check them all while nothing has been written yet.
+const current = `"version": "${pkg.version}"`;
+const followers = await Promise.all(
+  FOLLOWERS.map(async (file) => ({ file, text: await Bun.file(file).text() })),
+);
+const drifted = followers.filter(({ text }) => !text.includes(current)).map(({ file }) => file);
+if (drifted.length > 0) {
+  console.error(
+    `Not at ${pkg.version} like package.json: ${drifted.join(", ")}. Nothing was changed.`,
+  );
+  console.error("  Set their version to match by hand, commit, then re-run.");
+  process.exit(1);
+}
+
+// Replace the string rather than re-serialize, so each file keeps its formatting.
+for (const { file, text } of followers) {
+  await Bun.write(file, text.replaceAll(current, `"version": "${next}"`));
+}
 pkg.version = next;
 await Bun.write(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 
 try {
-  await $`git add package.json`;
+  // bun.lock records each workspace's version: rewrite that line, install nothing.
+  await $`bun install --lockfile-only`.quiet();
+  await $`git add ${BUMPED}`;
   await $`git commit -m ${`Release v${next}`}`;
 } catch {
   console.error(
-    `✗ Commit failed — the v${next} bump is written to package.json but not committed.`,
+    `✗ Commit failed. The v${next} bump is written to ${BUMPED.join(", ")} but not committed.`,
   );
-  console.error("  Unwind: git restore --staged --worktree package.json");
+  console.error(`  Unwind: git restore --staged --worktree ${BUMPED.join(" ")}`);
   process.exit(1);
 }
 

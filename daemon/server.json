@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "app.tabrunner/tabrunner",
+  "title": "TabRunner",
+  "description": "Give browser tasks to TabRunner, an agent in your own Chrome that uses your logins.",
+  "version": "0.13.0",
+  "websiteUrl": "https://tabrunner.app",
+  "repository": {
+    "url": "https://github.com/tabrunner/tabrunner",
+    "source": "github",
+    "subfolder": "daemon"
+  },
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/tabrunner/tabrunner/main/plugin/assets/logo.png",
+      "mimeType": "image/png",
+      "sizes": ["512x512"]
+    },
+    {
+      "src": "https://tabrunner.app/favicon.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": ["any"]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "tabrunner-mcp",
+      "version": "0.13.0",
+      "runtimeHint": "bunx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "TABRUNNER_BRIDGE_PORT",
+          "description": "The localhost port the extension connects to. Must match Settings → MCP in TabRunner.",
+          "isRequired": false,
+          "default": "17836"
+        }
+      ]
+    }
+  ]
+}

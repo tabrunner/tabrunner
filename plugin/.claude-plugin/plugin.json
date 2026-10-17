@@ -1,0 +1,20 @@
+{
+  "name": "tabrunner",
+  "displayName": "TabRunner",
+  "version": "0.13.0",
+  "description": "Hand browser tasks to TabRunner, an agent in your own Chrome that uses the accounts you're signed in to, or click through a page yourself.",
+  "author": {
+    "name": "Gustavo Salomé",
+    "email": "gustavonips@gmail.com",
+    "url": "https://tabrunner.app"
+  },
+  "homepage": "https://tabrunner.app",
+  "repository": "https://github.com/tabrunner/tabrunner",
+  "license": "MIT",
+  "keywords": ["browser", "chrome", "agent", "automation", "tabrunner"],
+  "icon": "./assets/logo.png",
+  "documentationUrl": "https://github.com/tabrunner/tabrunner/blob/main/docs/mcp.md",
+  "privacyPolicyUrl": "https://tabrunner.app/privacy",
+  "termsOfServiceUrl": "https://tabrunner.app/terms",
+  "supportUrl": "https://github.com/tabrunner/tabrunner/issues"
+}

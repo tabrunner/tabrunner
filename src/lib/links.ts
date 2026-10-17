@@ -7,9 +7,5 @@ export const LINKS = {
   issues: "https://github.com/tabrunner/tabrunner/issues",
   license: "https://github.com/tabrunner/tabrunner/blob/main/LICENSE",
   mcpDocs: "https://github.com/tabrunner/tabrunner/blob/main/docs/mcp.md",
-  // The single-file daemon bundle the Release workflow attaches — a stable
-  // alias, so Settings → MCP never hardcodes a version.
-  mcpDaemon:
-    "https://github.com/tabrunner/tabrunner/releases/latest/download/tabrunner-latest-mcp.js",
   site: "https://tabrunner.app",
 } as const;

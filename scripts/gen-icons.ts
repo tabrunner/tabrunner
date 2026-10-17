@@ -84,7 +84,7 @@ function ogSvg(): string {
 }
 
 // ── emit ──────────────────────────────────────────────────────────────────────
-console.log("tabrunner · generating brand assets → public/icon, docs/\n");
+console.log("tabrunner · generating brand assets → public/icon, docs/, plugin/assets\n");
 
 let bytes = 0;
 let count = 0;
@@ -104,5 +104,8 @@ for (const size of [16, 32, 48, 96, 128]) {
   );
 }
 await write("docs/og.png", renderPng(ogSvg(), 1200, true));
+// The plugin's listing icon: the stores show a large PNG, and read the SVG where they can.
+await write("plugin/assets/logo.svg", TILE + "\n");
+await write("plugin/assets/logo.png", renderPng(TILE, 512));
 
 console.log(`\ndone — ${count} files, ${(bytes / 1024).toFixed(1)} KB.`);

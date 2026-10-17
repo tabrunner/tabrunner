@@ -41,36 +41,64 @@ that provider is ready before you send a task.
 **2. Enable the bridge** in Settings → MCP. It's off by default. An extension that never uses MCP
 never dials the port at all.
 
-**3. Fetch the daemon.** It's one file, and [bun](https://bun.sh) runs it as-is:
+**3. Install the plugin.** In Claude Code:
+
+```bash
+claude plugin install tabrunner --marketplace tabrunner/tabrunner
+```
+
+On Claude Code older than 2.1.275, add the marketplace first:
+
+```bash
+claude plugin marketplace add tabrunner/tabrunner
+claude plugin install tabrunner@tabrunner
+```
+
+In Codex:
+
+```bash
+codex plugin marketplace add tabrunner/tabrunner
+codex plugin add tabrunner@tabrunner
+```
+
+The plugin brings two things. The daemon, which it starts with `bunx tabrunner-mcp@latest`, so you
+need [bun](https://bun.sh) and each release reaches you on its own. And a skill that tells the
+model when to hand a task to TabRunner and how to follow it.
+
+**4. Check the link** by calling `health`. It reports whether the extension is connected, and tells
+you exactly what to do if it isn't.
+
+The daemon starts when your client starts it; there's nothing to leave running.
+
+### Without the plugin
+
+Any MCP client can run the daemon from npm. In Claude Code, `--scope user` makes it work in every
+project. Without it, Claude Code registers it for the current folder only:
+
+```bash
+claude mcp add --scope user tabrunner -- bunx tabrunner-mcp@latest
+```
+
+To keep a copy of your own instead, fetch the single file each release attaches, and bun runs it
+as-is. Re-run the curl to update it:
 
 ```bash
 curl -fsSL https://github.com/tabrunner/tabrunner/releases/latest/download/tabrunner-latest-mcp.js -o ~/.tabrunner-mcp.js
-```
-
-**4. Register it** with your client. `--scope user` makes it work in every project. Without it,
-Claude Code registers it for the current folder only:
-
-```bash
 claude mcp add --scope user tabrunner -- bun ~/.tabrunner-mcp.js
 ```
 
-Developing on the repo instead? `.mcp.json` already points Claude Code at `daemon/src/index.ts`.
-No download needed.
-
-**5. Check the link** by calling `health`. It reports whether the extension is connected, and tells
-you exactly what to do if it isn't.
-
-The daemon starts when your client starts it; there's nothing to leave running. Re-run the curl to
-update it. To run it by hand (to watch its log, say): `bun ~/.tabrunner-mcp.js`; inside this repo,
-`bun run bridge`.
-
-To remove it, use the same scope you added it with:
+Use one setup, not both: two daemons can't share the port. To remove one you registered by hand,
+use the scope you added it with:
 
 ```bash
 claude mcp remove --scope user tabrunner
 ```
 
-That unregisters it. The file stays at `~/.tabrunner-mcp.js` until you delete it.
+The file stays at `~/.tabrunner-mcp.js` until you delete it. The plugin comes out with
+`claude plugin uninstall tabrunner`.
+
+Developing on the repo instead? `.mcp.json` already points Claude Code at `daemon/src/index.ts`.
+No download needed. To run it by hand (to watch its log, say): `bun run bridge`.
 
 ### Configuration
 
@@ -247,6 +275,17 @@ bun run bridge        # run the daemon by hand, with its log on stderr
 bun run bridge:check  # end-to-end check: spawns the daemon, plays the extension, drives MCP
 bun run bridge:bundle # build the single-file daemon releases ship → dist/tabrunner-<version>-mcp.js
 ```
+
+What ships, and where from:
+
+- `daemon/` is also the npm package `tabrunner-mcp`. Each release tag publishes it (its `prepack`
+  builds the same bundle), then its MCP Registry entry, `daemon/server.json`
+  (`app.tabrunner/tabrunner`).
+- `plugin/` is the plugin: both manifests (`.claude-plugin/plugin.json` for Claude, `plugin.json`
+  for the Agent Plugins clients), the server config, the skill, and the logo `bun run icons`
+  writes. `.claude-plugin/marketplace.json` at the root makes this repo its marketplace.
+- `bun run release` moves every version in step: the extension, the package, the registry entry
+  and both plugin manifests.
 
 `bridge:check` is the fastest way to know the wiring is intact. It exercises the hello/sync
 handshake, request correlation, the long-poll, and the ask_user round trip without needing Chrome.

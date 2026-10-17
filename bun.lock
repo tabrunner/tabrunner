@@ -39,15 +39,16 @@
       },
     },
     "daemon": {
-      "name": "tabrunner-bridge",
-      "version": "0.1.0",
-      "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.22.0",
-        "zod": "^4.4.3",
+      "name": "tabrunner-mcp",
+      "version": "0.13.0",
+      "bin": {
+        "tabrunner-mcp": "dist/tabrunner-mcp.js",
       },
       "devDependencies": {
+        "@modelcontextprotocol/sdk": "^1.22.0",
         "@types/bun": "^1.3.0",
         "typescript": "^5.9.3",
+        "zod": "^4.4.3",
       },
     },
   },
@@ -1139,7 +1140,7 @@
 
     "tabbable": ["tabbable@6.5.0", "", {}, "sha512-wieBHXygIm7OyQOu5hQlkk62/WyCFYGlWg7L6/ZCUZwx0o398Zkn4pVmMyfYhfMG8kGrj/Krt8eIk6UKC6VzwA=="],
 
-    "tabrunner-bridge": ["tabrunner-bridge@workspace:daemon"],
+    "tabrunner-mcp": ["tabrunner-mcp@workspace:daemon"],
 
     "tailwindcss": ["tailwindcss@4.3.3", "", {}, "sha512-gOhV3P7ufE62QDGg1zVaTgCR+EtPv92k2nIhVcVKcLmxT1sUBsQGhnZj175j+MqRt4zLF7ic+sCYjfhxMxj7YQ=="],
 
