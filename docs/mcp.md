@@ -283,7 +283,8 @@ What ships, and where from:
   (`app.tabrunner/tabrunner`).
 - `plugin/` is the plugin: both manifests (`.claude-plugin/plugin.json` for Claude, `plugin.json`
   for the Agent Plugins clients), the server config, the skill, and the logo `bun run icons`
-  writes. `.claude-plugin/marketplace.json` at the root makes this repo its marketplace.
+  writes. The skill exists once: `.claude/skills/tabrunner/` and `.agents/skills/tabrunner/` link
+  to it. `.claude-plugin/marketplace.json` at the root makes this repo its marketplace.
 - `bun run release` moves every version in step: the extension, the package, the registry entry
   and both plugin manifests.
 
