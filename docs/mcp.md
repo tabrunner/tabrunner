@@ -61,8 +61,9 @@ codex plugin marketplace add tabrunner/tabrunner
 codex plugin add tabrunner@tabrunner
 ```
 
-The plugin brings two things. The daemon, which it starts with `bunx tabrunner-mcp@latest`, so you
-need [bun](https://bun.sh) and each release reaches you on its own. And a skill that tells the
+The plugin brings two things. The daemon, which it starts with `bunx tabrunner-mcp@<version>` at
+the plugin's own version, so you need [bun](https://bun.sh), and updating the plugin brings each
+release. And a skill that tells the
 model when to hand a task to TabRunner and how to follow it.
 
 **4. Check the link** by calling `health`. It reports whether the extension is connected, and tells

@@ -32,8 +32,13 @@ const FOLLOWERS = [
   "plugin/.claude-plugin/plugin.json",
   "plugin/plugin.json",
 ];
+/**
+ * The plugin's launchers, which pin the daemon's exact npm version: Claude's plugin
+ * directory refuses `bunx` with `@latest` or a range ("Unpinned npx launcher").
+ */
+const PINNED = ["plugin/.mcp.json", "plugin/mcp.json"];
 /** What the bump writes: every version, and the lockfile line that records the daemon's. */
-const BUMPED = ["package.json", ...FOLLOWERS, "bun.lock"];
+const BUMPED = ["package.json", ...FOLLOWERS, ...PINNED, "bun.lock"];
 
 const bump = process.argv[2];
 if (bump !== "patch" && bump !== "minor" && bump !== "major") {
@@ -106,10 +111,17 @@ if ((await $`git rev-parse -q --verify ${`v${next}`}`.quiet().nothrow()).exitCod
 // A follower that drifted would keep its old version through the replace below,
 // so check them all while nothing has been written yet.
 const current = `"version": "${pkg.version}"`;
+const pin = `tabrunner-mcp@${pkg.version}`;
 const followers = await Promise.all(
   FOLLOWERS.map(async (file) => ({ file, text: await Bun.file(file).text() })),
 );
-const drifted = followers.filter(({ text }) => !text.includes(current)).map(({ file }) => file);
+const pinned = await Promise.all(
+  PINNED.map(async (file) => ({ file, text: await Bun.file(file).text() })),
+);
+const drifted = [
+  ...followers.filter(({ text }) => !text.includes(current)),
+  ...pinned.filter(({ text }) => !text.includes(pin)),
+].map(({ file }) => file);
 if (drifted.length > 0) {
   console.error(
     `Not at ${pkg.version} like package.json: ${drifted.join(", ")}. Nothing was changed.`,
@@ -121,6 +133,9 @@ if (drifted.length > 0) {
 // Replace the string rather than re-serialize, so each file keeps its formatting.
 for (const { file, text } of followers) {
   await Bun.write(file, text.replaceAll(current, `"version": "${next}"`));
+}
+for (const { file, text } of pinned) {
+  await Bun.write(file, text.replaceAll(pin, `tabrunner-mcp@${next}`));
 }
 pkg.version = next;
 await Bun.write(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
