@@ -49,7 +49,8 @@ const noReactOutsideUi = {
 };
 
 export default tseslint.config(
-  { ignores: [".wxt/**", "dist/**", "refs/**", "node_modules/**"] },
+  // daemon/dist: the npm package's bundle, which `npm publish` builds in place (prepack).
+  { ignores: [".wxt/**", "dist/**", "daemon/dist/**", "refs/**", "node_modules/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

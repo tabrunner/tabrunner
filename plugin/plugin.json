@@ -1,0 +1,45 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "tabrunner",
+  "version": "0.13.0",
+  "description": "Hand browser tasks to TabRunner, an agent in your own Chrome that uses the accounts you're signed in to, or click through a page yourself.",
+  "author": {
+    "name": "Gustavo Salomé",
+    "email": "gustavonips@gmail.com",
+    "url": "https://tabrunner.app"
+  },
+  "homepage": "https://tabrunner.app",
+  "repository": "https://github.com/tabrunner/tabrunner",
+  "license": "MIT",
+  "keywords": ["browser", "chrome", "agent", "automation", "tabrunner"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "TabRunner",
+        "shortDescription": "Browser tasks in your own Chrome",
+        "longDescription": "TabRunner is a browser agent that works in your own Chrome, with your tabs and the sites you're already signed in to. Give it a task in plain words and follow it to the answer: it plans with the model you chose in the extension, and asks before it pays, sends or deletes anything. For small, exact jobs you can also click, type and read the page yourself. Needs the TabRunner extension and bun on the same computer.",
+        "developerName": "Gustavo Salomé",
+        "category": "Productivity",
+        "capabilities": [
+          "Run a browser task in your signed-in Chrome",
+          "Follow a task, answer its questions and steer it",
+          "Click, type and read a page directly",
+          "Take a screenshot of what the browser shows"
+        ],
+        "websiteURL": "https://tabrunner.app",
+        "supportURL": "https://github.com/tabrunner/tabrunner/issues",
+        "privacyPolicyURL": "https://tabrunner.app/privacy",
+        "termsOfServiceURL": "https://tabrunner.app/terms",
+        "defaultPrompt": [
+          "In my browser, check the status of my last order.",
+          "Open my calendar and list tomorrow's meetings.",
+          "Is TabRunner connected?"
+        ],
+        "brandColor": "#059669",
+        "brandColorDark": "#34d399",
+        "composerIcon": "./assets/logo.png",
+        "logo": "./assets/logo.png"
+      }
+    }
+  }
+}

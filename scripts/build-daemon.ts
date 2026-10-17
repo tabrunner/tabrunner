@@ -3,7 +3,8 @@
  * the setup a ZIP-install user copies is one curl and one `claude mcp add`,
  * with no repo checkout and no placeholder path. CI attaches it to the GitHub
  * Release as `tabrunner-<version>-mcp.js` plus the `tabrunner-latest-mcp.js`
- * alias the extension's Settings → MCP pane hotlinks.
+ * alias docs/mcp.md's manual setup fetches. The npm package (`tabrunner-mcp`)
+ * builds the same bundle in daemon/'s own `prepack`.
  *
  *   bun run bridge:bundle
  */
