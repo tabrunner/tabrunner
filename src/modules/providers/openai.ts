@@ -1,4 +1,12 @@
-import type { ChatProvider, ChatMessage, ToolDef, Delta, ResolvedProviderConfig } from "./types";
+import type {
+  ChatProvider,
+  ChatMessage,
+  ToolDef,
+  Delta,
+  FinishReason,
+  ProviderConfig,
+  ResolvedProviderConfig,
+} from "./types";
 import { ensureProviderCredential } from "./credential";
 import {
   apiUrl,
@@ -8,6 +16,7 @@ import {
   parseToolArgs,
 } from "@providerkit/core";
 import {
+  envelopeProviderError,
   logCacheUsage,
   promptCacheKey,
   providerHeaders,
@@ -28,6 +37,7 @@ export function createOpenAIProvider(base: ResolvedProviderConfig): ChatProvider
       const config = await ensureProviderCredential(base);
       // Accumulate tool call args across chunks (OpenAI streams them in pieces)
       const toolCallAccumulators = new Map<number, { id: string; name: string; args: string }>();
+      let ended = false;
 
       const stream = streamSse({
         url: apiUrl(config.baseUrl, "/chat/completions"),
@@ -39,6 +49,10 @@ export function createOpenAIProvider(base: ResolvedProviderConfig): ChatProvider
         body: JSON.stringify(buildOpenAIBody(config, messages, tools)),
         provider: config,
         signal,
+        // Usage comes AFTER the finish on this shape, so the reader keeps going
+        // to `[DONE]`. A read that dies in between costs only the usage frame:
+        // the answer is whole once its finish is stated.
+        finished: () => ended,
         meta: {
           model: config.model,
           messages: messages.length,
@@ -90,35 +104,41 @@ export function createOpenAIProvider(base: ResolvedProviderConfig): ChatProvider
         const choice = chunk.choices?.[0];
         if (!choice) continue;
 
-        if (choice.finish_reason) {
-          yield { type: "finish", reason: mapFinishReason(choice.finish_reason) };
-        }
-
         const delta = choice.delta;
-        if (!delta) continue;
+        if (delta) {
+          if (delta.reasoning_content) {
+            yield { type: "reasoning", text: delta.reasoning_content };
+          }
 
-        if (delta.reasoning_content) {
-          yield { type: "reasoning", text: delta.reasoning_content };
-        }
+          if (delta.content) {
+            yield { type: "text", text: delta.content };
+          }
 
-        if (delta.content) {
-          yield { type: "text", text: delta.content };
-        }
-
-        if (delta.tool_calls) {
-          for (const tc of delta.tool_calls) {
-            const idx = tc.index ?? 0;
-            const acc = toolCallAccumulators.get(idx);
-            if (acc) {
-              if (tc.function?.arguments) acc.args += tc.function.arguments;
-            } else {
-              toolCallAccumulators.set(idx, {
-                id: tc.id ?? `call_${idx}`,
-                name: tc.function?.name ?? "",
-                args: tc.function?.arguments ?? "",
-              });
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0;
+              const acc = toolCallAccumulators.get(idx);
+              if (acc) {
+                if (tc.function?.arguments) acc.args += tc.function.arguments;
+              } else {
+                toolCallAccumulators.set(idx, {
+                  id: tc.id ?? `call_${idx}`,
+                  name: tc.function?.name ?? "",
+                  args: tc.function?.arguments ?? "",
+                });
+              }
             }
           }
+        }
+
+        if (choice.finish_reason) {
+          const stated = mapFinishReason(config, choice.finish_reason);
+          ended = true;
+          // Several gateways end a turn that called a tool on `stop`, and a
+          // caller reading that as done never runs the tool. Only `stop` is
+          // promoted: a length cut or a filter may be what broke the call.
+          const reason = stated === "stop" && toolCallAccumulators.size > 0 ? "tool_use" : stated;
+          yield { type: "finish", reason };
         }
       }
 
@@ -209,11 +229,41 @@ interface OpenAIChunk {
   };
 }
 
-function mapFinishReason(reason: string): "stop" | "length" | "tool_use" | "unknown" {
-  if (reason === "stop") return "stop";
-  if (reason === "length") return "length";
-  if (reason === "tool_calls" || reason === "function_call") return "tool_use";
-  return "unknown";
+/**
+ * A stated finish, or a throw for one this dialect does not document. An
+ * unknown reason (DeepSeek's `insufficient_system_resource`, Z.ai's
+ * `network_error`, OpenRouter's `error`) says nothing about the answer being
+ * whole, so it is thrown as a retryable `overload`.
+ */
+function mapFinishReason(
+  provider: Pick<ProviderConfig, "id" | "name" | "auth">,
+  reason: string,
+): FinishReason {
+  switch (reason) {
+    // A natural end under another name: Together's `eos`, Hugging Face TGI's
+    // `eos_token` and `stop_sequence`.
+    case "stop":
+    case "eos":
+    case "eos_token":
+    case "stop_sequence":
+      return "stop";
+    // Z.ai's `model_context_window_exceeded` and Mistral's `model_length`: the
+    // context window filled before the answer did.
+    case "length":
+    case "model_context_window_exceeded":
+    case "model_length":
+      return "length";
+    case "tool_calls":
+    case "function_call":
+      return "tool_use";
+    case "content_filter":
+    case "sensitive":
+      return "content_filter";
+    default:
+      throw envelopeProviderError(provider, 200, `ended the turn on "${reason}"`, {
+        unknownAs: "overload",
+      });
+  }
 }
 
 type OpenAIPart =

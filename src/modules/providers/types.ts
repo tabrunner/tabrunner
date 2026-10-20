@@ -204,6 +204,9 @@ export interface UsageTick {
   cost?: number;
 }
 
+/** Why a turn ended, mapped from each wire's finish reason. */
+export type FinishReason = "stop" | "length" | "tool_use" | "content_filter";
+
 /** Streaming delta from the provider. */
 export type Delta =
   | { type: "text"; text: string }
@@ -219,7 +222,7 @@ export type Delta =
       thoughtSignature?: string;
     }
   | ({ type: "usage" } & UsageTick)
-  | { type: "finish"; reason: "stop" | "length" | "tool_use" | "unknown" }
+  | { type: "finish"; reason: FinishReason }
   | { type: "done" };
 
 /** Provider error with HTTP status so the loop can classify retryability. */

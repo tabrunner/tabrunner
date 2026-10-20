@@ -1,4 +1,11 @@
-import type { ChatProvider, ChatMessage, ToolDef, Delta, ResolvedProviderConfig } from "./types";
+import type {
+  ChatProvider,
+  ChatMessage,
+  ToolDef,
+  Delta,
+  FinishReason,
+  ResolvedProviderConfig,
+} from "./types";
 import {
   createGeminiProvider as createCoreGeminiProvider,
   ProviderError as CoreProviderError,
@@ -6,6 +13,7 @@ import {
   parseToolArgs,
   toGeminiToolSchema,
   type ChatMessage as CoreMessage,
+  type FinishReason as CoreFinishReason,
   type ImageMimeType,
   type ImagePart,
   type ToolDefinition as CoreTool,
@@ -251,9 +259,15 @@ function normalizeCoreError(config: ResolvedProviderConfig, e: unknown): unknown
   return enveloped;
 }
 
-function mapFinishReason(reason: string): "stop" | "length" | "tool_use" | "unknown" {
-  if (reason === "stop") return "stop";
-  if (reason === "length") return "length";
-  if (reason === "tool_calls") return "tool_use";
-  return "unknown";
+function mapFinishReason(reason: CoreFinishReason): FinishReason {
+  switch (reason) {
+    case "stop":
+      return "stop";
+    case "length":
+      return "length";
+    case "tool_calls":
+      return "tool_use";
+    case "content_filter":
+      return "content_filter";
+  }
 }

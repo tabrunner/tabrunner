@@ -869,3 +869,216 @@ describe("what an OpenRouter call cost", () => {
     ).toBeUndefined();
   });
 });
+
+describe("post-finish socket drops and finish reasons", () => {
+  function droppingStream(lines: string[], dropError: Error): ReadableStream<Uint8Array> {
+    const encoder = new TextEncoder();
+    let idx = 0;
+    return new ReadableStream({
+      pull(controller) {
+        if (idx < lines.length) {
+          controller.enqueue(encoder.encode(lines[idx++]! + "\n\n"));
+        } else {
+          controller.error(dropError);
+        }
+      },
+    });
+  }
+
+  it("keeps an OpenAI turn when the socket drops after finish_reason", async () => {
+    const config = makeConfig("openai", "https://api.openai.com/v1");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        droppingStream(
+          [
+            `data: ${JSON.stringify({ choices: [{ delta: { content: "Answer" }, finish_reason: "stop" }] })}`,
+          ],
+          new TypeError("network error"),
+        ),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const deltas = [];
+    for await (const d of createOpenAIProvider(config).stream(
+      [],
+      [],
+      new AbortController().signal,
+    )) {
+      deltas.push(d);
+    }
+
+    expect(deltas).toContainEqual({ type: "text", text: "Answer" });
+    expect(deltas).toContainEqual({ type: "finish", reason: "stop" });
+    expect(deltas[deltas.length - 1]).toEqual({ type: "done" });
+    vi.restoreAllMocks();
+  });
+
+  it("still throws on a post-finish read failure when the caller aborted", async () => {
+    const config = makeConfig("openai", "https://api.openai.com/v1");
+    const controller = new AbortController();
+    const encoder = new TextEncoder();
+    let step = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(ctrl) {
+        if (step++ === 0) {
+          ctrl.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ choices: [{ delta: { content: "Hi" }, finish_reason: "stop" }] })}\n\n`,
+            ),
+          );
+        } else {
+          controller.abort();
+          ctrl.error(new DOMException("Aborted", "AbortError"));
+        }
+      },
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+    );
+
+    await expect(async () => {
+      for await (const d of createOpenAIProvider(config).stream([], [], controller.signal)) {
+        void d;
+      }
+    }).rejects.toThrow("Aborted");
+    vi.restoreAllMocks();
+  });
+
+  it("keeps an Anthropic turn when the socket drops after message_delta", async () => {
+    const config = makeConfig("anthropic", "https://api.anthropic.com");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        droppingStream(
+          [
+            `data: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: "Done" } })}`,
+            `data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 4 } })}`,
+          ],
+          new TypeError("terminated"),
+        ),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const deltas = [];
+    for await (const d of createAnthropicProvider(config).stream(
+      [],
+      [],
+      new AbortController().signal,
+    )) {
+      deltas.push(d);
+    }
+
+    expect(deltas).toContainEqual({ type: "text", text: "Done" });
+    expect(deltas).toContainEqual({ type: "finish", reason: "stop" });
+    expect(deltas[deltas.length - 1]).toEqual({ type: "done" });
+    vi.restoreAllMocks();
+  });
+
+  it("maps natural-end and context-window finish aliases and promotes stop on tool calls", async () => {
+    const config = makeConfig("openai", "https://api.openai.com/v1");
+    for (const alias of ["eos", "eos_token", "stop_sequence"]) {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response(
+          sseStream([
+            `data: ${JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: alias }] })}`,
+            "data: [DONE]",
+          ]),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      );
+      const deltas = [];
+      for await (const d of createOpenAIProvider(config).stream(
+        [],
+        [],
+        new AbortController().signal,
+      )) {
+        deltas.push(d);
+      }
+      expect(deltas).toContainEqual({ type: "finish", reason: "stop" });
+    }
+
+    for (const alias of ["model_context_window_exceeded", "model_length"]) {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response(
+          sseStream([
+            `data: ${JSON.stringify({ choices: [{ delta: { content: "cut" }, finish_reason: alias }] })}`,
+            "data: [DONE]",
+          ]),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      );
+      const deltas = [];
+      for await (const d of createOpenAIProvider(config).stream(
+        [],
+        [],
+        new AbortController().signal,
+      )) {
+        deltas.push(d);
+      }
+      expect(deltas).toContainEqual({ type: "finish", reason: "length" });
+    }
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          `data: ${JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    { index: 0, id: "c1", function: { name: "click", arguments: "{}" } },
+                  ],
+                },
+                finish_reason: "stop",
+              },
+            ],
+          })}`,
+          "data: [DONE]",
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+    const toolDeltas = [];
+    for await (const d of createOpenAIProvider(config).stream(
+      [],
+      [],
+      new AbortController().signal,
+    )) {
+      toolDeltas.push(d);
+    }
+    expect(toolDeltas).toContainEqual({ type: "finish", reason: "tool_use" });
+    vi.restoreAllMocks();
+  });
+
+  it("throws a retryable overload on an unknown finish reason", async () => {
+    const config = makeConfig("openai", "https://api.deepseek.com/v1");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "insufficient_system_resource" }] })}`,
+          "data: [DONE]",
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    let caught: unknown;
+    try {
+      for await (const d of createOpenAIProvider(config).stream(
+        [],
+        [],
+        new AbortController().signal,
+      )) {
+        void d;
+      }
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(caught).toBeInstanceOf(ProviderError);
+    expect((caught as ProviderError).kind).toBe("overload");
+    expect(isRetryable(caught)).toBe(true);
+    vi.restoreAllMocks();
+  });
+});
