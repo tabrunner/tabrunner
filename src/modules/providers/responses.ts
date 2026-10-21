@@ -49,7 +49,7 @@ export function createResponsesProvider(base: ResolvedProviderConfig): ChatProvi
         Authorization: `Bearer ${config.apiKey}`,
         // Gateway rows routed here (OpenCode Zen/Go GPT models) carry the
         // per-conversation session header — without it the free tier refuses.
-        ...sessionHeaders(config.id, config.sessionId),
+        ...(await sessionHeaders(config.id, config.sessionId)),
       };
       // The account id is REQUIRED by the backend; a missing one surfaces as a
       // clean 401 the user can recover from by re-signing-in.

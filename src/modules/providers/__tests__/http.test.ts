@@ -9,23 +9,42 @@ import {
 import { isRetryable, type ChatMessage } from "../types";
 
 describe("sessionHeaders", () => {
-  it("sends OpenCode's routing header on Zen turns carrying a conversation", () => {
-    expect(sessionHeaders("opencode", "conv-1")).toEqual({ "x-opencode-session": "conv-1" });
-    expect(sessionHeaders("opencode-go", "conv-1")).toEqual({ "x-opencode-session": "conv-1" });
+  it("sends Go the conversation id under OpenCode's routing header", async () => {
+    expect(await sessionHeaders("opencode-go", "conv-1")).toEqual({
+      "x-opencode-session": "conv-1",
+    });
   });
 
-  it("sends the ChatGPT backend its own name for the same id", () => {
-    expect(sessionHeaders("chatgpt", "conv-1")).toEqual({ "session-id": "conv-1" });
+  it("sends Zen the full OpenCode client set, with the id forged into the ses_ shape", async () => {
+    // The free tier checks the shape: a plain conversation id gets FreeTierError.
+    const headers = await sessionHeaders("opencode", "conv-1");
+    const ses = headers["x-opencode-session"]!;
+    expect(ses).toMatch(/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
+    expect(headers).toEqual({
+      "x-opencode-session": ses,
+      "x-opencode-session-id": ses,
+      "x-session-affinity": ses,
+      "x-session-id": ses,
+      "x-opencode-project": "global",
+      "x-opencode-client": "cli",
+    });
+    // One conversation, one id — the gateway's affinity depends on it.
+    expect(await sessionHeaders("opencode", "conv-1")).toEqual(headers);
+    expect((await sessionHeaders("opencode", "conv-2"))["x-opencode-session"]).not.toBe(ses);
   });
 
-  it("sends nothing without a conversation — a probe outside any chat", () => {
-    expect(sessionHeaders("opencode", undefined)).toEqual({});
+  it("sends the ChatGPT backend its own name for the same id", async () => {
+    expect(await sessionHeaders("chatgpt", "conv-1")).toEqual({ "session-id": "conv-1" });
   });
 
-  it("sends nothing for providers whose preset doesn't ask", () => {
-    expect(sessionHeaders("openai", "conv-1")).toEqual({});
-    expect(sessionHeaders("github-copilot", "conv-1")).toEqual({});
-    expect(sessionHeaders("custom-1", "conv-1")).toEqual({});
+  it("sends nothing without a conversation — a probe outside any chat", async () => {
+    expect(await sessionHeaders("opencode", undefined)).toEqual({});
+  });
+
+  it("sends nothing for providers whose preset doesn't ask", async () => {
+    expect(await sessionHeaders("openai", "conv-1")).toEqual({});
+    expect(await sessionHeaders("github-copilot", "conv-1")).toEqual({});
+    expect(await sessionHeaders("custom-1", "conv-1")).toEqual({});
   });
 });
 

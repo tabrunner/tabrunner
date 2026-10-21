@@ -4,6 +4,7 @@ import { createOpenAIProvider } from "./openai";
 import { createAnthropicProvider } from "./anthropic";
 import { createResponsesProvider } from "./responses";
 import { createGeminiProvider } from "./gemini";
+import { offerZenRead } from "./zen";
 
 const MAX_CONCURRENT_PER_PROVIDER = 4;
 
@@ -47,7 +48,7 @@ export function createProvider(config: ResolvedProviderConfig): ChatProvider {
         const release = await gate.acquire(signal);
         try {
           signal.throwIfAborted();
-          yield* inner.stream(messages, tools, signal);
+          yield* inner.stream(messages, offerZenRead(config, tools), signal);
         } finally {
           release();
         }
