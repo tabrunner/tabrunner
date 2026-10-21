@@ -27,6 +27,10 @@ const CORE_FLOW: Record<string, AuthFlowId> = {
   "xai-plan": "grok",
   "github-copilot": "github-copilot",
   meta: "meta",
+  antigravity: "antigravity",
+  // Not a subscription row — OpenCode Zen's sign-in is the account itself (its
+  // Console device flow), and a pasted key stays the other way in.
+  opencode: "opencode-zen",
   // Not a subscription row — OpenRouter's sign-in mints an ordinary API key on
   // the user's own account. It sits on the keyed preset as a second way to get
   // that key, which is why `openrouter` has no `auth: "oauth"`.

@@ -24,13 +24,27 @@ function needsNoCredential(baseUrl: string): boolean {
   }
 }
 
-/** Whether this provider signs in rather than holding a pasted key. */
+/** Whether this provider is a subscription: signed into, with no key to paste. */
 export function isOAuthProvider(id: string): boolean {
   return PRESETS.find((p) => p.id === id)?.auth === "oauth";
 }
 
+/**
+ * Whether the form offers a sign-in for this provider. A subscription always
+ * does; a keyed row that can also be signed into (OpenRouter, OpenCode Zen)
+ * does too, and its missing state should say "sign in" like a subscription's.
+ */
+export function canSignIn(id: string): boolean {
+  const preset = PRESETS.find((p) => p.id === id);
+  return preset?.auth === "oauth" || preset?.signIn !== undefined;
+}
+
 export function credentialStatus(provider: ProviderConfig): CredentialStatus {
-  if (isOAuthProvider(provider.id)) return provider.auth ? "connected" : "missing";
+  // A signed-in row is connected whatever kind of preset it is. A keyed row that
+  // can also be signed into holds `auth` and an empty key, which the key check
+  // below would call missing.
+  if (provider.auth) return "connected";
+  if (isOAuthProvider(provider.id)) return "missing";
   return provider.apiKey || needsNoCredential(provider.baseUrl) ? "connected" : "missing";
 }
 

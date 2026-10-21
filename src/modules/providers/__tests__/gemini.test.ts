@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import type { AuthFlow, Credential } from "@providerkit/core/auth";
 import { createGeminiProvider, toCoreMessages } from "../gemini";
 import { listModels } from "../models";
+import { saveProvider } from "../storage";
 import {
   ProviderError,
   isRetryable,
@@ -9,6 +11,15 @@ import {
 } from "../types";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
+
+let refreshImpl: AuthFlow["refresh"] = () => Promise.reject(new Error("unset"));
+vi.mock("../oauth-flows", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  authFlowFor: (id: string) =>
+    id === "antigravity"
+      ? { signIn: vi.fn(), refresh: (credential: Credential) => refreshImpl(credential) }
+      : undefined,
+}));
 
 function geminiConfig(): ResolvedProviderConfig {
   return {
@@ -323,5 +334,122 @@ describe("gemini listing", () => {
     expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models");
     expect((init?.headers as Record<string, string>)["x-goog-api-key"]).toBe("sk-test");
     expect(models).toEqual([{ id: "gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite" }]);
+  });
+});
+
+describe("gemini bridge on Antigravity", () => {
+  const updateSessionRules = vi.fn((_options: unknown) => Promise.resolve());
+  const fresh: Credential = {
+    accessToken: "at-1",
+    refreshToken: "rt-1",
+    expiresAt: Date.now() + 3_600_000,
+    projectId: "proj-123",
+  };
+  const antigravity = (auth: Credential): ResolvedProviderConfig => ({
+    id: "antigravity",
+    name: "Google Antigravity",
+    shape: "gemini",
+    baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+    apiKey: "",
+    auth,
+    model: "gemini-3.8-flash",
+    sessionId: "conversation-1",
+    createdAt: 0,
+  });
+  const answer = () =>
+    nativeStream([
+      {
+        response: { candidates: [{ content: { parts: [{ text: "hi" }] }, finishReason: "STOP" }] },
+      },
+    ]);
+
+  beforeEach(() => {
+    updateSessionRules.mockClear();
+    (globalThis as Record<string, unknown>).chrome = {
+      declarativeNetRequest: { updateSessionRules },
+    };
+  });
+
+  async function drain(config: ResolvedProviderConfig) {
+    const deltas = [];
+    for await (const d of createGeminiProvider(config).stream(
+      [{ role: "user", content: "hello" }],
+      [],
+      new AbortController().signal,
+    )) {
+      deltas.push(d);
+    }
+    return deltas;
+  }
+
+  it("sends the account's project in the envelope, to the internal path, as a bearer", async () => {
+    await saveProvider(antigravity(fresh));
+    const spy = stubStream(200, answer());
+
+    const deltas = await drain(antigravity(fresh));
+
+    const [url, init] = spy.mock.calls[0]!;
+    expect(url).toBe(
+      "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+    );
+    expect((init?.headers as Record<string, string>).authorization).toBe("Bearer at-1");
+    const body = JSON.parse(init?.body as string) as {
+      model: string;
+      project: string;
+      userAgent: string;
+      request: { contents: unknown[] };
+    };
+    expect(body).toMatchObject({
+      // Core adds the effort tier to the wire id; only the family is ours to pin.
+      model: expect.stringContaining("gemini-3.8-flash"),
+      project: "proj-123",
+      userAgent: "antigravity",
+    });
+    expect(body.request.contents.length).toBeGreaterThan(0);
+    // The reply arrives wrapped in `response`; the text still comes out.
+    expect(deltas).toContainEqual({ type: "text", text: "hi" });
+  });
+
+  it("puts the IDE user agent on the call through a rule, since fetch cannot", async () => {
+    await saveProvider(antigravity(fresh));
+    stubStream(200, answer());
+
+    await drain(antigravity(fresh));
+
+    const options = updateSessionRules.mock.calls[0]?.[0] as {
+      addRules: chrome.declarativeNetRequest.Rule[];
+    };
+    expect(options.addRules[0]?.action.requestHeaders?.[0]?.value).toContain("antigravity/ide/");
+  });
+
+  it("renews an expired token before the call, because a run outlives one", async () => {
+    const expired = { ...fresh, expiresAt: Date.now() - 1 };
+    await saveProvider(antigravity(expired));
+    refreshImpl = () => Promise.resolve({ ...fresh, accessToken: "at-2", refreshToken: "rt-2" });
+    const spy = stubStream(200, answer());
+
+    await drain(antigravity(expired));
+
+    const init = spy.mock.calls[0]![1];
+    expect((init?.headers as Record<string, string>).authorization).toBe("Bearer at-2");
+  });
+
+  it("keeps one Antigravity session across turns of the same conversation", async () => {
+    await saveProvider(antigravity(fresh));
+    const sessions: string[] = [];
+    for (let turn = 0; turn < 2; turn++) {
+      const spy = stubStream(
+        200,
+        nativeStream([{ response: { candidates: [{ finishReason: "STOP" }] } }]),
+      );
+      await drain(antigravity(fresh));
+      const body = JSON.parse(spy.mock.calls[0]![1]?.body as string) as {
+        request: { sessionId: string };
+      };
+      sessions.push(body.request.sessionId);
+      vi.restoreAllMocks();
+    }
+    expect(sessions[0]).toBeTruthy();
+    expect(sessions[1]).toBe(sessions[0]);
   });
 });

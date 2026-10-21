@@ -461,6 +461,7 @@
   },
   "providerForm": {
     "provider": "Provedor",
+    "groupFree": "Modelos grátis incluídos",
     "groupSubscription": "Assinatura (um plano que você já paga)",
     "groupApiKey": "Chave de API (cole uma chave; pague por uso)",
     "configured": "{{name}} · configurado",
@@ -498,6 +499,7 @@
     "signInStart": "Entrar com {{provider}}",
     "signInHint": "Usa sua assinatura {{provider}}. Não precisa de chave de API.",
     "signInMintsKey": "Cria uma chave de API na sua conta {{provider}}. Não precisa copiar nem colar.",
+    "signInAccountHint": "Usa sua conta {{provider}}. Não precisa de chave de API.",
     "or": "ou",
     "signInOpened": "Abrimos o {{host}} em uma nova aba. Aprove o login lá para concluir.",
     "signInBlocked": "Se a aba não abrir, use este link:",

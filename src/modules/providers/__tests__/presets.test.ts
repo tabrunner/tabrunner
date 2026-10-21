@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { PRESETS, providerDisplayName, providerName } from "../presets";
+import { isZenFreeModel } from "@providerkit/core";
+import { PRESETS, presetSection, providerDisplayName, providerName } from "../presets";
 
 describe("provider names", () => {
   it("qualifies only the products sold two ways", () => {
@@ -25,11 +26,45 @@ describe("provider names", () => {
     expect(paired.filter((p) => p.auth === "oauth")).toHaveLength(paired.length / 2);
   });
 
-  it("keeps the subscription rows contiguous", () => {
+  it("keeps every picker section one run", () => {
     // The picker chunks PRESETS into sections by scanning runs, never sorting —
-    // an OAuth row parked lower down would open a second Subscription heading.
-    const oauth = PRESETS.map((p) => p.auth === "oauth");
-    expect(oauth.lastIndexOf(true)).toBe(oauth.filter(Boolean).length - 1);
+    // a row parked out of place would open a second heading of the same name.
+    const sections = PRESETS.map(presetSection);
+    const runs = sections.filter((section, i) => section !== sections[i - 1]);
+    expect(new Set(runs).size).toBe(runs.length);
+  });
+
+  it("opens the form on OpenCode Zen, whose free shelf needs no plan", () => {
+    expect(PRESETS[0]?.id).toBe("opencode");
+    expect(presetSection(PRESETS[0]!)).toBe("free");
+    // It offers the account sign-in AND a pasted key, so it is not a subscription row.
+    expect(PRESETS[0]?.signIn).toBe("account");
+    expect(PRESETS[0]?.auth).toBeUndefined();
+  });
+
+  it("leads Zen's cold-start list with models its free tier serves", () => {
+    const zen = PRESETS.find((p) => p.id === "opencode");
+    expect(zen?.models.slice(0, 5).every(isZenFreeModel)).toBe(true);
+  });
+
+  it("sends each Zen family to one wire, and the free shelf to none of them", () => {
+    const routes = PRESETS.find((p) => p.id === "opencode")?.modelRoutes;
+    const all = [
+      ...(routes?.responses ?? []),
+      ...(routes?.anthropic ?? []),
+      ...(routes?.gemini ?? []),
+    ];
+    expect(new Set(all).size).toBe(all.length);
+    expect(all.some(isZenFreeModel)).toBe(false);
+    expect(routes?.gemini?.every((id) => id.startsWith("gemini-"))).toBe(true);
+  });
+
+  it("gives Antigravity a path and a fixed model list, since its backend lists none", () => {
+    const antigravity = PRESETS.find((p) => p.id === "antigravity");
+    expect(antigravity?.shape).toBe("gemini");
+    expect(antigravity?.path).toBe("/v1internal:streamGenerateContent?alt=sse");
+    expect(antigravity?.staticModels).toBe(true);
+    expect(antigravity?.auth).toBe("oauth");
   });
 
   it("leads Z.ai with the current flagship shelf", () => {
@@ -51,8 +86,8 @@ describe("provider names", () => {
     // the ChatGPT backend keys its prompt cache on `session-id`.
     const flagged = PRESETS.filter((p) => p.sessionHeader).map((p) => [p.id, p.sessionHeader]);
     expect(flagged).toEqual([
-      ["chatgpt", "session-id"],
       ["opencode", "x-opencode-session"],
+      ["chatgpt", "session-id"],
       ["opencode-go", "x-opencode-session"],
     ]);
   });
@@ -60,20 +95,19 @@ describe("provider names", () => {
   it("never advertises a retired Zen id as fallback", () => {
     // A dead free id answers 500 at run time; the live listing is authoritative
     // but a cold open still offers these. `ox-alpha` was GLM-5.3-flash's
-    // anonymous test name and is retired — and the contributor-free Spark is
-    // spelled exactly so (it exists: Zen's free shelf, /responses).
+    // anonymous test name and is retired. So are the contributor-free Spark and
+    // `mimo-v2.5-free`: Zen's live /models no longer lists either (2026-10-21).
     const ids = PRESETS.filter((p) => p.id === "opencode" || p.id === "opencode-go").flatMap(
       (p) => p.models,
     );
     expect(ids).not.toContain("ox-alpha-free");
+    expect(ids).not.toContain("muse-spark-1.3-contributor-free");
+    expect(ids).not.toContain("mimo-v2.5-free");
     expect(ids.some((id) => id.includes("comunity"))).toBe(false);
-    expect(ids).toContain("muse-spark-1.3-contributor-free");
   });
 
-  it("routes the contributor Spark to Responses like the rest of its family", () => {
+  it("routes Go's contributor Spark to Responses like the rest of its family", () => {
     // This id 500s on chat completions — the whole point of the routing table.
-    const zen = PRESETS.find((p) => p.id === "opencode");
-    expect(zen?.modelRoutes?.responses).toContain("muse-spark-1.3-contributor-free");
     const go = PRESETS.find((p) => p.id === "opencode-go");
     expect(go?.models).toContain("muse-spark-1.3-contributor");
     expect(go?.modelRoutes?.responses).toContain("muse-spark-1.3-contributor");

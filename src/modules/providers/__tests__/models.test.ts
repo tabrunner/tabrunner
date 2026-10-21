@@ -359,26 +359,31 @@ describe("gateway model routing", () => {
   };
 
   it("routes Zen Claude models to Anthropic Messages one level up", async () => {
-    const resolved = await resolveProviderModel({ ...zen, model: "claude-sonnet-5" });
+    const resolved = await resolveProviderModel({ ...zen, model: "claude-sonnet-5-5" });
     expect(resolved.shape).toBe("anthropic");
     expect(resolved.baseUrl).toBe("https://opencode.ai/zen");
   });
 
   it("routes Zen GPT models to Responses on the same base", async () => {
-    const resolved = await resolveProviderModel({ ...zen, model: "gpt-5.4" });
-    expect(resolved.shape).toBe("responses");
-    expect(resolved.baseUrl).toBe("https://opencode.ai/zen/v1");
-    // The contributor-free Spark lives on /responses too — on chat
-    // completions it answers a bare 500, which is the failure that proved it.
-    const spark = await resolveProviderModel({ ...zen, model: "muse-spark-1.3-contributor-free" });
-    expect(spark.shape).toBe("responses");
-    expect(spark.baseUrl).toBe("https://opencode.ai/zen/v1");
+    for (const model of ["gpt-5.5", "gpt-5.3-codex-spark"]) {
+      const resolved = await resolveProviderModel({ ...zen, model });
+      expect(resolved.shape, model).toBe("responses");
+      expect(resolved.baseUrl, model).toBe("https://opencode.ai/zen/v1");
+    }
   });
 
-  it("leaves Zen chat-completions models on the preset's shape", async () => {
-    const resolved = await resolveProviderModel({ ...zen, model: "mimo-v2.5-free" });
-    expect(resolved.shape).toBe("openai");
+  it("routes Zen Gemini models to Google's wire on the same base", async () => {
+    const resolved = await resolveProviderModel({ ...zen, model: "gemini-3.8-flash" });
+    expect(resolved.shape).toBe("gemini");
     expect(resolved.baseUrl).toBe("https://opencode.ai/zen/v1");
+  });
+
+  it("leaves the Zen free shelf on the preset's chat completions", async () => {
+    for (const model of ["big-pickle", "minimax-m3.1-flash-free", "glm-5.3-flash-free"]) {
+      const resolved = await resolveProviderModel({ ...zen, model });
+      expect(resolved.shape, model).toBe("openai");
+      expect(resolved.baseUrl, model).toBe("https://opencode.ai/zen/v1");
+    }
   });
 
   it("routes Go Muse to Responses, Qwen Max to Messages, and keeps GLM on completions", async () => {
@@ -426,10 +431,9 @@ describe("effort levels per model", () => {
   });
 
   it("reads the wire a gateway routes the model to, not the preset's", () => {
-    expect(effortLevels(zen, "claude-haiku-4-5")).toEqual([]);
-    expect(effortLevels(zen, "claude-sonnet-5")).toEqual(REASONING_EFFORTS);
-    expect(effortLevels(zen, "gpt-5.4")).toEqual(REASONING_EFFORTS);
-    expect(effortLevels(zen, "mimo-v2.5-free")).toEqual(REASONING_EFFORTS);
+    expect(effortLevels(zen, "claude-sonnet-5-5")).toEqual(REASONING_EFFORTS);
+    expect(effortLevels(zen, "gpt-5.5")).toEqual(REASONING_EFFORTS);
+    expect(effortLevels(zen, "big-pickle")).toEqual(REASONING_EFFORTS);
   });
 
   it("offers every level on other wires, and while the model is not known", () => {
@@ -456,5 +460,19 @@ describe("effort levels per model", () => {
       reasoningEffort: "high",
     });
     expect(opus.reasoningEffort).toBe("high");
+  });
+});
+
+describe("listModels for a backend with no list route", () => {
+  it("returns nothing for Antigravity and never calls out: the preset is the list", async () => {
+    const mock = stubFetch(200, {});
+    const models = await listModels({
+      id: "antigravity",
+      shape: "gemini",
+      baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+      apiKey: "at-1",
+    });
+    expect(models).toEqual([]);
+    expect(mock).not.toHaveBeenCalled();
   });
 });

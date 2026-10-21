@@ -78,9 +78,12 @@ export async function listModels(
   config: Pick<ProviderConfig, "shape" | "baseUrl" | "apiKey" | "auth"> & { id?: string },
   signal?: AbortSignal,
 ): Promise<ModelInfo[]> {
-  // The ChatGPT backend (responses shape) exposes no model-list route — the
-  // preset's static models are the authoritative list.
-  if (config.shape === "responses") return [];
+  // The ChatGPT backend (responses shape) and Antigravity's Cloud Code Assist
+  // expose no model-list route — the preset's static models are the
+  // authoritative list.
+  if (config.shape === "responses" || PRESETS.some((p) => p.id === config.id && p.staticModels)) {
+    return [];
+  }
   // Native Gemini lists at GET {base}/models with the key in a header, and
   // answers a different shape ({models:[{name:"models/x"}]}) — parsed below.
   if (config.shape === "gemini") return listGeminiModels(config, signal);
@@ -300,6 +303,7 @@ function routeModel(
 ): Pick<ResolvedProviderConfig, "shape" | "baseUrl"> | undefined {
   if (!preset?.modelRoutes) return undefined;
   if (preset.modelRoutes.responses?.includes(model)) return { shape: "responses", baseUrl };
+  if (preset.modelRoutes.gemini?.includes(model)) return { shape: "gemini", baseUrl };
   if (preset.modelRoutes.anthropic?.includes(model)) {
     return { shape: "anthropic", baseUrl: baseUrl.replace(/\/v1\/?$/, "") };
   }

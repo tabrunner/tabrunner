@@ -37,6 +37,7 @@ export function createAnthropicProvider(base: ResolvedProviderConfig): ChatProvi
     async *stream(messages, tools, signal): AsyncIterable<Delta> {
       // Per request, not per run: a token that expires mid-run is renewed on the next turn.
       const config = await ensureProviderCredential(base);
+      const session = await sessionHeaders(config.id, config.sessionId);
       let toolCallBuffer: { id: string; name: string; args: string } | null = null;
       let sawToolCall = false;
       let stopped = false;
@@ -52,7 +53,7 @@ export function createAnthropicProvider(base: ResolvedProviderConfig): ChatProvi
         // per-conversation session header — same rule as the other adapters.
         headers: {
           ...(config.auth ? anthropicOAuthHeaders(config.apiKey) : anthropicHeaders(config.apiKey)),
-          ...sessionHeaders(config.id, config.sessionId),
+          ...session,
         },
         body: JSON.stringify(buildAnthropicBody(config, messages, tools)),
         provider: config,

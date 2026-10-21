@@ -11,6 +11,7 @@ import {
 } from "@providerkit/core";
 import { formatResetRelative } from "./rate-limit";
 import { PRESETS, providerDisplayName } from "./presets";
+import { zenSessionHeaders } from "./zen";
 import { createLogger, truncate } from "@/lib/logger";
 import { i18n } from "@/i18n";
 import { isRecord } from "@/shared/types";
@@ -248,11 +249,19 @@ export function providerHeaders(id: string, messages?: ChatMessage[]): Record<st
  * conversation id, the same granularity pi sends its own session id at.
  * Absent when the preset doesn't ask or the run carries no conversation (a
  * probe outside any chat).
+ *
+ * OpenCode Zen is the exception: its free tier checks the id's shape, so that
+ * row sends the full set OpenCode's own client sends (see zen.ts). Async only
+ * for that forge, which hashes.
  */
-export function sessionHeaders(id: string, sessionId?: string): Record<string, string> {
-  const name = PRESETS.find((preset) => preset.id === id)?.sessionHeader;
-  if (!name || !sessionId) return {};
-  return { [name]: sessionId };
+export async function sessionHeaders(
+  id: string,
+  sessionId?: string,
+): Promise<Record<string, string>> {
+  const preset = PRESETS.find((p) => p.id === id);
+  if (!preset?.sessionHeader || !sessionId) return {};
+  if (preset.free) return zenSessionHeaders(sessionId);
+  return { [preset.sessionHeader]: sessionId };
 }
 
 /**

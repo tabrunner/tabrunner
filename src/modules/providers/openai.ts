@@ -35,6 +35,7 @@ export function createOpenAIProvider(base: ResolvedProviderConfig): ChatProvider
     async *stream(messages, tools, signal): AsyncIterable<Delta> {
       // Per request, not per run: a token that expires mid-run is renewed on the next turn.
       const config = await ensureProviderCredential(base);
+      const session = await sessionHeaders(config.id, config.sessionId);
       // Accumulate tool call args across chunks (OpenAI streams them in pieces)
       const toolCallAccumulators = new Map<number, { id: string; name: string; args: string }>();
       let ended = false;
@@ -44,7 +45,7 @@ export function createOpenAIProvider(base: ResolvedProviderConfig): ChatProvider
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
           ...providerHeaders(config.id, messages),
-          ...sessionHeaders(config.id, config.sessionId),
+          ...session,
         },
         body: JSON.stringify(buildOpenAIBody(config, messages, tools)),
         provider: config,
