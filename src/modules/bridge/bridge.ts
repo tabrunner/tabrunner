@@ -192,6 +192,7 @@ export class Bridge {
     const runId = crypto.randomUUID();
     const client = agent || i18n.t("history.unknownAgent");
     await openAgentConversation(conversationId, client);
+    await this.direct.seedThreadTab(conversationId);
     // The task must be stored before the run starts — even a queued one: history
     // is rebuilt from the transcript at launch, whenever the slot frees.
     await appendMessageTo(conversationId, {
@@ -373,7 +374,7 @@ export class Bridge {
       return;
     }
     // A direct session is its own thread; resetting means closing it.
-    await this.direct.end();
+    await this.direct.reset();
     await bridgeThread.set(null);
     this.status = emptyStatus();
     this.respond(requestId, { ok: true });

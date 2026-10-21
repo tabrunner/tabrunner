@@ -18,15 +18,20 @@ open a second live session the site may read as a bot; so the run adopts and dri
 as-is, with the plan gate carrying the "don't touch this" decision.
 
 Follow-ups keep that home: a message typed elsewhere is usually steering from wherever the
-user happens to be reading (the side panel stays open across tab switches), not a move order
-— and silently rebasing would put the run on a page nobody chose for the task. So while the
-thread's last driven tab still lives, it wins (`continuesThreadTab` + `reuseContinuationTab`,
-the path a parked answer already took), and the send-time page rides along as `submitPage`
-data: drift ("just typing from where I was") against pivot ("this IS about that page") is a
-judgment about words, so the model makes it — switching itself with the ungated `switch_tab`
-when the request really is about that page. Adoption remains the fallback whenever nothing
-stands to continue: the thread's first message, a lock whose tab died (its url seeds the
-own-tab fallback), a restricted page.
+user happens to be reading (the side panel stays open across tab switches), not a move order,
+and silently rebasing would put the run on a page nobody chose for the task. So while the
+thread's last driven tab still lives, it wins for both panel and bridge threads
+(`continuesThreadTab` + `reuseContinuationTab`, the path a parked answer already took),
+unless the caller explicitly named a `url` or asked to adopt the foreground tab. For panel
+runs, the send-time page rides along as `submitPage` data: drift ("just typing from where I
+was") against pivot ("this IS about that page") is a judgment about words, so the model
+makes it, switching itself with the ungated `switch_tab` when the request really is about
+that page. Adoption remains the fallback whenever nothing stands to continue: the thread's
+first message, a lock whose tab died (its url seeds the own-tab fallback), a restricted page.
+When a run opens a starter tab of its own and switches away (`switch_tab`), calls `open_tab`
+before acting on it (`openTab` navigates the starter tab in place), or ends without ever
+acting on the default start page, the unused starter tab is closed so no dead start-page tab
+is left behind.
 
 **A closed tab ends the run, and hands back the page — unless nobody was there.** Closing
 the driven tab is fatal by design — every later tool call would fail on the same dead id.

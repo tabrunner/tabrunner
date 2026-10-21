@@ -36,16 +36,16 @@ When in doubt, `run`. It's the reason this thing exists.
 
 ## The tools
 
-| Tool                              | Use it for                                                                                         |
-| --------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `health`                          | First call, and after any connection error. Says whether the browser is reachable and what to fix. |
-| `run(task, images?)`              | Start a task. Returns immediately: browser work takes minutes.                                     |
-| `get_status(wait?, waitSeconds?)` | Follow the run. **Blocks until something happens**: this is your wait, not a poll.                 |
-| `answer(text)`                    | Reply to a question the run stopped on.                                                            |
-| `steer(text)`                     | Correct or constrain a task already running, without restarting it.                                |
-| `stop()`                          | End the run. Not an error.                                                                         |
-| `screenshot()`                    | See the browser yourself. Works whether or not a task is running.                                  |
-| `new_conversation()`              | Start a fresh thread when the next task is unrelated to the last.                                  |
+| Tool                                    | Use it for                                                                                         |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `health`                                | First call, and after any connection error. Says whether the browser is reachable and what to fix. |
+| `run(task, url?, background?, images?)` | Start a task. Returns immediately: browser work takes minutes.                                     |
+| `get_status(wait?, waitSeconds?)`       | Follow the run. **Blocks until something happens**: this is your wait, not a poll.                 |
+| `answer(text)`                          | Reply to a question the run stopped on.                                                            |
+| `steer(text)`                           | Correct or constrain a task already running, without restarting it.                                |
+| `stop()`                                | End the run. Not an error.                                                                         |
+| `screenshot()`                          | See the browser yourself. Works whether or not a task is running.                                  |
+| `new_conversation()`                    | Start a fresh thread when the next task is unrelated to the last.                                  |
 
 Driving yourself:
 
@@ -103,8 +103,9 @@ one thing this skill must not do.
 connected, read what it tells you and act on it. Only involve the user for things only they can do:
 installing the extension, opening the panel, choosing a provider.
 
-**Say which site.** The run starts on the tab the user is looking at. If the task belongs on a
-particular site, put the URL in the task text, and TabRunner will navigate there.
+**Say which site.** A run works in its own background tab by default and continues that tab on
+follow-ups. Pass `url` when you know the starting address so the tab opens straight there; pass
+`background: false` only when the task is about the page the user is looking at.
 
 **One run at a time.** TabRunner drives one browser, so the panel and this bridge share a single run
 slot. If a run is already going, `run` tells you where it is. `stop()` ends your own; a run the user

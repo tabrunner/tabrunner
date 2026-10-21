@@ -283,13 +283,13 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       );
     });
 
-    // Where the run drives: the conversation's own tab while it lives — a panel
-    // follow-up keeps working where earlier runs did (the page the user sent
-    // from rides along as context instead of becoming the target), other owners
-    // return for a parked answer only — else the user's current tab on adoption,
-    // else a tab of the run's own. See resolveRunTab.
+    // Where the run drives: the conversation's own tab while it lives — panel
+    // and bridge follow-ups keep working where earlier runs did (the page the
+    // user sent from rides along as context instead of becoming the target),
+    // schedule fires return for a parked answer only — else the user's current
+    // tab on adoption, else a tab of the run's own. See resolveRunTab.
     const thread = await getThreadTabsFor(conversationId);
-    const continuation = continuesThreadTab(owner, hasPendingQuestion(transcript))
+    const continuation = continuesThreadTab(owner, hasPendingQuestion(transcript), opts)
       ? thread.tabs[0]
       : undefined;
     const target = await resolveRunTab(opts, continuation, thread);
@@ -342,14 +342,16 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       ...(target.threadGroupId !== undefined ? { seedGroupId: target.threadGroupId } : {}),
       drivenTabId: () => drivenTabId,
     });
+    const starterTab = opened === true && !opts.url && !continuation?.url;
     const driver = createDriver(tab.id, {
+      openedTab: opened === true,
       // A run follows its own switches on screen only while somebody is there
       // to watch — asked live, so the moment the panel closes the run stops
       // moving the user's screen. Nobody watching, nothing moves: that is what
       // walking away buys, whether it was chosen at send time or mid-run.
       activateOnSwitch: isPanelOpen,
       onSwitch: (info) => {
-        void hideAgentIndicator(drivenTabId);
+        if (drivenTabId !== info.id) void hideAgentIndicator(drivenTabId);
         drivenTabId = info.id;
         drivenTitle = info.title;
         drivenUrl = info.url;
@@ -735,13 +737,20 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // would pin the banner on a page nothing is driving — it even outlives
       // the worker. Awaited so the slot never frees with a detach in flight.
       await detachAll();
+      // A starter tab opened on the default start page that never had a single
+      // action land on it (and was not switched away from, which already closed
+      // it) is scratch space the run never used — close it instead of leaving a
+      // dead start-page tab behind. A parked question keeps its tab for the answer.
+      const discardUnusedStarter = starterTab && driver.unactedTab === true && !endedOnQuestion;
+      const discardRejectedOpened = planRejected && opened && drivenTabId === tab.id;
       // The mark's ending matches the run's: a question keeps it up as the
       // still "?" (the answer is still owed), a stop or a rejected plan just
       // takes it down — the user did that, and the panel already says so — and
       // a finished or failed run settles into the receipt instead of quietly
       // vanishing, which reads exactly like a crash.
       if (endedOnQuestion) void waitAgentIndicator(drivenTabId);
-      else if (run.controller.signal.aborted || planRejected) void hideAgentIndicator(drivenTabId);
+      else if (run.controller.signal.aborted || planRejected || discardUnusedStarter)
+        void hideAgentIndicator(drivenTabId);
       else {
         const outcome: SettleOutcome = runFailed ? "failed" : "done";
         void settleAgentIndicator(drivenTabId, outcome);
@@ -756,9 +765,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // the plan is the exception: the tab this run opened for the job is litter
       // to take back rather than a result to keep, and a page the agent only
       // glanced at is not where the conversation now lives.
-      if (planRejected && opened) {
+      if (discardRejectedOpened || discardUnusedStarter) {
         await discardRunTab(tab.id);
-      } else if (planRejected && adopted) {
+      } else if (planRejected) {
         // "No, don't touch this" names no outcome. Nothing is unfiled: the gate
         // means a first-plan rejection happens before any grouping, and after a
         // mid-run replan the strip holds real work. Just put it away.
@@ -855,12 +864,19 @@ export function hasPendingQuestion(transcript: Message[]): boolean {
 
 /**
  * Whether this submission wants the conversation's own tab back (see
- * resolveRunTab): a panel run always — a human just pressed Enter, and their
- * thread has a home — while a schedule fire and an MCP client's call speak
- * for themselves and only return for a parked answer.
+ * resolveRunTab): panel and bridge runs continue where earlier runs in their
+ * thread worked (unless the caller named a URL or asked to adopt the user's
+ * current tab), while a schedule fire opens a fresh scratch tab each time and
+ * returns only for a parked answer.
  */
-export function continuesThreadTab(owner: RunOwner, pendingQuestion: boolean): boolean {
-  return owner === "panel" || pendingQuestion;
+export function continuesThreadTab(
+  owner: RunOwner,
+  pendingQuestion: boolean,
+  opts?: { url?: string; adoptCurrentTab?: boolean },
+): boolean {
+  if (pendingQuestion) return true;
+  if (opts?.url || opts?.adoptCurrentTab) return false;
+  return owner !== "schedule";
 }
 
 interface RunTab {
@@ -1055,6 +1071,7 @@ async function reuseContinuationTab(
   if (last?.tabId === undefined) return undefined;
   try {
     const tab = await chrome.tabs.get(last.tabId);
+    if (isRestrictedUrl(tab.url)) return undefined;
     const threadGroupId = await liveThreadGroup(thread, tab);
     // The run continues where the question arose — the very tab it was driving,
     // which under adoption IS the user's tab. The model must hear that, or it

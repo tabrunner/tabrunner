@@ -38,6 +38,8 @@ const tabs: Record<number, TabRecord> = {
 const groups: Record<number, { windowId: number }> = { 7: { windowId: 10 } };
 const updates: { id?: number; window?: number; props: Record<string, unknown> }[] = [];
 const groupCalls: { tabIds: number | number[]; groupId?: number }[] = [];
+const removed: number[] = [];
+const created: string[] = [];
 
 /** What Chrome does on { active: true }: the tab's window gets one active tab. */
 function setActive(id: number) {
@@ -50,17 +52,34 @@ function setActive(id: number) {
 // The chrome stub must exist before driver/cdp-driver import — cdp-driver
 // registers its listeners at module scope.
 (globalThis as Record<string, unknown>).chrome = {
+  runtime: { lastError: undefined },
   tabs: {
     onRemoved: { addListener: () => {}, removeListener: () => {} },
     onUpdated: { addListener: () => {}, removeListener: () => {} },
-    get: async (id: number) => {
+    get: (id: number, cb?: (tab?: TabRecord) => void) => {
       const t = tabs[id];
-      if (!t) throw new Error(`No tab with id: ${id}`);
-      return t;
+      if (cb) {
+        cb(t);
+        return;
+      }
+      if (!t) return Promise.reject(new Error(`No tab with id: ${id}`));
+      return Promise.resolve(t);
+    },
+    create: async ({ url }: { url: string }) => {
+      created.push(url);
+      const createdTab = { id: 5, windowId: 10, title: "New", url, status: "complete" };
+      tabs[5] = createdTab;
+      return createdTab;
+    },
+    remove: async (id: number) => {
+      removed.push(id);
     },
     update: async (id: number, props: Record<string, unknown>) => {
       updates.push({ id, props });
       if (props.active === true) setActive(id);
+      if (typeof props.url === "string" && tabs[id]) {
+        tabs[id] = { ...tabs[id], url: props.url, status: "complete" } as TabRecord;
+      }
       return tabs[id];
     },
     query: async (q: { active?: boolean; windowId?: number } = {}) =>
@@ -99,6 +118,16 @@ describe("driver tab switching", () => {
   beforeEach(() => {
     updates.length = 0;
     groupCalls.length = 0;
+    removed.length = 0;
+    created.length = 0;
+    delete tabs[5];
+    tabs[1] = {
+      id: 1,
+      windowId: 10,
+      title: "First",
+      url: "https://a.example",
+      status: "complete",
+    } as TabRecord;
     for (const t of Object.values(tabs)) t.active = false;
   });
 
@@ -189,5 +218,41 @@ describe("driver tab switching", () => {
     const driver = createDriver(1);
     await expect(driver.groupTab(2, 99)).rejects.toThrow("No group with id: 99");
     await expect(driver.groupTab(99, 7)).rejects.toThrow("No tab with id: 99");
+  });
+
+  it("closes an untouched opened starter tab when switching to an existing tab", async () => {
+    const driver = createDriver(1, { openedTab: true });
+    expect(driver.unactedTab).toBe(true);
+
+    await driver.switchTab(2);
+    expect(removed).toEqual([1]);
+    expect(driver.unactedTab).toBe(false);
+
+    // Later switches leave the existing tabs alone.
+    await driver.switchTab(4);
+    expect(removed).toEqual([1]);
+  });
+
+  it("keeps the opened starter tab once an action has used it", async () => {
+    const driver = createDriver(1, { openedTab: true });
+    await driver.navigate("https://used.example");
+    expect(driver.unactedTab).toBe(false);
+
+    await driver.switchTab(2);
+    expect(removed).toEqual([]);
+  });
+
+  it("openTab navigates an untouched opened starter tab in place instead of spawning a second tab", async () => {
+    const driver = createDriver(1, { openedTab: true });
+
+    const first = await driver.openTab("https://target.example");
+    expect(first).toMatchObject({ id: 1, url: "https://target.example" });
+    expect(created).toEqual([]);
+    expect(driver.unactedTab).toBe(false);
+
+    // A second openTab opens a new tab now that tab 1 holds real work.
+    const second = await driver.openTab("https://second.example");
+    expect(second).toMatchObject({ id: 5, url: "https://second.example" });
+    expect(created).toEqual(["https://second.example"]);
   });
 });

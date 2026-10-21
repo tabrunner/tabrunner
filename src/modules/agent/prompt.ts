@@ -292,7 +292,7 @@ export function buildTaskMessage(task: string, pageContent: string, ctx: TaskCon
   // "don't touch this" decision to the user.
   if (mode === "own") {
     parts.push(
-      "You are working in a tab of your own, opened on the page the user was looking at. Their own tab is untouched; leave it alone. Navigate THIS tab wherever the task leads; switch_tab only when the task needs a page that is already open somewhere else, and expect that switch not to bring the tab forward.",
+      "You are working in a tab of your own. The user's own tab is untouched; leave it alone. Use navigate in THIS tab to go where the task leads (do not call open_tab just to visit the first URL); switch_tab only when the task needs a page that is already open somewhere else, and expect that switch not to bring the tab forward.",
     );
   } else if (mode === "adopted") {
     parts.push(

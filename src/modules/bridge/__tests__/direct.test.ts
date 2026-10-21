@@ -219,4 +219,45 @@ describe("DirectSession start", () => {
     expect(removed).toEqual([42]);
     expect(getActiveRun()).toBeNull();
   });
+
+  it("closes the unused starter tab when switching to an existing tab", async () => {
+    const session = new DirectSession();
+    await session.start("a goal", "Claude Code", { background: true });
+    executeTool.mockResolvedValueOnce({
+      ok: true,
+      data: { id: 7, windowId: 1, title: "Inbox", url: "https://x.test/" },
+    });
+
+    await session.act("switch_tab", { tab_id: 7 });
+
+    expect(removed).toEqual([42]);
+    expect(session.drivenTab).toBe(7);
+    await session.end();
+    expect(removed).toEqual([42]);
+  });
+
+  it("closes the starter tab on end when the session never acted on it", async () => {
+    const session = new DirectSession();
+    await session.start("a goal", "Claude Code", { background: true });
+    await session.act("list_tabs", {});
+    await session.end();
+
+    expect(removed).toEqual([42]);
+  });
+
+  it("keeps a starter tab that was acted on and reuses it on the next session", async () => {
+    (globalThis.chrome.tabs as unknown as Record<string, unknown>).get = (id: number) =>
+      Promise.resolve({ id, windowId: 1, title: "App", url: "https://x.test/app" });
+    const session = new DirectSession();
+    await session.start("a goal", "Claude Code", { background: true });
+    await session.act("navigate", { url: "https://x.test/app" }, false);
+    await session.end();
+
+    expect(removed).toEqual([]);
+    expect(created).toEqual(["https://www.google.com"]);
+
+    await session.start("follow up", "Claude Code", { background: true });
+    expect(created).toEqual(["https://www.google.com"]);
+    expect(session.drivenTab).toBe(42);
+  });
 });

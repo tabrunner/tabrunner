@@ -248,13 +248,15 @@ server.registerTool(
   {
     ...labels("Run a browser task", ACTS),
     description:
-      "Give TabRunner a task to do in the user's real Chrome, with their existing logins and sessions to navigate, read pages, click, type, fill forms and extract data. Describe the goal in plain language, as you would to a person; TabRunner plans and executes the steps itself. Returns immediately: follow the task with get_status. By default the task opens its own background tab (optionally at url), leaving the user's current page alone; pass background: false only when the task is explicitly about what the user is looking at.",
+      "Give TabRunner a task to do in the user's real Chrome, with their existing logins and sessions to navigate, read pages, click, type, fill forms and extract data. Describe the goal in plain language, as you would to a person; TabRunner plans and executes the steps itself. Returns immediately: follow the task with get_status. By default the task works in its own background tab (reusing this chat's tab while it lives, or opening url / the start page) and leaves the user's current page alone; pass background: false only when the task is explicitly about what the user is looking at.",
     inputSchema: {
-      task: z.string().describe("What to do, in plain language. Include any URL to start from."),
+      task: z.string().describe("What to do, in plain language."),
       url: z
         .string()
         .optional()
-        .describe("Where the background tab starts. Defaults to the user's configured start page."),
+        .describe(
+          "Absolute URL to open when the task starts on a specific site. Omit to continue this chat's tab or start from the configured start page.",
+        ),
       background: z
         .boolean()
         .optional()
@@ -550,7 +552,7 @@ server.registerTool(
   {
     ...labels("Start driving the browser yourself", OPENS),
     description:
-      "Open a direct-control session and get the first page snapshot. Use this instead of run when you want to drive step by step rather than hand TabRunner the whole task. run is still the better choice for anything long or open-ended, because TabRunner's own model plans it. Like run, it works in a new background tab and leaves the page the user is reading alone; pass url to choose where it starts. Pass background: false only when the task is about the page the user is on. State the goal: it names the chat the user will see in TabRunner's history, and every action you take is recorded under it. IMPORTANT: driving directly bypasses TabRunner's own model and its rule of stopping to ask before consequential actions, so paying, sending on the user's behalf, deleting, or submitting is yours to put to the user first.",
+      "Open a direct-control session and get the first page snapshot. Use this instead of run when you want to drive step by step rather than hand TabRunner the whole task. run is still the better choice for anything long or open-ended, because TabRunner's own model plans it. Like run, it works in a background tab of its own (reusing the tab the previous session drove while it lives, or opening url / the start page) and leaves the page the user is reading alone; pass url to open a specific page. Pass background: false only when the task is about the page the user is on. State the goal: it names the chat the user will see in TabRunner's history, and every action you take is recorded under it. IMPORTANT: driving directly bypasses TabRunner's own model and its rule of stopping to ask before consequential actions, so paying, sending on the user's behalf, deleting, or submitting is yours to put to the user first.",
     inputSchema: {
       goal: z
         .string()

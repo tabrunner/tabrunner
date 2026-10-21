@@ -108,6 +108,11 @@ export interface BrowserDriver {
    * calls, where there is no model latency to absorb a navigation.
    */
   settle(): Promise<boolean>;
+  /**
+   * Whether the tab this run opened at start has still had no action land on
+   * it, so teardown can close a starter tab the run never used.
+   */
+  readonly unactedTab?: boolean;
 }
 
 export interface DriverOptions {
@@ -129,6 +134,12 @@ export interface DriverOptions {
    * ticking and nothing here needs the tab on screen.
    */
   activateOnSwitch?: () => boolean;
+  /**
+   * True when `initialTabId` was opened for this run. Any action on it claims
+   * it; switching away before that closes it as litter, and `openTab`
+   * navigates it in place instead of opening a second tab beside an unused one.
+   */
+  openedTab?: boolean;
 }
 
 /** One open tab, shaped for the model — undefined for the id-less records a query can return. */
@@ -145,12 +156,20 @@ function toTabInfo(t: chrome.tabs.Tab): TabInfo | undefined {
 }
 
 export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): BrowserDriver {
-  const { onSwitch, activateOnSwitch = () => true } = opts;
+  const { onSwitch, activateOnSwitch = () => true, openedTab = false } = opts;
   // The run starts on the submit-time tab but may hop: the CDP layer is
   // multi-tab (attach re-targets per call), so the driver just tracks a target.
   let current = initialTabId;
+  let unactedTabId: TabId | null = openedTab ? initialTabId : null;
+  const claimOpenedTab = () => {
+    if (current === unactedTabId) unactedTabId = null;
+  };
 
   const driver: BrowserDriver = {
+    get unactedTab() {
+      return unactedTabId !== null;
+    },
+
     async snapshot(opts) {
       return captureSnapshot(current, opts);
     },
@@ -181,28 +200,34 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
       // own marks. They go click-through for the dispatch: a badge that ate the
       // agent's click would both lose the step and open a panel nobody asked for.
       await withMarksClickThrough(current, () => clickAt(x, y));
+      claimOpenedTab();
       return { x, y };
     },
 
     async type(text) {
       await ensureAttached(current);
       await typeText(text);
+      claimOpenedTab();
     },
 
     async insert(text) {
       await ensureAttached(current);
       await insertText(text);
+      claimOpenedTab();
     },
 
     async fill(ref, text) {
       // Page-side by design: no debugger, no infobar — the same mechanism the
       // snapshot uses, aimed at one element.
       await fillField(current, ref, text);
+      claimOpenedTab();
     },
 
     async evaluate(expression) {
       await ensureAttached(current);
-      return sanitizeForModel(await evaluateRaw(expression));
+      const raw = await evaluateRaw(expression);
+      claimOpenedTab();
+      return sanitizeForModel(raw);
     },
 
     async readNetworkRequests(urlFilter, limit) {
@@ -219,20 +244,24 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
     async key(key, modifiers) {
       await ensureAttached(current);
       await pressKey(key, modifiers);
+      claimOpenedTab();
     },
 
     async goBack() {
       await goBackInTab(current);
+      claimOpenedTab();
     },
 
     async scrollDown(amount = 300) {
       await ensureAttached(current);
       await scroll(0, amount);
+      claimOpenedTab();
     },
 
     async scrollUp(amount = 300) {
       await ensureAttached(current);
       await scroll(0, -amount);
+      claimOpenedTab();
     },
 
     async screenshot() {
@@ -242,6 +271,7 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
 
     async navigate(url) {
       await navigateToUrl(current, url);
+      claimOpenedTab();
     },
 
     async listTabs() {
@@ -280,6 +310,8 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
         followed = visible?.id === current;
         if (followed) await focusTab(tabId, tab.windowId, { pullWindow: false });
       }
+      const abandoned = unactedTabId !== null && unactedTabId !== tabId ? unactedTabId : null;
+      if (abandoned !== null) unactedTabId = null;
       current = tabId;
       const info: TabInfo = {
         id: tabId,
@@ -290,10 +322,19 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
         ...(tab.favIconUrl ? { favIconUrl: tab.favIconUrl } : {}),
       };
       onSwitch?.(info);
+      if (abandoned !== null) void chrome.tabs.remove(abandoned).catch(() => {});
       return info;
     },
 
     async openTab(url) {
+      // A run still sitting on the untouched tab it opened already has a fresh
+      // tab of its own: navigate that one in place instead of spawning a second
+      // tab and leaving the first behind on the start page.
+      if (unactedTabId !== null && current === unactedTabId) {
+        await navigateToUrl(current, url);
+        unactedTabId = null;
+        return driver.switchTab(current);
+      }
       // Created in the background and only then switched to, so the follow
       // rule is switchTab's one implementation: a watched run brings it
       // forward, a background run never yanks the user's window.
