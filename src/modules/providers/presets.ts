@@ -28,14 +28,35 @@ export interface ProviderPreset {
    */
   auth?: "oauth";
   /**
-   * Set on a KEYED row whose vendor can also mint that key through a sign-in.
-   * The form then offers both, and the user picks. Distinct from `auth` on
-   * purpose: `auth` says the provider is paid for a different way and so earns
-   * its own row, while this says the very same key can be fetched without a
-   * trip to the console. OpenRouter is the only one — its sign-in ends in an
-   * ordinary API key on the same account, billed from the same credits.
+   * Set on a KEYED row that can also be signed into. The form then offers both
+   * and the user picks. Distinct from `auth` on purpose: `auth` says the provider
+   * is paid for a different way and so earns its own row, while this says the very
+   * same account can be reached without a trip to the console.
+   *
+   * - `"key"`: the sign-in ends in an ordinary API key on the same account,
+   *   billed from the same credits (OpenRouter).
+   * - `"account"`: the sign-in is the account itself and its token is the
+   *   credential, renewed like a subscription's (OpenCode Zen).
    */
-  signIn?: true;
+  signIn?: "key" | "account";
+  /**
+   * The endpoint serves a standing shelf of free models, which is why the row
+   * leads the picker: it is the shortest path to a first working run. The shelf
+   * sits behind a gate that only OpenCode's own client passes — see zen.ts.
+   */
+  free?: true;
+  /**
+   * The backend has no model-list route, so `models` IS the list. The Cloud Code
+   * Assist backend behind Antigravity is one; the ChatGPT backend is another and
+   * is told apart by its shape.
+   */
+  staticModels?: true;
+  /**
+   * Gemini-shape only: the request path, when the backend routes by something
+   * other than the model name. Antigravity's `/v1internal:…` takes the model in
+   * the body's envelope instead.
+   */
+  path?: string;
   /**
    * Set on both rows of a product sold two ways. `name` stays the bare product
    * ("Claude", "Anthropic"); `providerDisplayName` appends which way, so a user
@@ -71,9 +92,11 @@ export interface ProviderPreset {
    * for MiMo v2.6 Flash, and nothing for a model not measured. DeepSeek thinks
    * unless told `thinking: {type: "disabled"}`. The per-model rule lives in the
    * package, beside the measurements behind it (OpenRouter, 2026-09-26 and
-   * 2026-09-27, recorded in its `OPENROUTER_NONE` doc, 0.12.3).
+   * 2026-09-27, recorded in its `OPENROUTER_NONE` doc, 0.12.3). OpenCode's
+   * gateways use core's `opencode-go` table: GLM takes only high and max, and
+   * DeepSeek and MiniMax answer an explicit "none" with a 400, so they get "low".
    */
-  effortDialect?: Extract<EffortDialect, "openrouter" | "deepseek">;
+  effortDialect?: Extract<EffortDialect, "openrouter" | "deepseek" | "opencode-go">;
   /**
    * Anthropic-shape only: "none" is sent as `thinking: {type: "disabled"}`
    * instead of the adaptive floor. Z.ai's coding endpoint needs it. Measured by
@@ -88,17 +111,12 @@ export interface ProviderPreset {
    * The header that names the conversation on every chat turn, for the
    * endpoints that key something on it. Its value is the conversation id.
    *
-   * OpenCode's gateway reads `x-opencode-session` — the same header pi's
-   * opencode providers send. Without it the free tier answers
-   * `FreeTierError: can only be used from within OpenCode`. Both Zen rows,
-   * which share the one backend and the one key.
-   *
-   * What we deliberately DON'T mirror from opencode/pi: `User-Agent:
-   * opencode/<version>` (a browser extension cannot set it — Chrome owns that
-   * header on fetch), and `x-opencode-request` / `x-opencode-client` /
-   * `x-opencode-project` (opencode's own user/project identities, which a
-   * pasted key doesn't carry). The session header is the one the free-tier
-   * gate reads.
+   * OpenCode's gateways read `x-opencode-session`, the same header pi's opencode
+   * providers send. Without it the free tier answers `FreeTierError`. On Go the
+   * value is the conversation id; on Zen (`free`) it is that id forged into the
+   * `ses_` shape, sent with the rest of the headers OpenCode's client sends — see
+   * zen.ts. The `User-Agent` cannot ride on fetch (Chromium ignores it), so
+   * origin.ts stamps it on the request.
    *
    * The ChatGPT backend reads `session-id`, and keys its prompt cache on it
    * (with `responsesCacheKey`). @providerkit/core's chatgpt preset sends the
@@ -125,6 +143,8 @@ export interface ProviderPreset {
   modelRoutes?: {
     responses?: string[];
     anthropic?: string[];
+    /** Google's own wire, at the gateway's `…/v1/models/<id>:streamGenerateContent`. */
+    gemini?: string[];
   };
 }
 
@@ -149,11 +169,12 @@ export type IconKey =
  * Built-in presets. Users can also add custom OpenAI-compatible endpoints.
  *
  * Order is the picker's order, and the first entry is what the add form opens
- * on: the subscriptions lead, because a plan someone already pays for is the
- * shortest path to a working provider — an API key means a console, a credit
- * card, and a billing decision before the first task ever runs. The OAuth rows
- * being contiguous is what lets the picker chunk this list into its two
- * sections without sorting it.
+ * on: OpenCode Zen leads, because its free shelf needs no plan and no key, then
+ * the subscriptions, because a plan someone already pays for is the shortest
+ * path to a working provider — an API key means a console, a credit card, and a
+ * billing decision before the first task ever runs. Each section being
+ * contiguous (see `presetSection`) is what lets the picker chunk this list into
+ * its sections without sorting it.
  *
  * A subscription row is named for the product people actually buy (Claude,
  * ChatGPT) and a keyed row for the company whose console issues the key
@@ -167,6 +188,76 @@ export type IconKey =
  * not custom configs.
  */
 export const PRESETS: ProviderPreset[] = [
+  {
+    // OpenCode Zen leads the picker. It is a gateway, like OpenRouter (one
+    // account, many vendors' models), and the only endpoint here with a standing
+    // shelf of $0 models, so it is the shortest path to a first working run.
+    //
+    // Two ways in: sign in with the OpenCode account (the Console's device flow,
+    // the first thing the form shows) or paste a key (`apiKeyUrl`). Free means
+    // $0 per token, NOT no card: an OpenCode account wants billing details
+    // before it issues a key at all.
+    //
+    // `models` is the cold start, in Zen's own listing order (free shelf first,
+    // which is also what "auto" resolves to once the live listing lands). The
+    // shelf rotates, and a retired free id answers 500, so the live listing is
+    // the authority. Checked against it 2026-10-21; the free ids below each
+    // answered a streamed call that offered a tool.
+    id: "opencode",
+    name: "OpenCode Zen",
+    shape: "openai",
+    baseUrl: "https://opencode.ai/zen/v1",
+    models: [
+      "big-pickle",
+      "mimo-v2.6-flash-free",
+      "deepseek-v4.1-flash-free",
+      "glm-5.3-flash-free",
+      "minimax-m3.1-flash-free",
+      "glm-5.3",
+      "claude-sonnet-5-5",
+      "gpt-5.5",
+    ],
+    apiKeyUrl: "https://opencode.ai/auth",
+    signIn: "account",
+    free: true,
+    sessionHeader: "x-opencode-session",
+    effortDialect: "opencode-go",
+    // Zen serves each model family on its own wire: Claude and Qwen on Messages,
+    // GPT/Grok/Muse on Responses, Gemini on Google's own, the rest (DeepSeek,
+    // GLM, Kimi, MiniMax, the whole free shelf) on chat completions. A model
+    // called on the wrong wire answers 500, not a helpful 404. These lists are
+    // the live /models of 2026-10-21 sorted by family; a model missing from
+    // them stays on chat completions until it is added.
+    modelRoutes: {
+      responses: [
+        "gpt-6.1-sol",
+        "gpt-6-astra",
+        "gpt-6-luna",
+        "gpt-5.6-terra",
+        "gpt-5.5",
+        "gpt-5.5-pro",
+        "gpt-5.4-mini",
+        "gpt-5.4-nano",
+        "gpt-5.3-codex",
+        "gpt-5.3-codex-spark",
+        "grok-4.7",
+        "grok-build-0.1",
+        "muse-wonder-1.0",
+      ],
+      anthropic: [
+        "claude-fable-5-1",
+        "claude-opus-5-5",
+        "claude-opus-5-5-backup",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "qwen3.8-flash",
+        "qwen3.6-plus",
+      ],
+      gemini: ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro"],
+    },
+    color: "#171717",
+    icon: "opencode",
+  },
   {
     // The same API as `anthropic`, reached with a Claude subscription (Pro/Max)
     // sign-in instead of a key. One row per way to pay — a user with both a key
@@ -273,6 +364,35 @@ export const PRESETS: ProviderPreset[] = [
     icon: "github",
   },
   {
+    // Google Antigravity, reached with a Google sign-in. The Cloud Code Assist
+    // backend behind it serves Gemini and Claude models on the account's
+    // Antigravity quota. It speaks Gemini's dialect but is not Google's public
+    // API: requests go in an envelope that carries the account's project id,
+    // which the sign-in discovers and keeps on the credential. All of that lives
+    // in @providerkit/core (the `antigravity` flow and the Gemini adapter); this
+    // row only names the host and path. It has no model-list route, so `models`
+    // is the list, and the first is what a run uses when none is picked.
+    id: "antigravity",
+    name: "Google Antigravity",
+    shape: "gemini",
+    baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+    path: "/v1internal:streamGenerateContent?alt=sse",
+    models: [
+      "gemini-4-argon",
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+      "gemini-3.1-pro",
+      "claude-opus-5-5",
+      "claude-sonnet-5-5",
+      "claude-sonnet-4-6",
+      "claude-opus-4-6-thinking",
+    ],
+    auth: "oauth",
+    staticModels: true,
+    color: "#1E88E5",
+    icon: "gemini",
+  },
+  {
     id: "anthropic",
     name: "Anthropic",
     shape: "anthropic",
@@ -374,7 +494,7 @@ export const PRESETS: ProviderPreset[] = [
     // Signing in mints a key on the same account, billed from the same
     // credits — a shortcut past the console, not a second way to pay, so it
     // stays one row. See the OpenRouter flow in @providerkit/core/auth.
-    signIn: true,
+    signIn: "key",
     effortDialect: "openrouter",
     // App attribution for OpenRouter's rankings — public, not secret. Rides
     // every chat turn and the model listing alike.
@@ -384,89 +504,6 @@ export const PRESETS: ProviderPreset[] = [
     }),
     color: "#334155",
     icon: "openrouter",
-  },
-  {
-    // A gateway, like OpenRouter: one key, many vendors' models — and the only
-    // endpoint here that serves a standing shelf of $0 models. The picker's
-    // live listing is the real catalog; these are the fallback, led by the
-    // contributor-tier Spark (free, agentic, and the shelf's steadiest free
-    // id). The free shelf rotates — these are the ids OpenCode's own Zen docs
-    // name right now, so a cold open never offers a model the endpoint already
-    // retired (a dead free id answers 500).
-    //
-    // Free means $0 per token, NOT no card: an OpenCode account wants billing
-    // details before it issues a key at all. `apiKeyUrl` goes where that is
-    // set up.
-    id: "opencode",
-    name: "OpenCode Zen",
-    shape: "openai",
-    baseUrl: "https://opencode.ai/zen/v1",
-    models: [
-      "muse-spark-1.3-contributor-free",
-      "mimo-v2.5-free",
-      "mimo-v2.6-flash-free",
-      "glm-5.3",
-      "claude-sonnet-5",
-      "gpt-5.4",
-    ],
-    apiKeyUrl: "https://opencode.ai/auth",
-    sessionHeader: "x-opencode-session",
-    // Per OpenCode's Zen docs: GPT/Grok/Muse-Spark live on /responses,
-    // Claude/Qwen on /messages. (Gemini lives on its own Google endpoint,
-    // which this extension has no adapter for — those ids stay on chat
-    // completions and fail loudly rather than silently.)
-    modelRoutes: {
-      responses: [
-        "gpt-6-astra",
-        "gpt-5.6-sol",
-        "gpt-5.6-terra",
-        "gpt-5.6-luna",
-        "gpt-5.5",
-        "gpt-5.5-pro",
-        "gpt-5.4",
-        "gpt-5.4-pro",
-        "gpt-5.4-mini",
-        "gpt-5.4-nano",
-        "gpt-5.3-codex",
-        "gpt-5.3-codex-spark",
-        "gpt-5.2",
-        "gpt-5.2-codex",
-        "gpt-5.1",
-        "gpt-5.1-codex",
-        "gpt-5.1-codex-max",
-        "gpt-5.1-codex-mini",
-        "gpt-5",
-        "gpt-5-codex",
-        "gpt-5-nano",
-        "grok-4.7",
-        "grok-4.6",
-        "grok-4.5",
-        "grok-build-0.1",
-        "muse-spark-1.3",
-        "muse-spark-1.2",
-        "muse-spark-1.3-contributor-free",
-      ],
-      anthropic: [
-        "claude-fable-5",
-        "claude-fable-5-1",
-        "claude-opus-5",
-        "claude-opus-4-8",
-        "claude-opus-4-7",
-        "claude-opus-4-6",
-        "claude-opus-4-5",
-        "claude-sonnet-5",
-        "claude-sonnet-4-6",
-        "claude-sonnet-4-5",
-        "claude-haiku-4-5",
-        "qwen3.8-flash",
-        "qwen3.7-max",
-        "qwen3.7-plus",
-        "qwen3.6-plus",
-        "qwen3.5-plus",
-      ],
-    },
-    color: "#171717",
-    icon: "opencode",
   },
   {
     // The same key as `opencode`, on OpenCode's cheaper catalog — a different
@@ -547,6 +584,18 @@ export const PRESETS: ProviderPreset[] = [
     icon: "ollama",
   },
 ];
+
+export type PresetSection = "free" | "subscription" | "key";
+
+/**
+ * Which picker section a preset sits under. The picker chunks PRESETS by
+ * scanning runs, never sorting, so a section must stay one run: a row parked
+ * out of place would open a second heading of the same name.
+ */
+export function presetSection(preset: ProviderPreset): PresetSection {
+  if (preset.free) return "free";
+  return preset.auth === "oauth" ? "subscription" : "key";
+}
 
 /**
  * The product's own name — "Claude", "Anthropic", "DeepSeek". The preset's

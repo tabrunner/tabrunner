@@ -163,6 +163,19 @@ describe("buildOpenAIBody", () => {
       }
     });
 
+    it("OpenCode Zen: 'none' is raised to what each family accepts, never sent as a 400", () => {
+      // Measured live on Zen, 2026-10-21: MiniMax answers an explicit none with
+      // 400 "requires adaptive thinking; reasoning effort none is not allowed".
+      // The table is core's `opencode-go` dialect (GLM takes only high and max).
+      const none = (model: string) => effortFields("opencode", model, "none");
+      expect(none("minimax-m3.1-flash-free")).toEqual({ reasoning_effort: "low" });
+      expect(none("deepseek-v4.1-flash-free")).toEqual({ reasoning_effort: "low" });
+      expect(none("glm-5.3-flash-free")).toEqual({ reasoning_effort: "high" });
+      expect(effortFields("opencode", "big-pickle", "medium")).toEqual({
+        reasoning_effort: "medium",
+      });
+    });
+
     it("sends nothing on any endpoint when no effort was picked", () => {
       for (const [id, model] of [
         ["openrouter", "z-ai/glm-5.3-flash"],
