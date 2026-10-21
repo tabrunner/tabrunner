@@ -2,6 +2,8 @@ import type {
   ChatProvider,
   ChatMessage,
   Delta,
+  FinishReason,
+  ProviderConfig,
   ReasoningEffort,
   ResolvedProviderConfig,
   ToolDef,
@@ -12,6 +14,7 @@ import { apiUrl, parseToolArgs } from "@providerkit/core";
 import {
   anthropicHeaders,
   anthropicOAuthHeaders,
+  envelopeProviderError,
   logCacheUsage,
   sessionHeaders,
   streamFrameError,
@@ -35,6 +38,8 @@ export function createAnthropicProvider(base: ResolvedProviderConfig): ChatProvi
       // Per request, not per run: a token that expires mid-run is renewed on the next turn.
       const config = await ensureProviderCredential(base);
       let toolCallBuffer: { id: string; name: string; args: string } | null = null;
+      let sawToolCall = false;
+      let stopped = false;
       let freshInput = 0;
       let cacheRead = 0;
       let cacheWritten = 0;
@@ -52,6 +57,9 @@ export function createAnthropicProvider(base: ResolvedProviderConfig): ChatProvi
         body: JSON.stringify(buildAnthropicBody(config, messages, tools)),
         provider: config,
         signal,
+        // The stop reason rides in `message_delta` with the final usage, so a
+        // read that dies after it loses nothing but `message_stop`.
+        finished: () => stopped,
         meta: {
           model: config.model,
           messages: messages.length,
@@ -94,7 +102,13 @@ export function createAnthropicProvider(base: ResolvedProviderConfig): ChatProvi
             cacheRead = event.usage?.cache_read_input_tokens ?? cacheRead;
             cacheWritten = event.usage?.cache_creation_input_tokens ?? cacheWritten;
             if (event.delta?.stop_reason) {
-              yield { type: "finish", reason: mapStopReason(event.delta.stop_reason) };
+              const stated = mapStopReason(config, event.delta.stop_reason);
+              stopped = true;
+              // Anthropic-compatible gateways can end a tool turn on `end_turn`,
+              // and a caller reading that as done never runs the tool. Only
+              // `stop` is promoted: a length cut may be what broke the call.
+              const reason = stated === "stop" && sawToolCall ? "tool_use" : stated;
+              yield { type: "finish", reason };
             }
             yield {
               type: "usage",
@@ -109,6 +123,7 @@ export function createAnthropicProvider(base: ResolvedProviderConfig): ChatProvi
           }
           case "content_block_start": {
             if (event.content_block?.type === "tool_use") {
+              sawToolCall = true;
               toolCallBuffer = {
                 id: event.content_block.id ?? "",
                 // The model echoes prefixed names back in OAuth mode — the wire
@@ -360,11 +375,26 @@ function stripToolPrefix(name: string): string {
   return name.startsWith(TOOL_PREFIX) ? name.slice(TOOL_PREFIX.length) : name;
 }
 
-function mapStopReason(reason: string): "stop" | "length" | "tool_use" | "unknown" {
-  if (reason === "end_turn") return "stop";
-  if (reason === "max_tokens") return "length";
-  if (reason === "tool_use") return "tool_use";
-  return "unknown";
+function mapStopReason(
+  provider: Pick<ProviderConfig, "id" | "name" | "auth">,
+  reason: string,
+): FinishReason {
+  switch (reason) {
+    case "end_turn":
+    case "stop_sequence":
+      return "stop";
+    case "max_tokens":
+    case "model_context_window_exceeded":
+      return "length";
+    case "tool_use":
+      return "tool_use";
+    case "refusal":
+      return "content_filter";
+    default:
+      throw envelopeProviderError(provider, 200, `stopped the turn on "${reason}"`, {
+        unknownAs: "overload",
+      });
+  }
 }
 
 /**

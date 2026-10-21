@@ -122,6 +122,36 @@ describe("gemini bridge stream", () => {
     expect(deltas[deltas.length - 1]).toEqual({ type: "done" });
   });
 
+  it("maps Gemini safety stops to content_filter and retries OTHER as overload", async () => {
+    stubStream(200, nativeStream([{ candidates: [{ finishReason: "SAFETY" }] }]));
+    const deltas = [];
+    for await (const d of createGeminiProvider(geminiConfig()).stream(
+      [],
+      [],
+      new AbortController().signal,
+    )) {
+      deltas.push(d);
+    }
+    expect(deltas).toContainEqual({ type: "finish", reason: "content_filter" });
+
+    stubStream(200, nativeStream([{ candidates: [{ finishReason: "OTHER" }] }]));
+    let caught: unknown;
+    try {
+      for await (const d of createGeminiProvider(geminiConfig()).stream(
+        [],
+        [],
+        new AbortController().signal,
+      )) {
+        void d;
+      }
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ProviderError);
+    expect((caught as ProviderError).kind).toBe("overload");
+    expect(isRetryable(caught)).toBe(true);
+  });
+
   it("normalizes core failures through the shared envelope", async () => {
     stubStream(
       400,

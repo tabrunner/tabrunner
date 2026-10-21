@@ -2,12 +2,20 @@ import type {
   ChatMessage,
   ChatProvider,
   Delta,
+  FinishReason,
+  ProviderConfig,
   ResolvedProviderConfig,
   ToolDef,
   ToolResult,
 } from "./types";
 import { apiUrl, openRouterCostUsd, parseToolArgs, withoutPatterns } from "@providerkit/core";
-import { logCacheUsage, sessionHeaders, streamFrameError, streamSse } from "./http";
+import {
+  envelopeProviderError,
+  logCacheUsage,
+  sessionHeaders,
+  streamFrameError,
+  streamSse,
+} from "./http";
 import { PRESETS } from "./presets";
 import { ensureProviderCredential } from "./credential";
 import { isRecord } from "@/shared/types";
@@ -53,6 +61,7 @@ export function createResponsesProvider(base: ResolvedProviderConfig): ChatProvi
       // response item id so parallel calls never cross wires.
       const pending = new Map<string, PendingCall>();
       let sawToolUse = false;
+      let finished = false;
 
       const flushPending = (): Delta[] => {
         const out: Delta[] = [];
@@ -76,6 +85,7 @@ export function createResponsesProvider(base: ResolvedProviderConfig): ChatProvi
         body: JSON.stringify(buildResponsesBody(config, messages, tools)),
         provider: config,
         signal,
+        finished: () => finished,
         meta: {
           model: config.model,
           messages: messages.length,
@@ -154,13 +164,34 @@ export function createResponsesProvider(base: ResolvedProviderConfig): ChatProvi
             break;
           }
 
-          case "response.completed": {
+          case "response.completed":
+          case "response.done": {
+            const response = isRecord(frame.response) ? frame.response : undefined;
+            if (response?.status === "failed" || response?.error) {
+              throw streamFrameError(config, response.error ?? response);
+            }
+            const status = str(response?.status);
+            if (status !== undefined && status !== "completed" && status !== "incomplete") {
+              throw envelopeProviderError(config, 200, `ended the turn as "${status}"`, {
+                unknownAs: "overload",
+              });
+            }
             // The terminal frame may arrive before a pending call's done event —
             // flush it so the loop still runs the tool it decided to call.
             for (const d of flushPending()) yield d;
-            const usage = isRecord(frame.response) ? frame.response.usage : undefined;
+            const details = isRecord(response?.incomplete_details)
+              ? response.incomplete_details
+              : undefined;
+            const reason: FinishReason =
+              status === "incomplete"
+                ? incompleteFinish(config, str(details?.reason))
+                : sawToolUse
+                  ? "tool_use"
+                  : "stop";
+            finished = true;
+            const usage = response?.usage;
             if (isRecord(usage)) yield usageDelta(usage);
-            yield { type: "finish", reason: sawToolUse ? "tool_use" : "stop" };
+            yield { type: "finish", reason };
             yield { type: "done" };
             return;
           }
@@ -171,7 +202,8 @@ export function createResponsesProvider(base: ResolvedProviderConfig): ChatProvi
             const details = isRecord(response?.incomplete_details)
               ? response.incomplete_details
               : undefined;
-            const reason = details?.reason === "max_output_tokens" ? "length" : "unknown";
+            const reason = incompleteFinish(config, str(details?.reason));
+            finished = true;
             const usage = response?.usage;
             if (isRecord(usage)) yield usageDelta(usage);
             yield { type: "finish", reason };
@@ -348,6 +380,26 @@ const str = (v: unknown): string | undefined =>
 
 const num = (v: unknown): number | undefined =>
   typeof v === "number" && Number.isFinite(v) ? v : undefined;
+
+/**
+ * The finish an `incomplete` turn stands for: `max_output_tokens` is the output
+ * cap (`length`) and `content_filter` the filter. Any other reason, or none,
+ * says only that the turn did not end on purpose, so it is thrown as a
+ * retryable `overload`.
+ */
+function incompleteFinish(
+  provider: Pick<ProviderConfig, "id" | "name" | "auth">,
+  reason: string | undefined,
+): FinishReason {
+  if (reason === "max_output_tokens") return "length";
+  if (reason === "content_filter") return "content_filter";
+  throw envelopeProviderError(
+    provider,
+    200,
+    `the turn stopped early, reason: ${reason ?? "none given"}`,
+    { unknownAs: "overload" },
+  );
+}
 
 /**
  * `response.completed` and `response.incomplete` both close a stream and both

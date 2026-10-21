@@ -477,10 +477,13 @@ export async function* streamSse(opts: {
   /** Names the provider in the error envelope, and says how it authenticates. */
   provider: ProviderIdentity;
   signal: AbortSignal;
+  /** Whether the turn already stated its finish, so a read that fails on a
+   *  trailing frame ends the stream instead of throwing. See `SseHooks.finished`. */
+  finished?: () => boolean;
   /** Request metadata merged into the debug log (model, message/tool counts). */
   meta?: Record<string, unknown>;
 }): AsyncGenerator<string> {
-  const { url, headers, body, provider, signal, meta } = opts;
+  const { url, headers, body, provider, signal, finished, meta } = opts;
   log.debug("request", { url, bytes: body.length, ...meta });
 
   let res: Response;
@@ -513,5 +516,9 @@ export async function* streamSse(opts: {
 
   if (!res.body) throw new Error(i18n.t("errors.noResponseBody"));
 
-  yield* parseSseStream(res.body);
+  yield* parseSseStream(res.body, {
+    signal,
+    provider: provider.id,
+    ...(finished ? { finished } : {}),
+  });
 }

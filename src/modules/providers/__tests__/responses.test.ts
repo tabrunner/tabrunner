@@ -334,6 +334,33 @@ describe("ChatGPT provider SSE parsing", () => {
     expect(deltas[deltas.length - 1]).toEqual({ type: "done" });
   });
 
+  it("maps a content_filter incomplete to content_filter and throws retryable overload on other reasons", async () => {
+    const provider = createResponsesProvider(makeConfig());
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          frame({
+            type: "response.incomplete",
+            response: { incomplete_details: { reason: "content_filter" } },
+          }),
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const deltas = [];
+    for await (const d of provider.stream([], [], new AbortController().signal)) deltas.push(d);
+    expect(deltas).toContainEqual({ type: "finish", reason: "content_filter" });
+
+    const error = await failureOf({
+      type: "response.incomplete",
+      response: { incomplete_details: { reason: "server_busy" } },
+    });
+    expect(error).toBeInstanceOf(ProviderError);
+    expect((error as ProviderError).kind).toBe("overload");
+    expect(isRetryable(error)).toBe(true);
+  });
+
   /**
    * A failure the backend reports after it answered 200. It threw before, but
    * as a bare status-0 error with no kind: never retried, and the reader got
