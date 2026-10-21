@@ -1,7 +1,7 @@
 {
   "name": "tabrunner",
   "displayName": "TabRunner",
-  "version": "0.13.2",
+  "version": "0.13.3",
   "description": "Hand browser tasks to TabRunner, an agent in your own Chrome that uses the accounts you're signed in to, or click through a page yourself.",
   "author": {
     "name": "Gustavo Salomé",
