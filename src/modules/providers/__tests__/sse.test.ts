@@ -233,7 +233,7 @@ describe("OpenAI provider SSE parsing", () => {
     vi.restoreAllMocks();
   });
 
-  it("sends the session header on Zen turns carrying a conversation", async () => {
+  it("sends the OpenCode session on Zen turns carrying a conversation", async () => {
     const config: ResolvedProviderConfig = {
       ...makeConfig("openai", "https://opencode.ai/zen/v1"),
       id: "opencode",
@@ -253,7 +253,8 @@ describe("OpenAI provider SSE parsing", () => {
       void d;
     }
     const headers = spy.mock.calls[0]![1]?.headers as Record<string, string>;
-    expect(headers["x-opencode-session"]).toBe("conv-1");
+    // The free tier checks the id's shape, so the conversation id is forged into it.
+    expect(headers["x-opencode-session"]).toMatch(/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
     vi.restoreAllMocks();
   });
 
