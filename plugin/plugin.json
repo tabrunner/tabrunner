@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "tabrunner",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Hand browser tasks to TabRunner, an agent in your own Chrome that uses the accounts you're signed in to, or click through a page yourself.",
   "author": {
     "name": "Gustavo Salomé",

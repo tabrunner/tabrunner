@@ -1,7 +1,7 @@
 {
   "name": "tabrunner-mcp",
   "description": "MCP server that lets Claude, ChatGPT or any MCP client drive the TabRunner browser agent in your own Chrome",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "type": "module",
   "license": "MIT",
   "author": "Gustavo Salomé <gustavonips@gmail.com>",
