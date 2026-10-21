@@ -40,7 +40,7 @@
     },
     "daemon": {
       "name": "tabrunner-mcp",
-      "version": "0.13.1",
+      "version": "0.13.2",
       "bin": {
         "tabrunner-mcp": "dist/tabrunner-mcp.js",
       },
