@@ -54,11 +54,11 @@ CWS derives that same id from its own item record and takes the field in stride.
 fires `.github/workflows/release.yml`, which attaches versioned artifacts plus `tabrunner-latest-*`
 aliases that tabrunner.app hotlinks (and the MCP daemon bundle, `tabrunner-latest-mcp.js`, that
 docs/mcp.md's manual setup fetches). Then it publishes the daemon to npm as `tabrunner-mcp`, which
-the plugin (`plugin/`) runs with `bunx`, and its MCP Registry entry (`daemon/server.json`). npm
-trusts that workflow for the package (trusted publishing), so no npm token is stored; the
-`MCP_REGISTRY_KEY` repo secret signs for the `tabrunner.app` namespace, whose apex TXT record holds
-the public half. `bun run release` bumps every file that names the version (see `FOLLOWERS` in
-`scripts/release.ts`), so they never disagree.
+the plugin (`plugin/`) runs with `bunx`, and its MCP Registry entry (`daemon/server.json`). The
+`NPM_TOKEN` repo secret publishes the package (trusted publishing was never set up on npmjs.com,
+which needs a 2FA session); the `MCP_REGISTRY_KEY` repo secret signs for the `tabrunner.app`
+namespace, whose apex TXT record holds the public half. `bun run release` bumps every file that
+names the version (see `FOLLOWERS` in `scripts/release.ts`), so they never disagree.
 
 **No CRX.** Retired 2026-08-10. Chrome refuses to install a CRX served from anywhere but the
 store, and the store's own CRX is signed with a key only Google holds, so a self-signed one was
