@@ -18,7 +18,10 @@ import {
   type ImagePart,
   type ToolDefinition as CoreTool,
 } from "@providerkit/core";
+import { ensureProviderCredential } from "./credential";
 import { envelopeProviderError, logCacheUsage, networkError, streamCutError } from "./http";
+import { stampAntigravityUserAgent } from "./origin";
+import { PRESETS } from "./presets";
 import { ProviderError } from "./types";
 
 /**
@@ -144,16 +147,27 @@ function toCoreTools(tools: ToolDef[]): CoreTool[] {
 }
 
 /** Core chunks collapse into our deltas; tool fragments assemble by index. */
-export function createGeminiProvider(config: ResolvedProviderConfig): ChatProvider {
-  const core = createCoreGeminiProvider({
-    apiKey: config.apiKey,
-    model: bareModelId(config.model),
-    ...(config.reasoningEffort ? { effort: config.reasoningEffort } : {}),
-    baseUrl: coreBaseUrl(config.baseUrl),
-    id: config.id,
-  });
+export function createGeminiProvider(base: ResolvedProviderConfig): ChatProvider {
+  const model = bareModelId(base.model);
+  const path = PRESETS.find((p) => p.id === base.id)?.path;
   return {
     async *stream(messages, tools, signal): AsyncIterable<Delta> {
+      // Per request, not per run: Antigravity's token expires within the hour, and
+      // core holds the key it was built with, so it is rebuilt from the fresh one.
+      const config = await ensureProviderCredential(base);
+      const core = createCoreGeminiProvider({
+        apiKey: config.apiKey,
+        model,
+        ...(config.reasoningEffort ? { effort: config.reasoningEffort } : {}),
+        baseUrl: coreBaseUrl(config.baseUrl),
+        id: config.id,
+        // Antigravity's backend takes its own path, and the envelope around the
+        // request carries the account's project, which sign-in kept on the credential.
+        // Core recognises the id and does the rest.
+        ...(path ? { path } : {}),
+        ...(config.auth?.projectId ? { projectId: config.auth.projectId } : {}),
+      });
+      if (config.id === "antigravity") await stampAntigravityUserAgent(model);
       const toolAcc = new Map<
         number,
         { id: string; name: string; args: string; thoughtSignature?: string }
@@ -161,6 +175,9 @@ export function createGeminiProvider(config: ResolvedProviderConfig): ChatProvid
       try {
         for await (const chunk of core.createStream(toCoreMessages(messages), toCoreTools(tools), {
           signal,
+          // Rebuilding core per request would draw a new random session id each
+          // turn; the conversation's own keeps Antigravity's session stable.
+          ...(config.sessionId ? { sessionId: config.sessionId } : {}),
         })) {
           if (chunk.type === "usage" && chunk.usage) {
             const input = chunk.usage.inputTokens ?? 0;
