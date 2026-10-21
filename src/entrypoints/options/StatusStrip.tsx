@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getActiveProvider, watchActiveProvider, watchProviders } from "@/modules/providers";
 import { providerDisplayName } from "@/modules/providers/presets";
-import { credentialStatus, isOAuthProvider } from "@/modules/providers/status";
+import { canSignIn, credentialStatus } from "@/modules/providers/status";
 import type { ProviderConfig } from "@/modules/providers/types";
 import { bridgeConnected, bridgeItem } from "@/modules/bridge/config";
 import { useStoredItem } from "@/components/useStoredItem";
@@ -75,7 +75,7 @@ export function StatusStrip({ onAddProvider }: { onAddProvider: () => void }) {
              hover pill — the caption styling this replaced read as a label). */
           <Button variant="quiet-brand" size="sm" className="-ml-2" onClick={onAddProvider}>
             {providerDisplayName(provider)}:{" "}
-            {isOAuthProvider(provider.id)
+            {canSignIn(provider.id)
               ? t("settings.strip.signInAgain")
               : t("settings.strip.addKeyAgain")}
           </Button>

@@ -4,7 +4,7 @@ import { useProvidersStore } from "./store";
 import { ProviderMark } from "./ProviderIcon";
 import { AddProviderDialog } from "./AddProviderDialog";
 import { PRESETS, providerDisplayName } from "../presets";
-import { byCredentialStatus, credentialStatus, isOAuthProvider } from "../status";
+import { byCredentialStatus, canSignIn, credentialStatus } from "../status";
 import { Button } from "@/components/Button";
 import { CometPose } from "@/components/CometPose";
 import { DotIcon } from "@/components/Icon";
@@ -89,7 +89,7 @@ export function ProviderList() {
         const isActive = p.id === activeId;
         const host = preset ? null : hostOf(p.baseUrl);
         const connected = credentialStatus(p) === "connected";
-        const oauth = isOAuthProvider(p.id);
+        const signsIn = canSignIn(p.id);
         return (
           <li
             key={p.id}
@@ -117,7 +117,7 @@ export function ProviderList() {
                         self-evidently the user's own. */}
                     {connected
                       ? (p.auth?.account ?? t("providerList.statusConnected"))
-                      : oauth
+                      : signsIn
                         ? t("providerList.statusNoSignIn")
                         : t("providerList.statusNoKey")}{" "}
                     · {p.model ?? t("providerList.auto")}
@@ -139,12 +139,12 @@ export function ProviderList() {
                   initialProvider={p}
                   trigger={
                     <Button size="sm">
-                      {oauth ? t("providerList.signIn") : t("providerList.addKey")}
+                      {signsIn ? t("providerList.signIn") : t("providerList.addKey")}
                     </Button>
                   }
                 />
               )}
-              {connected && oauth && (
+              {connected && p.auth && (
                 <ConfirmDialog
                   trigger={
                     <Button variant="ghost" size="sm">

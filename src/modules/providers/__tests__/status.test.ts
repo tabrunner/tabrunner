@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { byCredentialStatus, credentialStatus, isOAuthProvider } from "../status";
+import { byCredentialStatus, canSignIn, credentialStatus, isOAuthProvider } from "../status";
 import type { ProviderConfig } from "../types";
 
 function config(over: Partial<ProviderConfig> & Pick<ProviderConfig, "id">): ProviderConfig {
@@ -33,6 +33,14 @@ describe("credentialStatus", () => {
     expect(credentialStatus(config({ id: "kimi-plan", auth }))).toBe("connected");
   });
 
+  it("counts a sign-in on a keyed row, which holds no key, as connected", () => {
+    // OpenCode Zen and OpenRouter take a key OR a sign-in. A signed-in one has
+    // `auth` and an empty apiKey, and the key check alone called it missing.
+    expect(credentialStatus(config({ id: "opencode", auth }))).toBe("connected");
+    expect(credentialStatus(config({ id: "opencode", apiKey: "oc_sk_1" }))).toBe("connected");
+    expect(credentialStatus(config({ id: "opencode" }))).toBe("missing");
+  });
+
   it("stays connected on a stale token — the next run refreshes it silently", () => {
     const stale = { ...auth, expiresAt: Date.now() - 60_000 };
     expect(credentialStatus(config({ id: "kimi-plan", auth: stale }))).toBe("connected");
@@ -44,6 +52,21 @@ describe("isOAuthProvider", () => {
     expect(isOAuthProvider("kimi-plan")).toBe(true);
     expect(isOAuthProvider("kimi")).toBe(false);
     expect(isOAuthProvider("custom-123")).toBe(false);
+  });
+});
+
+describe("canSignIn", () => {
+  it("is true for subscriptions and for keyed rows that also take a sign-in", () => {
+    expect(canSignIn("claude")).toBe(true);
+    expect(canSignIn("antigravity")).toBe(true);
+    expect(canSignIn("opencode")).toBe(true);
+    expect(canSignIn("openrouter")).toBe(true);
+  });
+
+  it("is false for rows that only take a key, and for custom endpoints", () => {
+    expect(canSignIn("deepseek")).toBe(false);
+    expect(canSignIn("opencode-go")).toBe(false);
+    expect(canSignIn("custom-123")).toBe(false);
   });
 });
 

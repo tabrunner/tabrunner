@@ -461,6 +461,7 @@
   },
   "providerForm": {
     "provider": "Provider",
+    "groupFree": "Free models included",
     "groupSubscription": "Subscription (a plan you already pay for)",
     "groupApiKey": "API key (paste a key; pay per use)",
     "configured": "{{name}} · configured",
@@ -498,6 +499,7 @@
     "signInStart": "Sign in with {{provider}}",
     "signInHint": "Uses your {{provider}} subscription. No API key needed.",
     "signInMintsKey": "Creates an API key on your {{provider}} account. No copying or pasting needed.",
+    "signInAccountHint": "Uses your {{provider}} account. No API key needed.",
     "or": "or",
     "signInOpened": "We opened {{host}} in a new tab. Approve the sign-in there to finish.",
     "signInBlocked": "If the tab didn't open, use this link:",

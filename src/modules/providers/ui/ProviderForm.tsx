@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useProvidersStore } from "./store";
 import { ProviderIcon } from "./ProviderIcon";
 import { OAuthSignIn, SIGN_IN_DONE_MS } from "./OAuthSignIn";
-import { PRESETS, providerName } from "../presets";
+import { PRESETS, presetSection, providerName, type PresetSection } from "../presets";
 import { checkCredential, writeModelsCache } from "../models";
 import { splitErrorDetail } from "@/modules/conversation/error-detail";
 import type { ProviderConfig, ProviderShape } from "../types";
@@ -181,6 +181,12 @@ export function ProviderForm({
     }
   };
 
+  const sectionLabels: Record<PresetSection, string> = {
+    free: t("providerForm.groupFree"),
+    subscription: t("providerForm.groupSubscription"),
+    key: t("providerForm.groupApiKey"),
+  };
+
   const keyHint = isLocalUrl(preset ? preset.baseUrl : baseUrl.trim()) ? (
     t("providerForm.keyHintLocal")
   ) : existing ? (
@@ -219,10 +225,7 @@ export function ProviderForm({
                 ? t("providerForm.configured", { name: p.name })
                 : p.name,
               icon: <ProviderIcon icon={p.icon} size={20} />,
-              group:
-                p.auth === "oauth"
-                  ? t("providerForm.groupSubscription")
-                  : t("providerForm.groupApiKey"),
+              group: sectionLabels[presetSection(p)],
             })),
             {
               value: CUSTOM,
@@ -278,7 +281,11 @@ export function ProviderForm({
               <OAuthSignIn
                 preset={preset}
                 signedIn={auth}
-                hint={t("providerForm.signInMintsKey", { provider: preset.name })}
+                hint={
+                  preset.signIn === "key"
+                    ? t("providerForm.signInMintsKey", { provider: preset.name })
+                    : t("providerForm.signInAccountHint", { provider: preset.name })
+                }
                 onSignedIn={finishSignIn}
               />
               <div className="flex items-center gap-2" aria-hidden>
