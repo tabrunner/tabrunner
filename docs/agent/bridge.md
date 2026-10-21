@@ -79,8 +79,10 @@ and can never drift from the panel's.
   with its result. A client can pass `snapshot: false` (the daemon puts it on the
   `browserAct` request, `DirectSession.act`'s third argument) and then owns the staleness.
 - **Its own tab by default.** The first snapshot goes to the client, so `browser_start`
-  follows `run`: a new background tab (at `url`, else the start page), and the user's
-  current tab only when the client sends `background: false` without a `url`.
+  follows `run`: it reuses the tab an earlier bridge session or run already drove while it
+  lives, else opens a background tab (at `url`, else the start page), and takes the user's
+  current tab only when the client sends `background: false` without a `url`. A starter tab
+  the session switches away from or closes without ever acting on is removed automatically.
 - **Hidden tabs work.** Attach turns on `Emulation.setFocusEmulationEnabled`, so a tab in
   the background, under another window or minimized still takes the mouse press, keys and
   wheel (a hidden page queues them otherwise). `screenshot` reads the tab the debugger

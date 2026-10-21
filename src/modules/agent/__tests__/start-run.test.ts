@@ -38,16 +38,23 @@ describe("continuesThreadTab", () => {
   // A follow-up typed elsewhere is usually steering from wherever the user
   // happens to be reading — the side panel stays open across tab switches —
   // not a move order. The conversation's own tab outranks the send-time one.
-  it("a panel run always wants the thread's tab back", () => {
+  it("panel and bridge runs continue the thread's tab by default", () => {
     expect(continuesThreadTab("panel", false)).toBe(true);
     expect(continuesThreadTab("panel", true)).toBe(true);
+    expect(continuesThreadTab("bridge", false)).toBe(true);
+    expect(continuesThreadTab("bridge", true)).toBe(true);
   });
 
-  it("other owners return only for a parked answer", () => {
+  it("an explicit url or foreground adoption starts fresh unless a question is pending", () => {
+    expect(continuesThreadTab("bridge", false, { url: "https://example.com" })).toBe(false);
+    expect(continuesThreadTab("bridge", false, { adoptCurrentTab: true })).toBe(false);
+    expect(continuesThreadTab("panel", false, { url: "https://example.com" })).toBe(false);
+    expect(continuesThreadTab("bridge", true, { url: "https://example.com" })).toBe(true);
+  });
+
+  it("a schedule run returns only for a parked answer", () => {
     expect(continuesThreadTab("schedule", false)).toBe(false);
-    expect(continuesThreadTab("bridge", false)).toBe(false);
     expect(continuesThreadTab("schedule", true)).toBe(true);
-    expect(continuesThreadTab("bridge", true)).toBe(true);
   });
 });
 

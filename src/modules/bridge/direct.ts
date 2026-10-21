@@ -12,10 +12,16 @@ import {
   waitForLoad,
 } from "@/modules/browser";
 import type { BrowserDriver } from "@/modules/browser";
-import { appendMessageTo, openAgentConversation } from "@/modules/conversation";
+import {
+  appendMessageTo,
+  getThreadTabsFor,
+  openAgentConversation,
+  recordDrivenTabFor,
+} from "@/modules/conversation";
 import { createLogger, truncate } from "@/lib/logger";
 import { defaultStartUrl } from "@/lib/prefs";
 import type { TabId } from "@/shared/types";
+import { bridgeThread } from "./config";
 
 const log = createLogger("bridge");
 
@@ -68,6 +74,13 @@ export class DirectSession {
 
   private conversationId: string | null = null;
   private tabId: TabId | null = null;
+  /** The tab this session opened at start, until a mutating action or switch uses/abandons it. */
+  private unactedTabId: TabId | null = null;
+  /** True when the opened tab started on the default start page rather than an explicit URL. */
+  private starterTab = false;
+  /** The last tab a session actually drove, reused by the next browser_start when no URL is given. */
+  private lastTabId: TabId | null = null;
+  private sessionDriver: BrowserDriver | null = null;
   private claim: ActiveRun | null = null;
   private idle: ReturnType<typeof setTimeout> | null = null;
 
@@ -81,14 +94,15 @@ export class DirectSession {
   }
 
   /**
-   * Opens a session. Like `run`, it works a tab of its own by default (at `url`,
-   * else the start page) and leaves the page the user is reading alone: its
-   * snapshot goes to the client, and a client that was never told which page
-   * that is should not be handed it. `background: false` is the opt-in for a
-   * task that is about what the user is looking at. The goal is written as the
-   * thread's first message, which makes it the conversation's title — a stated
-   * goal is a subject, so each session gets its own thread rather than
-   * appending to a previous one whose heading would then be a lie.
+   * Opens a session. Like `run`, it works a tab of its own by default (reusing
+   * the bridge's last driven tab while it lives, else opening `url` or the
+   * start page) and leaves the page the user is reading alone: its snapshot
+   * goes to the client, and a client that was never told which page that is
+   * should not be handed it. `background: false` is the opt-in for a task that
+   * is about what the user is looking at. The goal is written as the thread's
+   * first message, which makes it the conversation's title — a stated goal is a
+   * subject, so each session gets its own thread rather than appending to a
+   * previous one whose heading would then be a lie.
    */
   async start(
     goal: string,
@@ -98,7 +112,7 @@ export class DirectSession {
     const active = getActiveRun();
     if (active) throw new Error(alreadyRunning(active));
 
-    const { tabId, opened } = await this.pickTab(where);
+    const { tabId, opened, starter } = await this.pickTab(where);
 
     const claim = acquireRun(crypto.randomUUID(), "bridge");
     if (!claim.ok) {
@@ -108,6 +122,9 @@ export class DirectSession {
 
     this.claim = claim.run;
     this.tabId = tabId;
+    this.unactedTabId = opened ? tabId : null;
+    this.starterTab = starter;
+    this.sessionDriver = this.buildDriver(tabId, opened);
     this.conversationId = claim.run.conversationId;
     await openAgentConversation(this.conversationId, agent);
     await appendMessageTo(this.conversationId, {
@@ -155,14 +172,44 @@ export class DirectSession {
     this.idle = null;
     releaseRun(this.claim);
     this.claim = null;
+    this.sessionDriver = null;
     const tabId = this.tabId;
     this.tabId = null;
+    const conversationId = this.conversationId;
+    this.conversationId = null;
+    const unusedStarter = this.starterTab && this.unactedTabId !== null ? this.unactedTabId : null;
+    this.unactedTabId = null;
+    this.starterTab = false;
     log.info("direct session closed");
-    if (tabId !== null) await hideAgentIndicator(tabId);
+    if (unusedStarter !== null) {
+      void chrome.tabs.remove(unusedStarter).catch(() => {});
+    } else if (tabId !== null) {
+      this.lastTabId = tabId;
+      await hideAgentIndicator(tabId);
+      void this.persistDrivenTab(conversationId, tabId);
+    }
     // Same rule as an agent run: the debugger leaves with the session, or its
     // "debugging this browser" infobar would outstay the work it came for.
     await detachAll();
     this.onClose?.();
+  }
+
+  /** Closes any open session and forgets the tab it drove (for new_conversation). */
+  async reset(): Promise<void> {
+    await this.end();
+    this.lastTabId = null;
+  }
+
+  /**
+   * Seeds a newly minted bridge thread with the tab a preceding direct session
+   * already worked on, so `browser_start` followed by `run` continues in that
+   * tab instead of opening a fresh start-page tab.
+   */
+  async seedThreadTab(conversationId: string): Promise<void> {
+    if (this.lastTabId === null) return;
+    const { tabs } = await getThreadTabsFor(conversationId);
+    if (tabs.length > 0) return;
+    await this.persistDrivenTab(conversationId, this.lastTabId);
   }
 
   // ── Internals ─────────────────────────────────────────────────────
@@ -171,7 +218,7 @@ export class DirectSession {
   private async pickTab(where: {
     url?: string;
     background: boolean;
-  }): Promise<{ tabId: TabId; opened: boolean }> {
+  }): Promise<{ tabId: TabId; opened: boolean; starter: boolean }> {
     // A URL names its own page, so it never adopts — the same rule `run` follows.
     if (!where.background && !where.url) {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -180,7 +227,25 @@ export class DirectSession {
       // give a still-loading page its chance to settle first.
       if (isRestrictedUrl(tab.url)) throw new Error(i18n.t("errors.restrictedPage"));
       if (tab.status === "loading") await waitForLoad(tab.id, 10_000);
-      return { tabId: tab.id, opened: false };
+      return { tabId: tab.id, opened: false, starter: false };
+    }
+
+    // Continue on the tab an earlier bridge session or run already worked in
+    // while it still lives, instead of minting a fresh start-page tab every time.
+    if (!where.url) {
+      const priorId = await this.priorTabId();
+      if (priorId !== null) {
+        try {
+          const tab = await chrome.tabs.get(priorId);
+          if (tab?.id && !isRestrictedUrl(tab.url)) {
+            if (tab.status === "loading") await waitForLoad(tab.id, 10_000);
+            return { tabId: tab.id, opened: false, starter: false };
+          }
+        } catch {
+          // The tab was closed since the last session — open a fresh one below.
+        }
+        this.lastTabId = null;
+      }
     }
 
     const url = where.url || (await defaultStartUrl.get()) || defaultStartUrl.fallback;
@@ -194,7 +259,28 @@ export class DirectSession {
       void chrome.tabs.remove(created.id).catch(() => {});
       throw e;
     }
-    return { tabId: created.id, opened: true };
+    return { tabId: created.id, opened: true, starter: !where.url };
+  }
+
+  private async priorTabId(): Promise<TabId | null> {
+    if (this.lastTabId !== null) return this.lastTabId;
+    const threadId = await bridgeThread.get();
+    if (!threadId) return null;
+    const { tabs } = await getThreadTabsFor(threadId);
+    return tabs[0]?.tabId ?? null;
+  }
+
+  private async persistDrivenTab(conversationId: string | null, tabId: TabId): Promise<void> {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (!tab?.url) return;
+      const entry = { url: tab.url, title: tab.title ?? "", tabId };
+      if (conversationId) await recordDrivenTabFor(conversationId, entry);
+      const threadId = await bridgeThread.get();
+      if (threadId && threadId !== conversationId) await recordDrivenTabFor(threadId, entry);
+    } catch {
+      // The tab died or tabs.get is unavailable in unit tests — nothing to record.
+    }
   }
 
   /** One tool call against the current tab, optionally written to the thread. */
@@ -203,26 +289,47 @@ export class DirectSession {
     args: Record<string, unknown>,
     opts: { record?: boolean } = {},
   ): Promise<ToolResult> {
-    const result = await executeTool({ id: crypto.randomUUID(), name: tool, args }, this.driver());
+    if (!this.sessionDriver) throw new Error(i18n.t("errors.noActiveTab"));
+    const result = await executeTool(
+      { id: crypto.randomUUID(), name: tool, args },
+      this.sessionDriver,
+    );
+    if (result.ok) {
+      if (MUTATING.has(tool)) {
+        this.unactedTabId = null;
+      } else if (tool === "switch_tab") {
+        const nextId =
+          (result.data as { id?: number } | undefined)?.id ??
+          (typeof args.tab_id === "number" ? args.tab_id : undefined);
+        if (nextId !== undefined && nextId !== this.tabId) {
+          const prev = this.tabId;
+          this.tabId = nextId;
+          if (prev !== null) void hideAgentIndicator(prev);
+          void showAgentIndicator(nextId);
+        }
+        if (this.unactedTabId !== null && this.unactedTabId !== this.tabId) {
+          const abandoned = this.unactedTabId;
+          this.unactedTabId = null;
+          void chrome.tabs.remove(abandoned).catch(() => {});
+        }
+      }
+    }
     if (opts.record !== false) await this.record(tool, args, result);
     return result;
   }
 
-  /**
-   * A fresh driver per call, targeting the session's current tab. Cheap (it is
-   * a closure over a tab id) and stateless, so a switch_tab that re-targets it
-   * cannot leave a stale target behind.
-   */
-  private driver(): BrowserDriver {
-    const tabId = this.tabId;
-    if (tabId === null) throw new Error(i18n.t("errors.noActiveTab"));
-    // Direct control is the client steering tab by tab — it asked for this tab.
-    // Whether the switch reaches the screen stays the driver's call: it follows
-    // only while the user is watching the session's current tab.
-    return createDriver(tabId, {
+  private buildDriver(initialTabId: TabId, opened: boolean): BrowserDriver {
+    return createDriver(initialTabId, {
+      openedTab: opened,
       onSwitch: (tab) => {
+        const prev = this.tabId;
         this.tabId = tab.id;
-        void hideAgentIndicator(tabId);
+        if (this.unactedTabId !== null && this.unactedTabId !== tab.id) {
+          // createDriver's switchTab closes the abandoned starter tab itself;
+          // clear our handle so run() does not remove it a second time.
+          this.unactedTabId = null;
+        }
+        if (prev !== null && prev !== tab.id) void hideAgentIndicator(prev);
         void showAgentIndicator(tab.id);
       },
     });
