@@ -404,7 +404,7 @@ function parseCreated(entry: Record<string, unknown>): number | undefined {
 // Gemini) mix embeddings/tts/image/live/realtime models into /models. Ceiling:
 // a chat model with an unlucky name gets hidden; it stays reachable via free-text entry.
 const NON_CHAT_PATTERN =
-  /embed|whisper|tts|dall-e|image|moderation|realtime|audio|transcrib|search-preview|-live|veo|robot|research|computer-use/i;
+  /embed|whisper|tts|dall-e|image|moderation|realtime|audio|transcrib|search-preview|-live|veo|robot|research|computer-use|\bjev\b/i;
 
 function isNonChatModel(id: string): boolean {
   return NON_CHAT_PATTERN.test(id);

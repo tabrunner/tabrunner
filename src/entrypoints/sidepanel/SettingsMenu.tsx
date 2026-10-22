@@ -55,6 +55,13 @@ export function SettingsMenu() {
   // reproducible if it names the one the run actually used.
   const provider = useProvidersStore(activeProviderOf);
 
+  const openJevSettings = () => {
+    setOpen(false);
+    void chrome.tabs.create({
+      url: `${chrome.runtime.getURL("/options.html")}#providers`,
+    });
+  };
+
   return (
     <>
       <Popover.Root open={open} onOpenChange={setOpen}>
@@ -105,8 +112,21 @@ export function SettingsMenu() {
               {jev ? (
                 <div className="flex items-center justify-between gap-3 px-1 py-1.5">
                   <div className="min-w-0">
-                    <div className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
-                      {t("settings.jev.enable")}
+                    <div className="flex items-center gap-1 text-xs font-medium text-neutral-700 dark:text-neutral-200">
+                      <span>{t("settings.jev.enable")}</span>
+                      <button
+                        type="button"
+                        onClick={openJevSettings}
+                        title={t("settings.jev.openSettings")}
+                        aria-label={t("settings.jev.openSettings")}
+                        className="inline-flex cursor-pointer rounded p-0.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                      >
+                        <Icon size={12}>
+                          <circle cx="7.5" cy="15.5" r="4.5" />
+                          <path d="m11 12 10-10" />
+                          <path d="m16 5 3 3" />
+                        </Icon>
+                      </button>
                     </div>
                     <div className="mt-0.5 text-[11px] leading-snug text-neutral-500 dark:text-neutral-400">
                       {t("settings.jev.menuHint")}
@@ -123,10 +143,7 @@ export function SettingsMenu() {
                 // to Providers instead — same spot, same title, new hint.
                 <button
                   type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    void chrome.runtime.openOptionsPage();
-                  }}
+                  onClick={openJevSettings}
                   className="flex w-full items-center justify-between gap-3 px-1 py-1.5 text-left"
                 >
                   <div className="min-w-0">
