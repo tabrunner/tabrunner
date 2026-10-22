@@ -90,6 +90,8 @@ describe("listModels", () => {
         { id: "gemini-robotics-er-1.5-preview", created: 1784000000 },
         { id: "deep-research-pro-preview-12-2025", created: 1783000000 },
         { id: "gemini-2.5-computer-use-preview-10-2025", created: 1782000000 },
+        { id: "jev-1.13", created: 1781500000 },
+        { id: "jev-1.13-free", created: 1781400000 },
         { id: "gemma-3-27b-it", created: 1781000000 },
       ],
     });

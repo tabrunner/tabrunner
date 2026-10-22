@@ -3,25 +3,38 @@ import { createJevClient } from "@providerkit/core/jev";
 import type { JevClient, JevConfig, JevHost } from "@providerkit/core/jev";
 
 /**
- * TabRunner's side of the four Jev hosts. The wire — URLs, envelopes, answer
- * checks, retries — is `@providerkit/core/jev`; what stays here is what the
+ * TabRunner's side of the five Jev hosts. The wire (URLs, envelopes, answer
+ * checks, retries) is `@providerkit/core/jev`; what stays here is what the
  * package can't know: how the hosts are named and linked in Settings, the
  * price we bill at, and OpenRouter's balance.
  */
 
 /** In the order the settings picker lists them. */
 export const JEV_HOST_IDS = [
+  "opencode",
   "typesafe",
   "openrouter",
   "cloudflare",
   "vercel",
 ] as const satisfies readonly JevHost[];
 
+/** Models OpenCode Zen serves on `/zen/v1/systemone`. */
+export const OPENCODE_JEV_MODELS = ["jev-1.13-free", "jev-1.13"] as const;
+export type OpenCodeJevModel = (typeof OPENCODE_JEV_MODELS)[number];
+
 /** What a saved Jev setup needs to reach its host. */
-export type JevConnection = Pick<JevConfig, "host" | "apiKey" | "accountId">;
+export type JevConnection = Pick<JevConfig, "host" | "apiKey" | "accountId" | "model">;
+
+/** Stable id for a saved Jev option: OpenCode Zen can save both free and paid models. */
+export function jevEntryId(conn: Pick<JevConnection, "host" | "model">): string {
+  if (conn.host === "opencode") {
+    return `opencode/${conn.model ?? "jev-1.13-free"}`;
+  }
+  return conn.host;
+}
 
 /** TypeSafe's list price, US$ per million tokens: input only, output is free.
- *  OpenRouter's own bill wins over it (`costUsd`). */
+ *  OpenRouter's own bill and OpenCode's $0 free tier win over it (`costUsd`). */
 export const JEV_RATE: ModelRate = { input: 0.042, output: 0, cacheRead: 0 };
 
 interface HostInfo {
@@ -34,6 +47,11 @@ interface HostInfo {
 }
 
 export const JEV_HOSTS: Record<JevHost, HostInfo> = {
+  opencode: {
+    label: "OpenCode Zen",
+    keyUrl: "https://opencode.ai/zen",
+    usageUrl: "https://opencode.ai/zen",
+  },
   typesafe: {
     label: "TypeSafe",
     keyUrl: "https://console.typesafe.ai/keys",
