@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SnapshotElement } from "@/modules/browser/snapshot-script";
 import { buildRequest, readDecision } from "../request";
 import type { DelegateTask, PageView } from "../request";
-import type { ChoiceAnswer } from "@providerkit/core/jev";
+import type { ChoiceAnswer } from "@providerkit/core/decisions";
 
 const el = (ref: string, name: string, extra: Partial<SnapshotElement> = {}): SnapshotElement => ({
   ref,

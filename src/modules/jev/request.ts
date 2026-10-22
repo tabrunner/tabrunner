@@ -2,9 +2,9 @@ import type { SnapshotElement } from "@/modules/browser/snapshot-script";
 import type {
   ChoiceAnswer,
   ChoiceQuestion,
-  JevAnswer,
-  JevInstructions,
-} from "@providerkit/core/jev";
+  DecisionAnswer,
+  DecisionInstructions,
+} from "@providerkit/core/decisions";
 
 /**
  * One Jev request per page read: which operation to run, which target for
@@ -117,7 +117,7 @@ const OPERATIONS: Record<Operation, string> = {
     "Stop and hand back: the next step can't be undone (buy, pay, send, post, delete, confirm), or it needs a value that wasn't given.",
 };
 
-const yesNo = (yes: string, no: string, instructions: JevInstructions): ChoiceQuestion => ({
+const yesNo = (yes: string, no: string, instructions: DecisionInstructions): ChoiceQuestion => ({
   type: "choice",
   criteria: { YES: yes, NO: no },
   instructions,
@@ -267,7 +267,7 @@ export function buildRequest(
 }
 
 /** P(YES) of a yes/no answer; 0 when the answer failed the package's checks. */
-const yes = (a: JevAnswer | null | undefined) =>
+const yes = (a: DecisionAnswer | null | undefined) =>
   a?.type === "choice" ? (a.probabilities.YES ?? 0) : 0;
 
 /** A choice answer's options, most likely first. */
@@ -283,7 +283,7 @@ const ranking = (a: ChoiceAnswer) =>
  */
 export function readDecision(
   req: JevRequest,
-  answers: Record<string, JevAnswer | null>,
+  answers: Record<string, DecisionAnswer | null>,
 ): Decision | null {
   const op = answers.operation;
   if (op?.type !== "choice") return null;

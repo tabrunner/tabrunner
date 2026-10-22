@@ -174,9 +174,10 @@ never reach the service-worker bundle.
   url — never a loop. Before any CLICK or ENTER, `guard.ts` asks one yes/no "does this commit the
   user?"; YES ≥ 0.5 hands back, and the planner takes that step after `ask_user`. Sensitive fields
   and file pickers are never offered. The wire to the five hosts (OpenCode Zen, TypeSafe,
-  OpenRouter, Cloudflare, Vercel) is `@providerkit/core/jev`; `hosts.ts` keeps only labels, links,
-  the rate, and OpenRouter's balance. Cost reaches the run as `onUsage({ input: 0, output: 0, cost })`, so the context gauge
-  stays the planner's. Background-safe except `ui/`.
+  OpenRouter, Cloudflare, Vercel) is `@providerkit/core/decisions`; `hosts.ts` keeps only labels,
+  links, the rate, OpenRouter's decision-model catalog, and OpenRouter's balance. Cost reaches the
+  run as `onUsage({ input: 0, output: 0, cost })`, so the context gauge stays the planner's.
+  Background-safe except `ui/`.
 - `schedule/` — unattended runs on a timer: one-shot, daily, or every-N-minutes with an optional
   weekday filter and active-hours window. Wall-clock rules recomputed after every fire (never
   `periodInMinutes` — it can't hold 9am across a DST shift), one `chrome.alarms` one-shot per

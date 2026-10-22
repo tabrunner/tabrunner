@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { SnapshotElement } from "@/modules/browser/snapshot-script";
 import { runDelegate, siteOf } from "../executor";
-import { readAnswer } from "@providerkit/core/jev";
-import type { ChoiceQuestion, JevAnswer } from "@providerkit/core/jev";
+import { readAnswer } from "@providerkit/core/decisions";
+import type { ChoiceQuestion, DecisionAnswer } from "@providerkit/core/decisions";
 import type { ExecutorPage, Jev, Observed, PageAction } from "../executor";
 import type { DelegateTask } from "../request";
 
@@ -77,7 +77,7 @@ function fakeJev(script: Script[], commits = 0.02): Jev & { calls: string[] } {
   const ask = async (_state: unknown, questions: Record<string, ChoiceQuestion>) => {
     const reply = (raw: Record<string, unknown>) => ({
       answers: Object.fromEntries(
-        Object.entries(questions).map(([id, q]): [string, JevAnswer | null] => [
+        Object.entries(questions).map(([id, q]): [string, DecisionAnswer | null] => [
           id,
           readAnswer(q, raw[id]),
         ]),

@@ -112,6 +112,7 @@
       "savedAs": "{{host}} · chave terminada em {{last4}}",
       "savedFree": "{{host}} · grátis",
       "savedProviderAuth": "{{host}} · conta conectada",
+      "savedMissingProvider": "{{host}} · entre na conta ou adicione uma chave",
       "spent": "{{cost}} gastos pelo TabRunner",
       "balance": "{{cost}} de saldo",
       "usageLink": "Uso em {{host}}",
@@ -122,7 +123,7 @@
       "privacy": {
         "opencode": "O Jev vê os controles e o texto da aba em que trabalha, o objetivo e os valores que pode digitar. Isso passa pelo OpenCode Zen até a TypeSafe, que não treina modelos com isso.",
         "typesafe": "O Jev vê os controles e o texto da aba em que trabalha, o objetivo e os valores que pode digitar. A TypeSafe não treina modelos com isso e guarda só pelo tempo necessário.",
-        "openrouter": "O Jev vê os controles e o texto da aba em que trabalha, o objetivo e os valores que pode digitar. Isso passa pelo OpenRouter até a TypeSafe, que não treina modelos com isso.",
+        "openrouter": "O modelo de decisão vê os controles e o texto da aba em que trabalha, o objetivo e os valores que pode digitar. Os pedidos passam pelo OpenRouter até o provedor do modelo escolhido.",
         "cloudflare": "O Jev vê os controles e o texto da aba em que trabalha, o objetivo e os valores que pode digitar. A própria Cloudflare roda o Jev e não guarda nada disso.",
         "vercel": "O Jev vê os controles e o texto da aba em que trabalha, o objetivo e os valores que pode digitar. Isso passa pela Vercel até a TypeSafe, que não treina modelos com isso."
       },
