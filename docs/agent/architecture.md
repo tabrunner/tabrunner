@@ -733,13 +733,14 @@ complete a purchase, send, post, delete, or anything that can't be undone? YES �
 10/10 (YES 0.73–0.87, NO ≤ 0.05). Password and card fields are filtered out of what Jev is offered,
 and file inputs never reach the element list.
 
-**Hosts** (`hosts.ts`). The wire is `@providerkit/core/jev`: `jevClient(conn)` wraps its
-`createJevClient` (five host envelopes, answer checks, retries on 429/503/529, Cloudflare's
-404/7003 read as auth, a one-question `checkKey`). What stays here is what the package can't
-know: host labels and key/usage links for Settings, the $0.042/M rate `costUsd` bills at
-(OpenRouter's reported bill and OpenCode Zen's $0 free tier win over it), TabRunner's OpenRouter
-attribution, and OpenRouter's balance read. Only OpenRouter reports a balance; everywhere else
-Settings shows our own `spent` count and links to the host's usage page.
+**Hosts** (`hosts.ts`). The wire is `@providerkit/core/decisions`: `jevClient(conn)` wraps its
+`createDecisionClient` (five host envelopes, answer checks, retries on 429/503/529, Cloudflare's
+404/7003 read as auth, a one-question `checkConnection`, and OpenRouter's `output_modalities=decisions`
+catalog filtered to models that support `choice`, `noul`, and `score`). What stays here is what the
+package can't know: host labels and key/usage links for Settings, the $0.042/M rate `costUsd` bills
+at (OpenRouter's reported bill and free `:free` models plus OpenCode Zen's $0 free tier win over it),
+TabRunner's OpenRouter attribution, and OpenRouter's balance read. Only OpenRouter reports a balance;
+everywhere else Settings shows our own `spent` count and links to the host's usage page.
 
 **Cost** reaches the run as `onUsage({ input: 0, output: 0, cost })`: the spend meter counts it,
 the context gauge — the planner's window — never does.

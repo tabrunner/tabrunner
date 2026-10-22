@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ProviderError } from "@providerkit/core";
+import type { DecisionHost, DecisionModel } from "@providerkit/core/decisions";
 import { useProvidersStore } from "@/modules/providers/ui";
 import { Button } from "@/components/Button";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -12,11 +13,18 @@ import { TextField } from "@/components/TextField";
 import { useStoredItem } from "@/components/useStoredItem";
 import { i18n } from "@/i18n";
 import { formatMoney } from "@/lib/format";
-import type { JevHost } from "@providerkit/core/jev";
-import { JEV_HOSTS, JEV_HOST_IDS, OPENCODE_JEV_MODELS, openRouterBalance } from "../hosts";
+import {
+  JEV_HOSTS,
+  JEV_HOST_IDS,
+  OPENCODE_JEV_MODELS,
+  OPENROUTER_FALLBACK_DECISION_MODELS,
+  listOpenRouterExecutorModels,
+  openRouterBalance,
+} from "../hosts";
 import type { OpenCodeJevModel } from "../hosts";
 import {
   activeJevEntry,
+  isJevEntryReady,
   isKeylessJev,
   jevSettingsItem,
   removeJevKey,
@@ -30,7 +38,7 @@ import type { JevEntry } from "../settings";
 const KEY_CHECK_TIMEOUT_MS = 10_000;
 
 /** A failed key check, in words that say what to fix. */
-function checkError(e: unknown, host: JevHost): string {
+function checkError(e: unknown, host: DecisionHost): string {
   const name = JEV_HOSTS[host].label;
   // Our own 10 s cap aborts the check with a bare TimeoutError, not a ProviderError.
   const timedOut = e instanceof Error && e.name === "TimeoutError";
@@ -56,11 +64,17 @@ function entryHostLabel(entry: JevEntry): string {
   if (entry.host === "opencode") {
     return `${JEV_HOSTS.opencode.label} · ${entry.model ?? "jev-1.13-free"}`;
   }
+  if (entry.host === "openrouter" && entry.model) {
+    return `${JEV_HOSTS.openrouter.label} · ${entry.model}`;
+  }
   return JEV_HOSTS[entry.host].label;
 }
 
-function entryTitle(entry: JevEntry, usesConnectedProvider: boolean): string {
+function entryTitle(entry: JevEntry, ready: boolean, usesConnectedProvider: boolean): string {
   const host = entryHostLabel(entry);
+  if (!ready) {
+    return i18n.t("settings.jev.savedMissingProvider", { host });
+  }
   if (entry.apiKey) {
     return i18n.t("settings.jev.savedAs", { host, last4: entry.apiKey.slice(-4) });
   }
@@ -70,7 +84,7 @@ function entryTitle(entry: JevEntry, usesConnectedProvider: boolean): string {
   return i18n.t("settings.jev.savedFree", { host });
 }
 
-function keyFieldLabel(host: JevHost, keyOptional: boolean): string {
+function keyFieldLabel(host: DecisionHost, keyOptional: boolean): string {
   if (host === "cloudflare") return i18n.t("settings.jev.token");
   if (keyOptional) return i18n.t("settings.jev.keyOptional");
   return i18n.t("settings.jev.key");
@@ -83,9 +97,9 @@ function submitButtonLabel(checking: boolean, keyOptional: boolean, apiKey: stri
 }
 
 /**
- * Jev's setup under the provider list: saved Jev options (with active selection
- * like normal providers), the switch, spend, and the form to add or update a
- * Jev host.
+ * Jev's setup under the provider list: saved decision options (with active
+ * selection like normal providers), the switch, spend, and the form to add or
+ * update a decision host/model.
  */
 export function JevSection() {
   const { t } = useTranslation();
@@ -101,9 +115,17 @@ export function JevSection() {
   const openCodeConnected = Boolean(openCodeProvider?.apiKey || openCodeProvider?.auth);
 
   const [editing, setEditing] = useState(false);
-  const [host, setHost] = useState<JevHost>(active?.host ?? "opencode");
-  const [model, setModel] = useState<OpenCodeJevModel>(
-    active?.model === "jev-1.13" ? "jev-1.13" : "jev-1.13-free",
+  const [host, setHost] = useState<DecisionHost>(active?.host ?? "opencode");
+  const [openCodeModel, setOpenCodeModel] = useState<OpenCodeJevModel>(
+    active?.host === "opencode" && active.model === "jev-1.13" ? "jev-1.13" : "jev-1.13-free",
+  );
+  const [openRouterModels, setOpenRouterModels] = useState<readonly DecisionModel[]>(
+    OPENROUTER_FALLBACK_DECISION_MODELS,
+  );
+  const [openRouterModel, setOpenRouterModel] = useState<string>(
+    active?.host === "openrouter" && active.model
+      ? active.model
+      : OPENROUTER_FALLBACK_DECISION_MODELS[0]!.id,
   );
   const [apiKey, setApiKey] = useState("");
   const [accountId, setAccountId] = useState(active?.accountId ?? "");
@@ -112,7 +134,7 @@ export function JevSection() {
   const [balance, setBalance] = useState<number | undefined>();
 
   const openRouterSavedKey =
-    saved?.entries.find((e) => e.host === "openrouter")?.apiKey || openRouterKey;
+    saved?.entries.find((e) => e.host === "openrouter" && e.apiKey)?.apiKey || openRouterKey;
   useEffect(() => {
     if (!openRouterSavedKey) return;
     let live = true;
@@ -122,9 +144,25 @@ export function JevSection() {
     };
   }, [openRouterSavedKey]);
 
-  const info = JEV_HOSTS[host];
   const showForm = !saved || editing;
-  const effectiveModel = host === "opencode" ? model : undefined;
+  useEffect(() => {
+    if (!showForm || host !== "openrouter") return;
+    let live = true;
+    void listOpenRouterExecutorModels(apiKey.trim() || openRouterSavedKey).then((models) => {
+      if (!live) return;
+      setOpenRouterModels(models);
+      setOpenRouterModel((prev) =>
+        models.some((m) => m.id === prev) ? prev : (models[0]?.id ?? prev),
+      );
+    });
+    return () => {
+      live = false;
+    };
+  }, [showForm, host, apiKey, openRouterSavedKey]);
+
+  const info = JEV_HOSTS[host];
+  const effectiveModel =
+    host === "opencode" ? openCodeModel : host === "openrouter" ? openRouterModel : undefined;
   const keyless = isKeylessJev({ host, ...(effectiveModel ? { model: effectiveModel } : {}) });
   const providerConnected =
     (host === "opencode" && openCodeConnected) || (host === "openrouter" && openRouterConnected);
@@ -197,11 +235,15 @@ export function JevSection() {
         <ul className="arrive mt-3 flex flex-col gap-2">
           {saved.entries.map((entry) => {
             const isActive = entry.id === saved.activeId;
+            const ready = isJevEntryReady(entry, {
+              opencode: openCodeConnected,
+              openrouter: openRouterConnected,
+            });
             const usesConnectedProvider =
               !entry.apiKey &&
               ((entry.host === "opencode" && openCodeConnected) ||
                 (entry.host === "openrouter" && openRouterConnected));
-            const titleText = entryTitle(entry, usesConnectedProvider);
+            const titleText = entryTitle(entry, ready, usesConnectedProvider);
 
             return (
               <li
@@ -245,7 +287,7 @@ export function JevSection() {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {!isActive && (
+                  {!isActive && ready && (
                     <Button variant="ghost" size="sm" onClick={() => void setActiveJev(entry.id)}>
                       {t("providerList.setActive")}
                     </Button>
@@ -256,7 +298,9 @@ export function JevSection() {
                     onClick={() => {
                       setHost(entry.host);
                       if (entry.host === "opencode") {
-                        setModel(entry.model === "jev-1.13" ? "jev-1.13" : "jev-1.13-free");
+                        setOpenCodeModel(entry.model === "jev-1.13" ? "jev-1.13" : "jev-1.13-free");
+                      } else if (entry.host === "openrouter" && entry.model) {
+                        setOpenRouterModel(entry.model);
                       }
                       setAccountId(entry.accountId ?? "");
                       setApiKey("");
@@ -298,15 +342,29 @@ export function JevSection() {
           {host === "opencode" && (
             <Select
               label={t("settings.jev.model")}
-              value={model}
+              value={openCodeModel}
               onChange={(v) => {
                 const next = OPENCODE_JEV_MODELS.find((m) => m === v);
-                if (next) setModel(next);
+                if (next) setOpenCodeModel(next);
                 setError(null);
               }}
               options={OPENCODE_JEV_MODELS.map((m) => ({
                 value: m,
                 label: m === "jev-1.13-free" ? t("settings.jev.modelFree") : m,
+              }))}
+            />
+          )}
+          {host === "openrouter" && (
+            <Select
+              label={t("settings.jev.model")}
+              value={openRouterModel}
+              onChange={(v) => {
+                setOpenRouterModel(v);
+                setError(null);
+              }}
+              options={openRouterModels.map((m) => ({
+                value: m.id,
+                label: m.name ? `${m.name} (${m.id})` : m.id,
               }))}
             />
           )}

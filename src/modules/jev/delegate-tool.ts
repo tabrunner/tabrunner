@@ -5,7 +5,7 @@ import { formatMoney } from "@/lib/format";
 import { driverPage } from "./driver-page";
 import { runDelegate } from "./executor";
 import type { DelegateReport } from "./executor";
-import { jevClient } from "./hosts";
+import { jevClient, tokenBudgetForModel } from "./hosts";
 import type { JevConnection } from "./hosts";
 import type { DelegateValue } from "./request";
 import { addJevSpend } from "./settings";
@@ -67,6 +67,7 @@ export async function handleDelegate(
     jevClient(conn),
     { goal, doneWhen, values: readValues(args.values) },
     {
+      tokenBudget: tokenBudgetForModel(conn.model),
       ...(maxActions !== undefined ? { maxActions } : {}),
       ...(ctx.signal ? { signal: ctx.signal } : {}),
     },

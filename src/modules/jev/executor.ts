@@ -1,6 +1,6 @@
 import { ProviderError, costUsd } from "@providerkit/core";
 import type { ErrorKind } from "@providerkit/core";
-import type { ChoiceQuestion, JevClient } from "@providerkit/core/jev";
+import type { ChoiceQuestion, DecisionClient } from "@providerkit/core/decisions";
 import { isRestrictedUrl } from "@/modules/browser/restricted-url";
 import type { SnapshotElement } from "@/modules/browser/snapshot-script";
 import { createLogger } from "@/lib/logger";
@@ -45,8 +45,8 @@ function toAction(op: Op, t: Target | undefined): PageAction | null {
   return { op };
 }
 
-/** The one thing the loop needs from Jev: the package client's `ask`. */
-export type Jev = Pick<JevClient, "ask">;
+/** The one thing the loop needs from the decision client: `ask`. */
+export type Jev = Pick<DecisionClient, "ask">;
 
 export type StopReason =
   | "done"
@@ -155,11 +155,17 @@ export async function runDelegate(
   page: ExecutorPage,
   jev: Jev,
   task: DelegateTask,
-  opts: { maxActions?: number; signal?: AbortSignal; now?: () => number } = {},
+  opts: {
+    maxActions?: number;
+    tokenBudget?: number;
+    signal?: AbortSignal;
+    now?: () => number;
+  } = {},
 ): Promise<DelegateReport> {
   const now = opts.now ?? Date.now;
   const started = now();
   const maxActions = Math.min(Math.max(1, opts.maxActions ?? DEFAULT_ACTIONS), MAX_ACTIONS);
+  const budget = opts.tokenBudget ?? TOKEN_BUDGET;
   // Decisions, not calls: the commit check rides along with an action and is
   // bounded by maxActions already. The slack is for decisions thrown away
   // because the page moved under them.
@@ -213,14 +219,14 @@ export async function runDelegate(
 
       const canEnter = steps.at(-1)?.key.startsWith("TYPE|") === true;
       const history: HistoryEntry[] = steps.map(({ action, changed }) => ({ action, changed }));
-      let req = buildRequest(view, task, history, canEnter);
+      let req = buildRequest(view, task, history, canEnter, budget);
       let reply: Awaited<ReturnType<typeof call>>;
       try {
         reply = await call(req.state, req.questions);
       } catch (e) {
         // The window overflowed after all — chars/3 guessed low. Once, smaller.
         if (!(e instanceof ProviderError && e.kind === "context")) throw e;
-        req = buildRequest(view, task, history, canEnter, TOKEN_BUDGET / 2);
+        req = buildRequest(view, task, history, canEnter, Math.floor(budget / 2));
         reply = await call(req.state, req.questions);
       }
       const d = readDecision(req, reply.answers);

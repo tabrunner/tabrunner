@@ -112,6 +112,7 @@
       "savedAs": "{{host}} · clave que termina en {{last4}}",
       "savedFree": "{{host}} · gratis",
       "savedProviderAuth": "{{host}} · cuenta conectada",
+      "savedMissingProvider": "{{host}} · inicia sesión o añade una clave",
       "spent": "{{cost}} gastados desde TabRunner",
       "balance": "{{cost}} de saldo",
       "usageLink": "Uso en {{host}}",
@@ -122,7 +123,7 @@
       "privacy": {
         "opencode": "Jev ve los controles y el texto de la pestaña en la que trabaja, el objetivo y los valores que puede escribir. Pasa por OpenCode Zen hasta TypeSafe, que no entrena modelos con eso.",
         "typesafe": "Jev ve los controles y el texto de la pestaña en la que trabaja, el objetivo y los valores que puede escribir. TypeSafe no entrena modelos con eso y lo guarda solo el tiempo necesario.",
-        "openrouter": "Jev ve los controles y el texto de la pestaña en la que trabaja, el objetivo y los valores que puede escribir. Pasa por OpenRouter hasta TypeSafe, que no entrena modelos con eso.",
+        "openrouter": "El modelo de decisión ve los controles y el texto de la pestaña en la que trabaja, el objetivo y los valores que puede escribir. Las solicitudes pasan por OpenRouter hasta el proveedor del modelo elegido.",
         "cloudflare": "Jev ve los controles y el texto de la pestaña en la que trabaja, el objetivo y los valores que puede escribir. Cloudflare ejecuta Jev por su cuenta y no guarda nada.",
         "vercel": "Jev ve los controles y el texto de la pestaña en la que trabaja, el objetivo y los valores que puede escribir. Pasa por Vercel hasta TypeSafe, que no entrena modelos con eso."
       },

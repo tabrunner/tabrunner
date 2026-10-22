@@ -1,10 +1,13 @@
-import type { JevHost } from "@providerkit/core/jev";
+import type { DecisionHost } from "@providerkit/core/decisions";
+import { createLogger } from "@/lib/logger";
 import { createWriteQueue, defineItem } from "@/lib/storage";
 import type { StorageItem } from "@/lib/storage";
 import { ensureProviderCredential } from "@/modules/providers/credential";
 import { getProvider } from "@/modules/providers/storage";
 import { JEV_HOST_IDS, jevClient, jevEntryId } from "./hosts";
 import type { JevConnection } from "./hosts";
+
+const log = createLogger("jev");
 
 /** One saved Jev option in the user's list. */
 export interface JevEntry extends JevConnection {
@@ -25,7 +28,7 @@ export interface JevSettings {
   entries: JevEntry[];
 }
 
-function isJevHost(v: unknown): v is JevHost {
+function isJevHost(v: unknown): v is DecisionHost {
   return typeof v === "string" && (JEV_HOST_IDS as readonly string[]).includes(v);
 }
 
@@ -95,6 +98,18 @@ export function isKeylessJev(conn: Pick<JevConnection, "host" | "model">): boole
   return conn.host === "opencode" && (conn.model ?? "jev-1.13-free") === "jev-1.13-free";
 }
 
+/** Whether a saved entry currently has a credential (its own key, keyless free tier,
+ *  or a connected shared provider). */
+export function isJevEntryReady(
+  entry: Pick<JevConnection, "host" | "model" | "apiKey">,
+  connectedHosts: { opencode: boolean; openrouter: boolean },
+): boolean {
+  if (entry.apiKey || isKeylessJev(entry)) return true;
+  if (entry.host === "opencode") return connectedHosts.opencode;
+  if (entry.host === "openrouter") return connectedHosts.openrouter;
+  return false;
+}
+
 /**
  * Resolves the credential a Jev connection should send right now. When the Jev
  * entry has no key of its own on a shared host (`opencode` or `openrouter`),
@@ -124,7 +139,7 @@ export async function resolveJevConnection(conn: JevConnection): Promise<JevConn
  *  turns Jev on. Throws the host's classified error when the check fails. */
 export async function saveJevKey(conn: JevConnection, signal?: AbortSignal): Promise<void> {
   const resolved = await resolveJevConnection(conn);
-  await jevClient(resolved).checkKey(signal ? { signal } : {});
+  await jevClient(resolved).checkConnection(signal ? { signal } : {});
   await serialized(async () => {
     const prev = await jevSettingsItem.get();
     const entry = normalizeEntry(conn);
@@ -200,14 +215,22 @@ export async function jevForRun(): Promise<JevConnection | null> {
   if (!s?.enabled || !active) return null;
   try {
     const resolved = await resolveJevConnection(active);
-    if (!resolved.apiKey && !isKeylessJev(resolved)) return null;
+    if (!resolved.apiKey && !isKeylessJev(resolved)) {
+      log.warn("active Jev entry has no credential:", active.id);
+      return null;
+    }
     return {
       host: resolved.host,
       ...(resolved.apiKey ? { apiKey: resolved.apiKey } : {}),
       ...(resolved.accountId ? { accountId: resolved.accountId } : {}),
       ...(resolved.model ? { model: resolved.model } : {}),
     };
-  } catch {
+  } catch (err) {
+    log.warn(
+      "active Jev credential refresh failed:",
+      active.id,
+      err instanceof Error ? err.message : String(err),
+    );
     return null;
   }
 }

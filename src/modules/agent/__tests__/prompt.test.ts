@@ -115,7 +115,9 @@ describe("skills in the prompt and tool list", () => {
     expect(buildToolDefs(false, true, false).map((t) => t.name)).not.toContain("skill");
     expect(buildToolDefs(false, true).map((t) => t.name)).not.toContain("skill");
   });
+});
 
+describe("delegation in the prompt and tool list", () => {
   it("offers delegate only while Jev is on, ahead of any remote tools", () => {
     const remote: ToolDef = {
       name: "mcp__x__y",
@@ -129,10 +131,41 @@ describe("skills in the prompt and tool list", () => {
     );
   });
 
-  it("tells the planner about Jev only while it is on — the section rides with the tool", () => {
+  it("tells the planner about Jev only while it is on", () => {
     expect(buildSystemPrompt(ctx, "English")).not.toContain("# Jev");
     const prompt = buildSystemPrompt(ctx, "English", true, [], [], true);
     expect(prompt).toContain("# Jev");
     expect(prompt).toContain('"delegate"');
+  });
+
+  it("allows searches while keeping consequential submissions with the planner", () => {
+    const prompt = buildSystemPrompt(ctx, "English", true, [], [], true);
+    const tool = buildToolDefs(false, true, false, false, true).find((t) => t.name === "delegate");
+    expect(prompt).toContain("Running a search, applying a filter or moving to the next form step");
+    expect(tool?.description).toContain("A search or filter submission is allowed.");
+    for (const text of [prompt, tool?.description ?? ""]) {
+      expect(text).toContain("3 or more clicks, field entries or selections");
+      expect(text).toContain("final submission that commits the user");
+      expect(text).toMatch(/signing in/i);
+      expect(text).not.toContain("deletes or submits");
+      expect(text).not.toContain("deletes, or submits");
+    }
+  });
+
+  it("shows one complete bounded call with visible proof and every text value", () => {
+    const tool = buildToolDefs(false, true, false, false, true).find((t) => t.name === "delegate");
+    const example = /\ndelegate\((.*)\)$/.exec(tool?.description ?? "")?.[1];
+    expect(example).toBeDefined();
+    expect(JSON.parse(example ?? "null")).toEqual({
+      goal: "Show coffee grinders priced at most $100, sorted by lowest price.",
+      done_when:
+        "Results are visible, Search shows coffee grinder, Maximum price shows 100 and Sort shows Price: low to high.",
+      values: [
+        { for: "Search", text: "coffee grinder" },
+        { for: "Maximum price", text: "100" },
+      ],
+    });
+    // Click-only work needs no text values, and the example adds no new arguments.
+    expect(tool?.params.required).toEqual(["goal", "done_when"]);
   });
 });

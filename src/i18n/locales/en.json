@@ -112,6 +112,7 @@
       "savedAs": "{{host}} · key ending in {{last4}}",
       "savedFree": "{{host}} · free",
       "savedProviderAuth": "{{host}} · connected account",
+      "savedMissingProvider": "{{host}} · sign in or add a key to use",
       "spent": "{{cost}} spent through TabRunner",
       "balance": "{{cost}} left",
       "usageLink": "Usage on {{host}}",
@@ -122,7 +123,7 @@
       "privacy": {
         "opencode": "Jev sees the controls and text on the tab it works in, the goal, and the values it may type. It goes through OpenCode Zen to TypeSafe, which doesn't train on it.",
         "typesafe": "Jev sees the controls and text on the tab it works in, the goal, and the values it may type. TypeSafe doesn't train on it and keeps it only as long as it needs to.",
-        "openrouter": "Jev sees the controls and text on the tab it works in, the goal, and the values it may type. It goes through OpenRouter to TypeSafe, which doesn't train on it.",
+        "openrouter": "The decision model sees the controls and text on the tab it works in, the goal, and the values it may type. Requests go through OpenRouter to the selected model's provider.",
         "cloudflare": "Jev sees the controls and text on the tab it works in, the goal, and the values it may type. Cloudflare runs Jev itself and keeps none of it.",
         "vercel": "Jev sees the controls and text on the tab it works in, the goal, and the values it may type. It goes through Vercel to TypeSafe, which doesn't train on it."
       },

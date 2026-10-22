@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { saveProvider, removeProvider } from "@/modules/providers/storage";
 import { defineItem } from "@/lib/storage";
+import { isExecutorCompatibleModel, jevEntryId, tokenBudgetForModel } from "../hosts";
 import {
   addJevSpend,
+  isJevEntryReady,
   jevForRun,
   jevSettingsItem,
   normalizeJevSettings,
@@ -106,5 +108,64 @@ describe("jev settings", () => {
     });
 
     expect(normalizeJevSettings(null)).toBeNull();
+  });
+
+  it("supports multiple OpenRouter decision models and reports readiness", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => okReply()),
+    );
+    await saveProvider({
+      id: "openrouter",
+      name: "OpenRouter",
+      shape: "openai",
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: "or-secret",
+      createdAt: 0,
+    });
+
+    await saveJevKey({ host: "openrouter", model: "baseten/mammoth-1:free" });
+    await saveJevKey({ host: "openrouter", model: "inception/mercury-decide:free" });
+
+    const saved = await jevSettingsItem.get();
+    expect(saved?.entries.map((e) => e.id)).toEqual([
+      "openrouter/baseten/mammoth-1:free",
+      "openrouter/inception/mercury-decide:free",
+    ]);
+    expect(await jevForRun()).toEqual({
+      host: "openrouter",
+      model: "inception/mercury-decide:free",
+      apiKey: "or-secret",
+    });
+
+    expect(
+      isJevEntryReady(
+        { host: "openrouter", model: "baseten/mammoth-1:free" },
+        { opencode: false, openrouter: true },
+      ),
+    ).toBe(true);
+    expect(
+      isJevEntryReady(
+        { host: "openrouter", model: "baseten/mammoth-1:free" },
+        { opencode: false, openrouter: false },
+      ),
+    ).toBe(false);
+    expect(
+      isJevEntryReady(
+        { host: "opencode", model: "jev-1.13-free" },
+        { opencode: false, openrouter: false },
+      ),
+    ).toBe(true);
+  });
+
+  it("filters out noul-only decision models and scales token budget to context window", () => {
+    expect(isExecutorCompatibleModel({ questionTypes: ["choice", "noul", "score"] })).toBe(true);
+    expect(isExecutorCompatibleModel({ questionTypes: ["noul"] })).toBe(false);
+
+    expect(tokenBudgetForModel("baseten/mammoth-1:free")).toBe(8_192);
+    expect(tokenBudgetForModel("inception/mercury-decide:free")).toBe(10_000);
+    expect(jevEntryId({ host: "openrouter", model: "baseten/elephant-1:free" })).toBe(
+      "openrouter/baseten/elephant-1:free",
+    );
   });
 });
