@@ -7,12 +7,15 @@
  * two copies must change together — the extension's file is the source of truth.
  */
 
+export const BRIDGE_PROTOCOL_VERSION = 2;
+
 // ── Extension → daemon ──────────────────────────────────────────────
 
 export interface BridgeHello {
   type: "hello";
   extensionId: string;
   version: string;
+  protocolVersion: typeof BRIDGE_PROTOCOL_VERSION;
 }
 
 export interface BridgePong {
@@ -22,6 +25,7 @@ export interface BridgePong {
 export interface BridgeResponse {
   type: "response";
   requestId: string;
+  clientId: string;
   ok: boolean;
   result?: unknown;
   error?: { code: string; message: string };
@@ -29,6 +33,9 @@ export interface BridgeResponse {
 
 export interface BridgeRunEvent {
   type: "event";
+  clientId: string;
+  runId: string | null;
+  conversationId: string | null;
   event: CompactRunEvent;
 }
 
@@ -38,11 +45,14 @@ export type ExtensionMessage = BridgeHello | BridgePong | BridgeResponse | Bridg
 
 export interface BridgePing {
   type: "ping";
+  clientIds: string[];
 }
 
 export interface BridgeRequest {
   type: "request";
   requestId: string;
+  clientId: string;
+  runId?: string;
   method: string;
   params: Record<string, unknown>;
 }
@@ -81,11 +91,11 @@ export interface BridgeProviderInfo {
 
 /** One waiting run, as get_status lists it. Position is 1-based, FIFO. */
 export interface BridgeQueueEntry {
+  runId: string;
+  conversationId: string;
   position: number;
   task: string;
-  /** "schedule" is an alarm firing on its own — the browser is busy with work
-   *  nobody is watching, which an external client waiting on the slot must be
-   *  able to tell from a user typing in the panel. */
+  /** All entries belong to the caller, never another client's work. */
   owner: "panel" | "bridge" | "schedule";
 }
 
@@ -98,7 +108,7 @@ export interface BridgeStatus {
   steps: { tool: string; summary: string; ok?: boolean }[];
   plan: { steps: string[]; current: number } | null;
   driving: { tabId: number; windowId: number; title: string } | null;
-  /** Runs waiting on the single slot — tasks run one at a time, the rest queue. */
+  /** This client's runs waiting for a browser slot. */
   queue: BridgeQueueEntry[];
   question: string | null;
   /**
