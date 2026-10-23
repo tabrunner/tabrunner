@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useConversationStore } from "./store";
 import { focusTab } from "@/modules/browser";
@@ -70,7 +71,8 @@ function ScheduledMark({ label }: { label: string }) {
 export function RunBoard() {
   const { t } = useTranslation();
   const board = useConversationStore((s) => s.board);
-  const stop = useConversationStore((s) => s.stop);
+  const stopRunById = useConversationStore((s) => s.stopRunById);
+  const [stopping, setStopping] = useState<string[]>([]);
   const cancelQueuedById = useConversationStore((s) => s.cancelQueuedById);
   const activeId = useConversationStore((s) => s.activeId);
   const queuedRunId = useConversationStore((s) => s.queuedRun?.id);
@@ -78,11 +80,7 @@ export function RunBoard() {
   // The band below covers a run living on the open conversation — and covers it
   // whether the panel watched it start or reopened into it (the worker re-sends
   // the driving event on connect, so the tab chip is there either way).
-  const running = board.running?.conversationId === activeId ? undefined : board.running;
-  // Pulled out of the object before the guard below: TypeScript drops a
-  // narrowing on `obj.prop` the moment it crosses into a callback, so reading
-  // running.tabId inside onClick would need a cast the guard already earned.
-  const { tabId: runningTabId, windowId: runningWindowId } = running ?? {};
+  const running = board.running.filter((run) => run.conversationId !== activeId);
   // Numbered off the whole line, not the visible remainder: hiding our own
   // entry must not renumber the ones behind it — the composer card and this
   // strip name the same positions.
@@ -90,62 +88,69 @@ export function RunBoard() {
     .map((q, i) => ({ ...q, position: i + 1 }))
     .filter((q) => q.id !== queuedRunId);
 
-  if (!running && queue.length === 0) return null;
+  if (running.length === 0 && queue.length === 0) return null;
 
   return (
     <section
       aria-label={t("board.title")}
       className="arrive flex flex-col gap-1 border-b border-neutral-100 px-3 py-2 dark:border-neutral-800"
     >
-      {running && (
-        <div className="flex items-center gap-1.5">
-          {running.awaiting ? (
-            // Blocked on the user's answer — the still "?", never the pulse.
+      {running.map((run) => {
+        const { tabId, windowId } = run;
+        return (
+          <div key={run.id} className="flex items-center gap-1.5">
+            {run.awaiting ? (
+              // Blocked on the user's answer — the still "?", never the pulse.
+              <span
+                aria-hidden
+                title={t("run.awaitingApproval")}
+                className="grid size-3.5 shrink-0 place-items-center rounded-full bg-amber-400 text-[10px] font-bold leading-none text-amber-950"
+              >
+                ?
+              </span>
+            ) : (
+              /* The same pulsing amber the widget and the favicon dot speak. */
+              <span
+                aria-hidden
+                className="size-1.5 shrink-0 animate-pulse rounded-full bg-amber-400 motion-reduce:animate-none"
+              />
+            )}
+            {run.owner === "schedule" && <ScheduledMark label={t("schedule.agentLabel")} />}
             <span
-              aria-hidden
-              title={t("run.awaitingApproval")}
-              className="grid size-3.5 shrink-0 place-items-center rounded-full bg-amber-400 text-[10px] font-bold leading-none text-amber-950"
+              className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-800 dark:text-neutral-100"
+              title={run.task}
             >
-              ?
+              {run.task}
             </span>
-          ) : (
-            /* The same pulsing amber the widget and the favicon dot speak. */
-            <span
-              aria-hidden
-              className="size-1.5 shrink-0 animate-pulse rounded-full bg-amber-400 motion-reduce:animate-none"
-            />
-          )}
-          {running.owner === "schedule" && <ScheduledMark label={t("schedule.agentLabel")} />}
-          <span
-            className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-800 dark:text-neutral-100"
-            title={running.task}
-          >
-            {running.task}
-          </span>
-          {runningTabId !== undefined && (
+            {tabId !== undefined && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0 px-1.5"
+                title={t("board.jump")}
+                aria-label={t("board.jump")}
+                onClick={() => void focusTab(tabId, windowId)}
+              >
+                <JumpIcon />
+              </Button>
+            )}
             <Button
-              variant="ghost"
+              variant="ghost-danger"
               size="sm"
               className="shrink-0 px-1.5"
-              title={t("board.jump")}
-              aria-label={t("board.jump")}
-              onClick={() => void focusTab(runningTabId, runningWindowId)}
+              title={t("board.stop")}
+              aria-label={t("board.stop")}
+              disabled={stopping.includes(run.id)}
+              onClick={() => {
+                setStopping((ids) => [...ids, run.id]);
+                stopRunById(run.id);
+              }}
             >
-              <JumpIcon />
+              <StopIcon />
             </Button>
-          )}
-          <Button
-            variant="ghost-danger"
-            size="sm"
-            className="shrink-0 px-1.5"
-            title={t("board.stop")}
-            aria-label={t("board.stop")}
-            onClick={stop}
-          >
-            <StopIcon />
-          </Button>
-        </div>
-      )}
+          </div>
+        );
+      })}
       {queue.map((q) => (
         <div key={q.id} className="flex items-center gap-1.5">
           <span

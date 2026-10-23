@@ -10,6 +10,7 @@ import {
   settleAgentIndicator,
   waitAgentIndicator,
   clearAgentWait,
+  setAgentDocumenting,
   withMarksClickThrough,
 } from "../indicator";
 import { paintWidget, removeWidget, type WidgetState } from "../status-widget";
@@ -190,7 +191,7 @@ describe("worker-driven favicon heartbeat", () => {
     expect(paintCalls()[1]?.[1].awaiting).toBe(true);
 
     // clear in a new run calls hideAgentIndicator → removeWidget.
-    await clearAgentWait();
+    await clearAgentWait(2);
     expect(removeCalls()).toHaveLength(1);
   });
 
@@ -232,6 +233,49 @@ describe("worker-driven favicon heartbeat", () => {
   it("a failed run settles into the ✗ receipt", async () => {
     await settleAgentIndicator(5, "failed");
     expect(paintCalls()[0]?.[1].settle?.ok).toBe(false);
+  });
+
+  it("keeps waiting and documenting state on each tab when another run starts or ends", async () => {
+    await waitAgentIndicator(10);
+    await showAgentIndicator(11);
+    await setAgentDocumenting(11, true);
+    executeScript.mockClear();
+
+    await refreshAgentIndicator(10);
+    await refreshAgentIndicator(11);
+    expect(paintCalls().map(([, state]) => [state.awaiting, state.task])).toEqual([
+      [true, expect.stringMatching(/waiting/i)],
+      [false, expect.stringMatching(/documenting/i)],
+    ]);
+    await hideAgentIndicator(11);
+    executeScript.mockClear();
+    await refreshAgentIndicator(10);
+    expect(paintCalls()[0]?.[1].awaiting).toBe(true);
+    await clearAgentWait(10);
+  });
+
+  it("clears only the named wait and leaves another tab's heartbeat running", async () => {
+    await waitAgentIndicator(12);
+    await showAgentIndicator(13);
+    await clearAgentWait(12);
+    await vi.advanceTimersByTimeAsync(700);
+    expect(frameBeats()).toHaveLength(1);
+    expect(frameBeats()[0]?.[0].target.tabId).toBe(13);
+    await hideAgentIndicator(13);
+  });
+
+  it("does not let an older paint restart the pulse after hide", async () => {
+    const painting = Promise.withResolvers<unknown[]>();
+    executeScript.mockImplementationOnce(() => painting.promise);
+    const shown = showAgentIndicator(14);
+    await Promise.resolve();
+    await Promise.resolve();
+    const hidden = hideAgentIndicator(14);
+    painting.resolve([]);
+    await Promise.all([shown, hidden]);
+    await vi.advanceTimersByTimeAsync(1400);
+    expect(frameBeats()).toHaveLength(0);
+    expect(removeCalls()).toHaveLength(1);
   });
 
   it("goes click-through while the agent clicks, so it can't eat its own click", async () => {

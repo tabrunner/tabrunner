@@ -37,7 +37,7 @@ function makePort(): FakePort {
   };
 }
 
-function lastRunCommand(): Command | undefined {
+function lastRunCommand(): Extract<Command, { type: "run" }> | undefined {
   return port.postMessage.mock.calls.map(([c]) => c).findLast((c) => c.type === "run");
 }
 
@@ -57,6 +57,7 @@ beforeEach(async () => {
     messages: [],
     conversations: [],
     activeId: null,
+    activeRunId: null,
     status: "idle",
     lastRun: null,
     runMode: "foreground",
@@ -77,6 +78,7 @@ describe("a send from a restricted page", () => {
 
     expect(lastRunCommand()).toEqual({
       type: "run",
+      runId: useConversationStore.getState().activeRunId,
       conversationId: useConversationStore.getState().activeId,
       task: "summarize my inbox",
     });
@@ -105,6 +107,7 @@ describe("a send from a restricted page", () => {
 
     expect(lastRunCommand()).toEqual({
       type: "run",
+      runId: useConversationStore.getState().activeRunId,
       conversationId: useConversationStore.getState().activeId,
       task: "summarize this",
     });
@@ -133,7 +136,8 @@ describe("a send from a restricted page", () => {
       .getState()
       .messages.findLast((m) => m.role === "user")?.tab;
 
-    expect(walkedAway).toEqual(watched);
+    expect(walkedAway).toEqual({ ...watched, runId: expect.any(String) });
+    expect(walkedAway?.runId).not.toBe(watched?.runId);
     expect(walkedStamp).toEqual(watchedStamp);
     // The one difference, and it never leaves the panel.
     expect(useConversationStore.getState().lastRun?.background).toBe(true);

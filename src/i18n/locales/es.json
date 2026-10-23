@@ -68,7 +68,7 @@
       "portHint": "Debe coincidir con TABRUNNER_BRIDGE_PORT del daemon. Por defecto es 17836.",
       "invalidPort": "Escribe un puerto entero entre 1024 y 65535",
       "guideTitle": "Cómo funciona MCP en ambas direcciones",
-      "guideIn": "Los clientes se conectan (el puente): un cliente de IA externo lanza un pequeño daemon local, TabRunner se conecta a él, y las tareas de ese cliente se ejecutan en este navegador con tus sesiones iniciadas. Apagado, no cuesta nada.",
+      "guideIn": "Los clientes de IA externos comparten un daemon local. Cada cliente tiene su propio chat y sus pestañas. Pueden ejecutarse hasta cuatro tareas a la vez. Las pestañas siguen compartiendo tus sesiones iniciadas.",
       "guideOut": "Añade un servidor MCP https:// abajo para usar sus herramientas en cada ejecución. Los nombres siguen mcp__servidor__herramienta, y todas las herramientas requieren la aprobación del plan. Las cabeceras de autenticación se guardan localmente y nunca se registran.",
       "guideQuestions": "Los servidores pueden hacer preguntas durante una tarea. Aparecen como una tarjeta en el panel y se rechazan automáticamente en las ejecuciones sin supervisión. Los eventos de ejecución también pueden enviarse como webhooks. Consulta Ajustes → Comportamiento.",
       "statusConnected": "Conectado al daemon",
@@ -76,7 +76,7 @@
       "setupTitle": "Conectar un cliente",
       "setupHelp": "En Claude Code, instala el plugin. Inicia el daemon por ti y le enseña a Claude cuándo pasarle una tarea a TabRunner:",
       "manualHelp": "O registra solo el daemon, sin la habilidad. Necesita bun. Con --scope user, funciona en todos los proyectos, no solo en la carpeta actual:",
-      "removeHelp": "Usa uno u otro: dos daemons no pueden compartir el puerto. Para eliminar el que registraste a mano:",
+      "removeHelp": "Elige el plugin o la configuración manual para no listar las mismas herramientas dos veces. Para eliminar una configuración manual:",
       "copy": "Copiar",
       "copied": "Copiado",
       "docsLink": "Guía completa de configuración →",
@@ -393,7 +393,7 @@
       "lastFailed": "La última ejecución falló {{when}}",
       "runNow": "Ejecutar ahora",
       "runNowOnce": "Ejecutar ahora como prueba. La tarea seguirá ejecutándose a la hora programada.",
-      "queued": "En cola. Empieza cuando termine la tarea actual.",
+      "queued": "En cola. Empieza cuando haya sitio para otra tarea.",
       "paused": "Pausada",
       "pause": "Pausar (conservar la tarea y el chat; detener el temporizador)",
       "resume": "Reanudar (recalcular la próxima ejecución desde ahora)",
@@ -966,9 +966,9 @@
     "revisingPlan": "Revisando el plan…",
     "awaitingAnswer": "Esperando tu respuesta",
     "drivingTabTip": "Abrir esta página (la vuelve a abrir si la pestaña ya no existe)",
-    "bridgeTask": "{{client}} está ejecutando una tarea en tu navegador",
-    "bridgeDriving": "{{client}} está controlando tu navegador",
-    "bridgeStopTitle": "Detiene la tarea y devuelve el navegador",
+    "bridgeTask": "{{client}} está ejecutando una tarea en esta pestaña",
+    "bridgeDriving": "{{client}} está controlando esta pestaña",
+    "bridgeStopTitle": "Detiene solo esta tarea. Las demás siguen en curso.",
     "background": "En segundo plano",
     "foreground": "En primer plano",
     "modeAria": "La próxima tarea corre: {{mode}}",
@@ -984,11 +984,10 @@
   },
   "queue": {
     "position": "Pendiente de ejecución · n.º {{position}}",
-    "queuedTitle": "Esperando a que termine la tarea actual",
+    "queuedTitle": "Esperando sitio para otra tarea",
     "cancel": "Cancelar"
   },
   "widget": {
-    "queued": "+{{count}} en cola",
     "hide": "Ocultar",
     "openHint": "Sigue la ejecución (abre el panel junto a la página que TabRunner está usando)",
     "hideHint": "Contraer a un punto. Haz clic en el punto para expandirlo de nuevo.",
@@ -996,7 +995,9 @@
     "settledDone": "Tarea completada",
     "settledFailed": "La tarea falló",
     "settledHint": "Abrir TabRunner para ver el resultado",
-    "dismiss": "Descartar"
+    "dismiss": "Descartar",
+    "moreTasks_one": "+{{count}} tarea más",
+    "moreTasks_other": "+{{count}} tareas más"
   },
   "board": {
     "title": "Tareas",
@@ -1203,6 +1204,9 @@
     "skillSaved": "«{{name}}» guardada. Está en /skills.",
     "saveSkillNoUrl": "Falta la URL. Indica un enlace https directo u owner/repo para la habilidad.",
     "saveSkillBadUrl": "No se ha podido acceder a un archivo de habilidad en {{url}}. Usa un enlace https directo al archivo .md u owner/repo[/ruta].",
-    "saveSkillUnnamed": "El archivo no tiene nombre para la habilidad y no se ha indicado otro. Pasa un nombre en kebab-case: palabras en minúscula separadas por guiones."
+    "saveSkillUnnamed": "El archivo no tiene nombre para la habilidad y no se ha indicado otro. Pasa un nombre en kebab-case: palabras en minúscula separadas por guiones.",
+    "tabInUse": "Otra tarea está usando la pestaña {{tabId}}. Elige otra pestaña o espera a que termine esa tarea.",
+    "staleBridgeRun": "Esta tarea ya ha terminado o ha sido reemplazada. Comprueba su estado e inténtalo con el ID de la ejecución actual.",
+    "noBridgeScreenshot": "Esta tarea no tiene ninguna página que capturar. Inicia una tarea o una sesión de navegador e inténtalo de nuevo."
   }
 }

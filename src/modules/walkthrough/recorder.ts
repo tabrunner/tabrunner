@@ -1,5 +1,5 @@
 import type { ToolCall } from "@/modules/providers/types";
-import { attachedTab, captureFrame } from "@/modules/browser/cdp-driver";
+import { isAttached, tabOwner, captureFrame } from "@/modules/browser/cdp-driver";
 import { captureVisibleTab } from "@/modules/browser/capture";
 import { withMarksHidden } from "@/modules/browser/indicator";
 import { createLogger, truncate } from "@/lib/logger";
@@ -100,7 +100,8 @@ export interface RunRecorder {
 export function createRecorder(
   conversationId: string,
   task: string,
-  onArm?: () => void,
+  onArm: (() => void) | undefined,
+  target: { ownerId: string; tabId: () => number },
 ): RunRecorder {
   const recording: Recording = {
     id: crypto.randomUUID(),
@@ -129,9 +130,7 @@ export function createRecorder(
     return next;
   };
 
-  /** What one capture yields. `url`/`title` are set only by the no-attach path,
-   *  which learns them from the tab it actually caught rather than the one we
-   *  assumed. */
+  /** The visible fallback also returns the captured tab's title and URL. */
   interface Shot {
     dataUrl: string;
     viewport?: { width: number; height: number };
@@ -146,24 +145,36 @@ export function createRecorder(
    * whole point: the model arms documenting in its first turn, long before any
    * action, and attaching just to take a picture would raise Chrome's
    * "debugging this browser" infobar on a page the plan gate has not been
-   * approved for yet. It can only see the window's visible tab — which is
-   * exactly the tab the run is about to adopt — and it hands back the identity
-   * of what it actually caught, so the frame describes itself.
+   * approved for yet. Only the target tab may be captured, and only while it
+   * stays active in its own window. A tab switch during capture discards the shot.
    */
-  const grabVisible = async (): Promise<Shot | FrameGap> => {
-    let tabId: number | undefined;
+  const grabVisible = async (tabId: number): Promise<Shot | FrameGap> => {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      tabId = tab?.id;
-    } catch {
-      return "unattached";
-    }
-    if (tabId === undefined) return "unattached";
-    try {
-      const shot = await withMarksHidden(tabId, () =>
-        withTimeout(captureVisibleTab(), CAPTURE_TIMEOUT_MS),
-      );
-      return { dataUrl: shot.dataUrl, url: shot.url, title: shot.title };
+      const targetTab = await chrome.tabs.get(tabId);
+      let switched = false;
+      const onActivated = (info: chrome.tabs.OnActivatedInfo) => {
+        if (info.windowId === targetTab.windowId && info.tabId !== tabId) switched = true;
+      };
+      chrome.tabs.onActivated.addListener(onActivated);
+      try {
+        const [before] = await chrome.tabs.query({ active: true, windowId: targetTab.windowId });
+        if (before?.id !== tabId || tabOwner(tabId) !== target.ownerId) return "unattached";
+        const shot = await withMarksHidden(tabId, () =>
+          withTimeout(captureVisibleTab(targetTab.windowId), CAPTURE_TIMEOUT_MS),
+        );
+        const [after] = await chrome.tabs.query({ active: true, windowId: targetTab.windowId });
+        if (
+          switched ||
+          shot.tabId !== tabId ||
+          after?.id !== tabId ||
+          tabOwner(tabId) !== target.ownerId
+        ) {
+          return "unattached";
+        }
+        return { dataUrl: shot.dataUrl, url: shot.url, title: shot.title };
+      } finally {
+        chrome.tabs.onActivated.removeListener(onActivated);
+      }
     } catch {
       // A restricted page refuses this the same way it refuses everything else.
       return "restricted";
@@ -171,16 +182,17 @@ export function createRecorder(
   };
 
   /** Best-effort snapshot of the driven tab, or the reason there isn't one. */
-  const grab = async (): Promise<Shot | FrameGap> => {
-    const tab = attachedTab();
-    if (tab === null) return grabVisible();
+  const grab = async (tabId: number): Promise<Shot | FrameGap> => {
+    if (tabOwner(tabId) !== target.ownerId) return "unattached";
+    if (!isAttached(tabId)) return grabVisible(tabId);
     if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) return "restricted";
     try {
       // The agent's own badge must not be burned into a document the user
-      // shares — and unlike a live mark, it cannot be scrubbed off afterwards.
-      const shot = await withMarksHidden(tab, () =>
-        withTimeout(captureFrame(FRAME_QUALITY), CAPTURE_TIMEOUT_MS),
+      // shares. It cannot be scrubbed off afterwards.
+      const shot = await withMarksHidden(tabId, () =>
+        withTimeout(captureFrame(tabId, FRAME_QUALITY), CAPTURE_TIMEOUT_MS),
       );
+      if (tabOwner(tabId) !== target.ownerId) return "unattached";
       consecutiveFailures = 0;
       return shot;
     } catch (e) {
@@ -211,12 +223,10 @@ export function createRecorder(
       }
       return null;
     }
-    const shot = await grab();
+    const tabId = target.tabId();
+    const shot = await grab(tabId);
     const captured = typeof shot === "string" ? undefined : shot;
-    const tab = attachedTab();
-    const info = tab === null ? undefined : await chrome.tabs.get(tab).catch(() => undefined);
-    // The no-attach path names the tab it actually caught; trust that over the
-    // tab we believe is being driven.
+    const info = await chrome.tabs.get(tabId).catch(() => undefined);
     const url = captured?.url ?? info?.url ?? "";
     noteSite(url);
 
@@ -308,7 +318,7 @@ export function createRecorder(
       if (!armed) return null;
       armed = false;
       // The closing frame is the result — captured here, inside the run's
-      // teardown, because `detachAll()` is next and takes the session with it.
+      // teardown, before this owner's browser sessions are released.
       await queue(() => capture("", {}));
       recording.status = recording.status === "truncated" ? "truncated" : "complete";
       recording.endedAt = Date.now();

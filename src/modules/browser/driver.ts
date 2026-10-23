@@ -19,6 +19,7 @@ import {
   waitForLoad,
   settleIfLoading,
   ensureAttached,
+  claimTab,
 } from "./cdp-driver";
 import { focusTab } from "./focus-tab";
 import { withMarksClickThrough } from "./indicator";
@@ -116,11 +117,13 @@ export interface BrowserDriver {
 }
 
 export interface DriverOptions {
+  /** The run or direct session that exclusively owns this driver's tabs. */
+  ownerId: string;
   /**
    * Fires when the agent re-targets itself mid-run — the background moves the
    * on-page badge and the panel's driving chip with it.
    */
-  onSwitch?: (tab: TabInfo) => void;
+  onSwitch?: (tab: TabInfo) => void | Promise<void>;
   /**
    * May a switched-to tab be brought to the front? Asked at every switch, not
    * at run start: "is someone watching" is a fact that changes mid-run — the
@@ -155,14 +158,13 @@ function toTabInfo(t: chrome.tabs.Tab): TabInfo | undefined {
   };
 }
 
-export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): BrowserDriver {
-  const { onSwitch, activateOnSwitch = () => true, openedTab = false } = opts;
-  // The run starts on the submit-time tab but may hop: the CDP layer is
-  // multi-tab (attach re-targets per call), so the driver just tracks a target.
+export function createDriver(initialTabId: TabId, opts: DriverOptions): BrowserDriver {
+  const { ownerId, onSwitch, activateOnSwitch = () => true, openedTab = false } = opts;
+  claimTab(ownerId, initialTabId);
   let current = initialTabId;
   let unactedTabId: TabId | null = openedTab ? initialTabId : null;
-  const claimOpenedTab = () => {
-    if (current === unactedTabId) unactedTabId = null;
+  const noteAction = (tabId: TabId) => {
+    if (tabId === unactedTabId) unactedTabId = null;
   };
 
   const driver: BrowserDriver = {
@@ -194,84 +196,95 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
     },
 
     async click(ref) {
-      await ensureAttached(current);
-      const { x, y } = await resolveRefPoint(current, ref);
-      // The click is a coordinate, so whatever sits at it wins — including our
-      // own marks. They go click-through for the dispatch: a badge that ate the
-      // agent's click would both lose the step and open a panel nobody asked for.
-      await withMarksClickThrough(current, () => clickAt(x, y));
-      claimOpenedTab();
+      const tabId = current;
+      await ensureAttached(ownerId, tabId);
+      const { x, y } = await resolveRefPoint(tabId, ref);
+      // The click is a coordinate, so whatever sits at it wins, including our
+      // own marks. Keep one target through the lookup and trusted input.
+      await withMarksClickThrough(tabId, () => clickAt(tabId, x, y));
+      noteAction(tabId);
       return { x, y };
     },
 
     async type(text) {
-      await ensureAttached(current);
-      await typeText(text);
-      claimOpenedTab();
+      const tabId = current;
+      await ensureAttached(ownerId, tabId);
+      await typeText(tabId, text);
+      noteAction(tabId);
     },
 
     async insert(text) {
-      await ensureAttached(current);
-      await insertText(text);
-      claimOpenedTab();
+      const tabId = current;
+      await ensureAttached(ownerId, tabId);
+      await insertText(tabId, text);
+      noteAction(tabId);
     },
 
     async fill(ref, text) {
-      // Page-side by design: no debugger, no infobar — the same mechanism the
-      // snapshot uses, aimed at one element.
-      await fillField(current, ref, text);
-      claimOpenedTab();
+      const tabId = current;
+      // Page-side by design: no debugger, no infobar.
+      await fillField(tabId, ref, text);
+      noteAction(tabId);
     },
 
     async evaluate(expression) {
-      await ensureAttached(current);
-      const raw = await evaluateRaw(expression);
-      claimOpenedTab();
+      const tabId = current;
+      await ensureAttached(ownerId, tabId);
+      const raw = await evaluateRaw(tabId, expression);
+      noteAction(tabId);
       return sanitizeForModel(raw);
     },
 
     async readNetworkRequests(urlFilter, limit) {
+      const tabId = current;
       // Attach first so the capture is live even on a run that has only read.
-      await ensureAttached(current);
-      return listRequests(current, urlFilter, limit);
+      await ensureAttached(ownerId, tabId);
+      return listRequests(tabId, urlFilter, limit);
     },
 
     async readConsoleMessages(onlyErrors, limit) {
-      await ensureAttached(current);
-      return listConsoleMessages(current, onlyErrors, limit);
+      const tabId = current;
+      await ensureAttached(ownerId, tabId);
+      return listConsoleMessages(tabId, onlyErrors, limit);
     },
 
     async key(key, modifiers) {
-      await ensureAttached(current);
-      await pressKey(key, modifiers);
-      claimOpenedTab();
+      const tabId = current;
+      await ensureAttached(ownerId, tabId);
+      await pressKey(tabId, key, modifiers);
+      noteAction(tabId);
     },
 
     async goBack() {
-      await goBackInTab(current);
-      claimOpenedTab();
+      const tabId = current;
+      await goBackInTab(tabId);
+      noteAction(tabId);
     },
 
     async scrollDown(amount = 300) {
-      await ensureAttached(current);
-      await scroll(0, amount);
-      claimOpenedTab();
+      const tabId = current;
+      await ensureAttached(ownerId, tabId);
+      await scroll(tabId, 0, amount);
+      noteAction(tabId);
     },
 
     async scrollUp(amount = 300) {
-      await ensureAttached(current);
-      await scroll(0, -amount);
-      claimOpenedTab();
+      const tabId = current;
+      await ensureAttached(ownerId, tabId);
+      await scroll(tabId, 0, -amount);
+      noteAction(tabId);
     },
 
     async screenshot() {
-      await ensureAttached(current);
-      return screenshot();
+      const tabId = current;
+      await ensureAttached(ownerId, tabId);
+      return screenshot(tabId);
     },
 
     async navigate(url) {
-      await navigateToUrl(current, url);
-      claimOpenedTab();
+      const tabId = current;
+      await navigateToUrl(tabId, url);
+      noteAction(tabId);
     },
 
     async listTabs() {
@@ -280,6 +293,7 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
     },
 
     async groupTab(tabId, groupId) {
+      claimTab(ownerId, tabId);
       // Both throws land as tool errors the model can act on: a dead tab id
       // means re-list, a dead group means the run's strip is gone.
       const [tab, group] = await Promise.all([
@@ -296,6 +310,8 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
     },
 
     async switchTab(tabId) {
+      claimTab(ownerId, tabId);
+      const previous = current;
       // chrome.tabs.get throws for a dead id — the model then re-lists.
       const tab = await chrome.tabs.get(tabId);
       // A watched run brings the switched-to tab forward only while the user is
@@ -307,7 +323,7 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
       let followed = false;
       if (activateOnSwitch()) {
         const [visible] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
-        followed = visible?.id === current;
+        followed = visible?.id === previous;
         if (followed) await focusTab(tabId, tab.windowId, { pullWindow: false });
       }
       const abandoned = unactedTabId !== null && unactedTabId !== tabId ? unactedTabId : null;
@@ -321,7 +337,7 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
         active: followed ? true : tab.active === true,
         ...(tab.favIconUrl ? { favIconUrl: tab.favIconUrl } : {}),
       };
-      onSwitch?.(info);
+      await onSwitch?.(info);
       if (abandoned !== null) void chrome.tabs.remove(abandoned).catch(() => {});
       return info;
     },
@@ -331,20 +347,23 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions = {}): Bro
       // tab of its own: navigate that one in place instead of spawning a second
       // tab and leaving the first behind on the start page.
       if (unactedTabId !== null && current === unactedTabId) {
-        await navigateToUrl(current, url);
-        unactedTabId = null;
-        return driver.switchTab(current);
+        const tabId = current;
+        await navigateToUrl(tabId, url);
+        noteAction(tabId);
+        return driver.switchTab(tabId);
       }
       // Created in the background and only then switched to, so the follow
       // rule is switchTab's one implementation: a watched run brings it
       // forward, a background run never yanks the user's window.
       const tab = await chrome.tabs.create({ url, active: false });
       if (tab.id === undefined) throw new Error(i18n.t("errors.tabOpenFailed"));
+      claimTab(ownerId, tab.id);
       await waitForLoad(tab.id);
       return driver.switchTab(tab.id);
     },
 
     async closeTab(tabId) {
+      claimTab(ownerId, tabId);
       // Closing the tab underneath the run would leave every later action
       // pointed at a dead id. Switching away first is the model's call to
       // make, not something to guess at here.

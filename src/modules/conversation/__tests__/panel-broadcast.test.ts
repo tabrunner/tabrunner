@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Command, PanelMessage } from "@/shared/protocol";
 import { PORT_NAME } from "@/shared/protocol";
 import { runBoardItem } from "@/modules/agent/run-queue";
+import type { RunBoard } from "@/modules/agent/run-queue";
 import { setActiveConversation } from "../conversations";
 import { useConversationStore } from "../ui/store";
 
@@ -42,8 +43,18 @@ function makePort() {
 }
 
 /** The board as a watching panel sees it — someone else's run, already going. */
-const boardRun = (conversationId: string, owner: "panel" | "schedule" = "panel") => ({
-  running: { conversationId, task: "Get those keys", owner, startedAt: 1000 },
+const boardRun = (conversationId: string, owner: "panel" | "schedule" = "panel"): RunBoard => ({
+  running: [
+    {
+      id: `run-${conversationId}`,
+      ownerId: `${owner}:${conversationId}`,
+      conversationId,
+      task: "Get those keys",
+      owner,
+      startedAt: 1000,
+    },
+  ],
+  pendingQuestions: [],
   queue: [],
 });
 
@@ -58,6 +69,8 @@ beforeEach(async () => {
   useConversationStore.setState({
     messages: [],
     activeId: "c1",
+    activeRunId: null,
+    bridgeActive: [],
     status: "idle",
     streamingText: "",
     reasoningText: "",
@@ -68,7 +81,7 @@ beforeEach(async () => {
     runEndedAt: null,
     lastRun: null,
     planApproval: null,
-    board: { queue: [] },
+    board: { running: [], pendingQuestions: [], queue: [] },
   });
   useConversationStore.getState().connect();
   // connect() seeds `board` and `activeId` from storage asynchronously; let
@@ -105,12 +118,117 @@ describe("a stamped event reaches only the thread it names", () => {
   });
 
   it("applies an unstamped reply — it was never broadcast", () => {
-    port.fireMessage({ type: "run_active", active: { mode: "run", client: "Claude Code" } });
+    const active = [
+      {
+        clientId: "client-editor",
+        runId: "run-editor",
+        conversationId: "c2",
+        mode: "run" as const,
+        client: "Editor",
+      },
+    ];
+    port.fireMessage({ type: "run_active", active });
 
-    expect(useConversationStore.getState().bridgeActive).toEqual({
-      mode: "run",
-      client: "Claude Code",
+    expect(useConversationStore.getState().bridgeActive).toEqual(active);
+  });
+});
+
+describe("run-targeted controls", () => {
+  it("targets the live run instead of the next submission still queued in this chat", () => {
+    useConversationStore.setState({
+      status: "running",
+      activeRunId: "queued-next",
+      queued: [],
+      queuedRun: { id: "queued-next", position: 1, task: "Check another invoice" },
+      board: {
+        running: [
+          {
+            id: "live-first",
+            ownerId: "panel:c1",
+            conversationId: "c1",
+            owner: "panel",
+            task: "Read this invoice",
+            startedAt: 1000,
+          },
+        ],
+        pendingQuestions: [],
+        queue: [
+          {
+            id: "queued-next",
+            ownerId: "panel:c1",
+            conversationId: "c1",
+            owner: "panel",
+            task: "Check another invoice",
+            enqueuedAt: 2000,
+          },
+        ],
+      },
+      planApproval: { steps: ["Read the total"], current: 0, reapproval: false },
     });
+    const s = useConversationStore.getState();
+    s.approvePlan();
+    expect(port.fake.postMessage).toHaveBeenLastCalledWith({
+      type: "plan_approval",
+      runId: "live-first",
+      approved: true,
+    });
+    s.queueMessage("read the tax too");
+    expect(port.fake.postMessage).toHaveBeenLastCalledWith({
+      type: "inject",
+      runId: "live-first",
+      id: expect.any(String),
+      text: "read the tax too",
+    });
+    s.stop();
+    expect(port.fake.postMessage).toHaveBeenLastCalledWith({ type: "stop", runId: "live-first" });
+    expect(port.fake.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "queued-next" }),
+    );
+  });
+
+  it("targets this conversation when another run is first on the board", () => {
+    useConversationStore.setState({
+      board: {
+        running: [...boardRun("c2").running, ...boardRun("c1").running],
+        pendingQuestions: [],
+        queue: [],
+      },
+      activeRunId: null,
+      planApproval: { steps: ["Read this page"], current: 0, reapproval: false },
+    });
+    const s = useConversationStore.getState();
+    s.queueMessage("read the total");
+    const queued = useConversationStore.getState().queued[0];
+    expect(port.fake.postMessage).toHaveBeenLastCalledWith({
+      type: "inject",
+      runId: "run-c1",
+      id: queued?.id,
+      text: "read the total",
+    });
+    s.unqueueMessage(queued!.id);
+    expect(port.fake.postMessage).toHaveBeenLastCalledWith({
+      type: "unqueue",
+      runId: "run-c1",
+      id: queued?.id,
+    });
+    s.approvePlan();
+    expect(port.fake.postMessage).toHaveBeenLastCalledWith({
+      type: "plan_approval",
+      runId: "run-c1",
+      approved: true,
+    });
+    useConversationStore.setState({
+      elicitation: { requestId: "server-ask", message: "Allow export?", serverName: "acme" },
+    });
+    s.answerElicitation("decline");
+    expect(port.fake.postMessage).toHaveBeenLastCalledWith({
+      type: "elicitation_result",
+      runId: "run-c1",
+      requestId: "server-ask",
+      action: "decline",
+    });
+    s.stop();
+    expect(port.fake.postMessage).toHaveBeenLastCalledWith({ type: "stop", runId: "run-c1" });
   });
 });
 
@@ -307,15 +425,20 @@ describe("adopting a run this panel did not dispatch", () => {
  */
 describe("the parked gate's card, mirrored off the board", () => {
   const ask = { steps: ["Open the console", "Copy the key"], current: 0, reapproval: false };
-  const parkedBoard = {
-    running: {
-      conversationId: "c1",
-      task: "Get those keys",
-      owner: "panel" as const,
-      startedAt: 1000,
-      awaiting: true,
-      approval: ask,
-    },
+  const parkedBoard: RunBoard = {
+    running: [
+      {
+        id: "run-c1",
+        ownerId: "panel:c1",
+        conversationId: "c1",
+        task: "Get those keys",
+        owner: "panel",
+        startedAt: 1000,
+        awaiting: true,
+        approval: ask,
+      },
+    ],
+    pendingQuestions: [],
     queue: [],
   };
 
@@ -336,7 +459,7 @@ describe("the parked gate's card, mirrored off the board", () => {
     useConversationStore.setState({ planApproval: { ...ask } });
     useConversationStore.getState().disconnect();
     await setActiveConversation("c1");
-    await runBoardItem.set({ queue: [] });
+    await runBoardItem.set({ running: [], pendingQuestions: [], queue: [] });
     useConversationStore.getState().connect();
     await new Promise((r) => setTimeout(r, 0));
 
@@ -361,14 +484,19 @@ describe("the parked gate's card, mirrored off the board", () => {
     useConversationStore.getState().disconnect();
     await setActiveConversation("c1");
     await runBoardItem.set({
-      running: {
-        conversationId: "c1",
-        task: "Get those keys",
-        owner: "panel",
-        startedAt: 1000,
-        awaiting: true,
-        elicitation: serverAsk,
-      },
+      running: [
+        {
+          id: "run-c1",
+          ownerId: "panel:c1",
+          conversationId: "c1",
+          task: "Get those keys",
+          owner: "panel",
+          startedAt: 1000,
+          awaiting: true,
+          elicitation: serverAsk,
+        },
+      ],
+      pendingQuestions: [],
       queue: [],
     });
     useConversationStore.getState().connect();
@@ -380,13 +508,18 @@ describe("the parked gate's card, mirrored off the board", () => {
     // elicitation_done broadcast settles from storage alone.
     useConversationStore.getState().disconnect();
     await runBoardItem.set({
-      running: {
-        conversationId: "c1",
-        task: "Get those keys",
-        owner: "panel",
-        startedAt: 1000,
-        awaiting: false,
-      },
+      running: [
+        {
+          id: "run-c1",
+          ownerId: "panel:c1",
+          conversationId: "c1",
+          task: "Get those keys",
+          owner: "panel",
+          startedAt: 1000,
+          awaiting: false,
+        },
+      ],
+      pendingQuestions: [],
       queue: [],
     });
     useConversationStore.getState().connect();
@@ -399,11 +532,15 @@ describe("the parked gate's card, mirrored off the board", () => {
     // A board-armed card in a panel whose port died used to post into the
     // void: the card cleared locally while the run stayed parked forever.
     useConversationStore.getState().disconnect();
-    useConversationStore.setState({ planApproval: { ...ask } });
+    useConversationStore.setState({ planApproval: { ...ask }, activeRunId: "run-c1" });
 
     useConversationStore.getState().approvePlan();
 
-    expect(port.fake.postMessage).toHaveBeenCalledWith({ type: "plan_approval", approved: true });
+    expect(port.fake.postMessage).toHaveBeenCalledWith({
+      type: "plan_approval",
+      runId: "run-c1",
+      approved: true,
+    });
     // The reconnect fired its own fresh query_run on the way back up.
     expect(port.fake.postMessage).toHaveBeenCalledWith({ type: "query_run" });
   });

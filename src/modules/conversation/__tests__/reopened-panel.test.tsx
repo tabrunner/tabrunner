@@ -15,6 +15,7 @@ import { i18n } from "@/i18n";
 import type { Message } from "../types";
 import { MessageList } from "../ui/MessageList";
 import { useConversationStore } from "../ui/store";
+import type { RunBoard } from "@/modules/agent/run-queue";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollTo = function (this: Element) {};
@@ -42,12 +43,22 @@ const MESSAGES: Message[] = [
   },
 ];
 
-const BOARD_RUN = {
-  running: { conversationId: "c1", task: "Get those keys", owner: "panel" as const, startedAt: 0 },
+const BOARD_RUN: RunBoard = {
+  running: [
+    {
+      id: "run-c1",
+      ownerId: "panel:c1",
+      conversationId: "c1",
+      task: "Get those keys",
+      owner: "panel",
+      startedAt: 0,
+    },
+  ],
+  pendingQuestions: [],
   queue: [],
 };
 
-async function render(board: typeof BOARD_RUN | { queue: [] }) {
+async function render(board: RunBoard) {
   useConversationStore.setState({
     messages: MESSAGES,
     activeId: "c1",
@@ -84,7 +95,11 @@ describe("a panel watching a run it did not start", () => {
   });
 
   it("settles the burst but leaves the newest one open as history", async () => {
-    const { container, burst, cleanup } = await render({ queue: [] });
+    const { container, burst, cleanup } = await render({
+      running: [],
+      pendingQuestions: [],
+      queue: [],
+    });
     expect(burst?.open).toBe(true);
     expect(container.textContent).toContain("Clicked Generate key");
     expect(container.querySelector('[aria-label="Working"]')).toBeNull();

@@ -101,7 +101,7 @@ async function fireSchedule(id: string, opts: { manual?: boolean } = {}): Promis
   // must skip the fire it overlaps, not queue a second copy of itself behind
   // the first — that is how a slow schedule turns into a backlog.
   const busy =
-    getActiveRun()?.conversationId === schedule.conversationId ||
+    getActiveRun(schedule.conversationId) !== null ||
     listQueue().some((q) => q.conversationId === schedule.conversationId);
   if (busy) {
     log.info("fire skipped — schedule already running", { id, task: truncate(schedule.task, 80) });
@@ -156,13 +156,18 @@ async function fireSchedule(id: string, opts: { manual?: boolean } = {}): Promis
     timestamp: now,
   });
 
+  const runId = crypto.randomUUID();
   submitRun({
+    id: runId,
     conversationId: schedule.conversationId,
     owner: "schedule",
+    ownerId: schedule.id,
     task,
     launch: () => {
       const writer = new TranscriptWriter(schedule.conversationId);
       void startAgentRun({
+        runId,
+        ownerId: schedule.id,
         conversationId: schedule.conversationId,
         owner: "schedule",
         scheduleId: schedule.id,

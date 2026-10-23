@@ -1,6 +1,5 @@
 export { createDriver } from "./driver";
 export type { BrowserDriver } from "./driver";
-export { captureVisibleTab } from "./capture";
 export { focusTab, revealTab } from "./focus-tab";
 export {
   showAgentIndicator,
@@ -15,8 +14,10 @@ export { syncActionBadge } from "./action-badge";
 export {
   SUPPORTED_KEYS,
   SUPPORTED_MODIFIERS,
-  attachedTab,
-  detachAll,
+  claimTab,
+  tabOwner,
+  releaseBrowserOwner,
+  isAttached,
   screenshot,
   waitForLoad,
 } from "./cdp-driver";

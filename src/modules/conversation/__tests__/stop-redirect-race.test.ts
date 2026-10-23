@@ -58,6 +58,7 @@ beforeEach(async () => {
     messages: [],
     conversations: [],
     activeId: null,
+    activeRunId: null,
     status: "idle",
     streamingText: "",
     reasoningText: "",
@@ -88,6 +89,7 @@ describe("stop-redirect survives the board refetch race", () => {
     await vi.waitFor(() =>
       expect(port.fake.postMessage).toHaveBeenCalledWith({
         type: "run",
+        runId: expect.any(String),
         conversationId: expect.any(String),
         task: "original task",
       }),
@@ -109,8 +111,18 @@ describe("stop-redirect survives the board refetch race", () => {
 
     // The run claims the board so the release below looks like "this run left".
     // (This first board write also refetches — resolve it with the real rows.)
-    fireStorageWatch("run-board", {
-      running: { conversationId, task: "original task", owner: "panel", startedAt: Date.now() },
+    fireStorageWatch("run-board-v2", {
+      running: [
+        {
+          id: useConversationStore.getState().activeRunId,
+          ownerId: `panel:${conversationId}`,
+          conversationId,
+          task: "original task",
+          owner: "panel",
+          startedAt: Date.now(),
+        },
+      ],
+      pendingQuestions: [],
       queue: [],
     });
     await vi.waitFor(() => expect(pending.length).toBe(1));
@@ -135,7 +147,7 @@ describe("stop-redirect survives the board refetch race", () => {
     expect(pending.length).toBe(0);
 
     // The slot releases: the board watch refetches and reads the stale rows.
-    fireStorageWatch("run-board", { queue: [] });
+    fireStorageWatch("run-board-v2", { running: [], pendingQuestions: [], queue: [] });
     await vi.waitFor(() => expect(pending.length).toBe(1));
     await Promise.resolve();
 

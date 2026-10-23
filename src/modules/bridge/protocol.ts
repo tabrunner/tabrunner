@@ -6,6 +6,8 @@
  * standalone bun script and must not import from the extension bundle.
  */
 
+export const BRIDGE_PROTOCOL_VERSION = 2;
+
 // ── Extension → daemon ──────────────────────────────────────────────
 
 /** Handshake on (re)connect — the daemon recognizes us and re-syncs its status. */
@@ -13,6 +15,7 @@ export interface BridgeHello {
   type: "hello";
   extensionId: string;
   version: string;
+  protocolVersion: typeof BRIDGE_PROTOCOL_VERSION;
 }
 
 export interface BridgePong {
@@ -23,6 +26,7 @@ export interface BridgePong {
 export interface BridgeResponse {
   type: "response";
   requestId: string;
+  clientId: string;
   ok: boolean;
   result?: unknown;
   error?: { code: string; message: string };
@@ -32,6 +36,9 @@ export interface BridgeResponse {
  *  token deltas and reasoning never cross the wire. */
 export interface BridgeRunEvent {
   type: "event";
+  clientId: string;
+  runId: string | null;
+  conversationId: string | null;
   event: CompactRunEvent;
 }
 
@@ -41,12 +48,15 @@ export type ExtensionMessage = BridgeHello | BridgePong | BridgeResponse | Bridg
 
 export interface BridgePing {
   type: "ping";
+  clientIds: string[];
 }
 
 /** A request from the daemon; method is one of the bridge commands below. */
 export interface BridgeRequest {
   type: "request";
   requestId: string;
+  clientId: string;
+  runId?: string;
   method: string;
   params: Record<string, unknown>;
 }
@@ -89,11 +99,11 @@ export interface BridgeProviderInfo {
 
 /** One waiting run, as get_status lists it. Position is 1-based, FIFO. */
 export interface BridgeQueueEntry {
+  runId: string;
+  conversationId: string;
   position: number;
   task: string;
-  /** "schedule" is an alarm firing on its own — the browser is busy with work
-   *  nobody is watching, which an external client waiting on the slot must be
-   *  able to tell from a user typing in the panel. */
+  /** All entries belong to the caller, never another client's work. */
   owner: "panel" | "bridge" | "schedule";
 }
 
@@ -106,7 +116,7 @@ export interface BridgeStatus {
   steps: { tool: string; summary: string; ok?: boolean }[];
   plan: { steps: string[]; current: number } | null;
   driving: { tabId: number; windowId: number; title: string } | null;
-  /** Runs waiting on the single slot — tasks run one at a time, the rest queue. */
+  /** This client's waiting tasks, in submission order. */
   queue: BridgeQueueEntry[];
   question: string | null;
   /**

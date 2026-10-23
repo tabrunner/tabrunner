@@ -84,8 +84,12 @@ never reach the service-worker bundle.
 
 ### Modules
 
-- `agent/` — agent loop, tools, system prompt, run slot + FIFO queue, run start. A panel run
-  **adopts the user's current tab on the thread's first message** — drives it as-is (the plan
+- `agent/`: agent loop, tools, system prompt, run registry + per-owner FIFO queue, run start.
+  At most four tasks run across panel, bridge and schedule owners. Each owner and conversation
+  has at most one live task; all panel runs share ownerId `panel`, so the panel stays serial.
+  Stop aborts without releasing: actions, external reads and browser cleanup finish before the
+  run leaves the registry. A panel run **adopts the user's current tab on the thread's first
+  message**: it drives the page as-is (the plan
   gate protects a page the user didn't want touched) — and every follow-up **continues on
   the conversation's own tab while it lives**: a message typed elsewhere is usually steering,
   not a move order, so the send-time page rides along as model context (`submitPage`) instead
@@ -98,12 +102,16 @@ never reach the service-worker bundle.
   or an explicit URL. Runs survive panel close.
   Action tools
   are gated on user-approved plans; `ask_user` enforces the consequential-action policy.
-- `browser/` — accessibility-tree snapshot, CDP driver (trusted input), `fill.ts` (page-side
-  field set when keystrokes don't land), `evaluate` via `Runtime.evaluate` (CSP-exempt) behind
+- `browser/`: accessibility-tree snapshot, CDP driver (trusted input), per-run tab claims,
+  `fill.ts` (page-side field set when keystrokes don't land), `evaluate` via `Runtime.evaluate`
+  (CSP-exempt) behind
   `sanitize.ts` (credential-blocking output caps), `inspect.ts` (network/console rings fed at
   debugger attach), `inject.ts` (the one executeScript helper), on-page badge + pulsing
   favicon dot on the driven tab, `restricted-url.ts`, `status-widget.ts`, `action-badge.ts`.
-  Background-only. The badge and the pill are injected, so both are best-effort and can be
+  Background-only. Drivers use the run id as `ownerId`; CDP helpers name their tab explicitly.
+  Claim a tab before any page work or marks, and release only that owner's resources. Separate
+  tabs still share the browser profile's cookies and account state. The badge and the pill are
+  injected, so both are best-effort and can be
   absent (PDF, `file://`, CSP, or the `widgetHidden` pref); the toolbar badge is the one run
   signal that never is. Never let the injected marks be the only thing saying a run is alive.
 - `providers/` — OpenAI/Anthropic/Responses adapters, presets, pricing (spend estimates —
@@ -182,9 +190,10 @@ never reach the service-worker bundle.
   weekday filter and active-hours window. Wall-clock rules recomputed after every fire (never
   `periodInMinutes` — it can't hold 9am across a DST shift), one `chrome.alarms` one-shot per
   record, storage re-armed at boot because alarms don't survive every extension update. Fires
-  through `submitRun` as a third `RunOwner`, so a scheduled run is just another caller of the one
-  run slot; its plan auto-approves because the user approved the schedule's creation. One
-  conversation per schedule, so a recurring run can read what it did last time. `recurrence.ts` is
+  through `submitRun` with the schedule id as `ownerId`, sharing the four-task limit while
+  keeping each schedule serial. Its plan auto-approves because the user approved the schedule's
+  creation. One conversation per schedule, so a recurring run can read what it did last time.
+  `recurrence.ts` is
   pure and holds the whole calendar; `scheduler.ts` is the only file that reaches into the agent,
   which is why the barrel stops short of it. Background-only except `ui/`.
 - `skills/` — named instruction recipes, importable and site-scoped: the storage is structured
@@ -218,15 +227,21 @@ never reach the service-worker bundle.
   precede plan approval (frame 0 falls back to `captureVisibleTab`). Capture is awaited on both
   sides of the tool call: `onStepStart` is sync and a turn's calls run back-to-back, so a
   fire-and-forget shot would land mid-click on the next action. Element actions get the frame
-  before, navigations the one after; `finalize()` runs in `start-run.ts`'s one `finally` **before**
-  `detachAll()`, so every ending — done, stop, error, closed tab — leaves an artifact. Frames are
+  before, navigations the one after; `finalize()` runs before `releaseBrowserOwner(run.id)`,
+  so done, stop, error and closed-tab endings all leave an artifact. Frames are
   Blobs in IndexedDB (`store.ts`, the codebase's only binary store, GC'd with their conversation);
   they never enter `messages[]`, so a recording structurally cannot reach a provider. Everything
   less than the whole truth is disclosed in the doc's own intro — partial, truncated, armed late,
   frames missed. Background-safe except `ui/`; `recorder.ts` is deliberately out of the barrel
   (it reaches into CDP, and the barrel is imported by pages and by background).
-- `bridge/` — the MCP bridge's extension half — clients dial IN through the daemon. The outbound
-  twin is `mcp/`. Background-only.
+- `bridge/`: the MCP bridge's extension half. `daemon/` elects one shared local broker;
+  each stdio client gets a fresh session id. `BridgeClient` owns that session's stored conversation,
+  delegated/direct work, controls, compact status and screenshots. Direct and delegated tasks
+  continue the same per-client thread; a worker restart preserves its id, but a new MCP session
+  starts fresh. Client commands serialize independently. Requests/events carry client and run ids;
+  stale controls cannot reach newer work. Broker heartbeats renew a 60s owner lease, reconnects
+  resync each client without replaying browser actions, and close/expiry drains only that owner's
+  work. Protocol v2 rejects mismatches. The outbound twin is `mcp/`. Background-only.
 - `tips/` — the rotating "Tip: …" line; i18n data + cooldown scheduler (panel opens,
   least-recently-shown wins, re-picked on panel open / run end). Shows in the running run
   band, or above the composer card when idle — and yields whenever the zone is already

@@ -24,8 +24,9 @@ beforeEach(() => {
         disconnect: () => {},
       }),
     },
+    windows: { getCurrent: async () => ({ id: 1 }) },
   };
-  useConversationStore.setState({ queued: [], draft: "" });
+  useConversationStore.setState({ queued: [], draft: "", activeRunId: "run-recall" });
 });
 afterEach(() => useConversationStore.getState().disconnect());
 
@@ -44,7 +45,8 @@ describe("recallQueued", () => {
     expect(after.queued).toEqual([]);
     // The loop keeps its own copy of the queue — every line has to be dropped
     // there too, or the run steers with text the composer is now holding.
-    for (const id of ids) expect(postMessage).toHaveBeenCalledWith({ type: "unqueue", id });
+    for (const id of ids)
+      expect(postMessage).toHaveBeenCalledWith({ type: "unqueue", runId: "run-recall", id });
   });
 
   it("leaves an empty queue alone rather than clobbering the draft", () => {

@@ -181,7 +181,9 @@ const BUILTIN_COMMANDS: readonly (SlashCommand & { name: BuiltinCommandName })[]
         return;
       }
       if (!runsHere(store)) {
-        note(i18n.t(store.board.running ? "commands.stop.elsewhere" : "commands.stop.none"));
+        note(
+          i18n.t(store.board.running.length > 0 ? "commands.stop.elsewhere" : "commands.stop.none"),
+        );
         return;
       }
       // No note — the run's own "Stopped" seam line is the acknowledgment, and

@@ -61,7 +61,8 @@ beforeEach(() => {
     status: "idle",
     deferred: null,
     queuedRun: null,
-    board: { queue: [] },
+    board: { running: [], pendingQuestions: [], queue: [] },
+    activeRunId: null,
     // The engine pick of a conversation that has no id yet — a picker write
     // lands here, so leaving it set would carry one test's /effort into the next.
     draftEngine: null,
@@ -254,7 +255,7 @@ describe("slashItems", () => {
  */
 describe("/stop", () => {
   it("stops a run working this conversation, and says nothing — the seam line does", () => {
-    useConversationStore.setState({ status: "running" });
+    useConversationStore.setState({ status: "running", activeRunId: "run-stop" });
     const before = useConversationStore.getState().messages.length;
 
     command("stop").run(undefined);
@@ -277,7 +278,32 @@ describe("/stop", () => {
 
   it("orients instead of failing silently when there is nothing to stop", () => {
     command("stop").run(undefined);
-    expect(lastNote()).toContain("no task running here to stop");
+    expect(lastNote()).toBe(i18n.t("commands.stop.none"));
+  });
+
+  it("names the other chat without stopping its run", () => {
+    const stop = vi.spyOn(useConversationStore.getState(), "stop");
+    useConversationStore.setState({
+      activeId: "chat-here",
+      board: {
+        running: [
+          {
+            id: "run-other",
+            ownerId: "panel:chat-other",
+            conversationId: "chat-other",
+            task: "Read another page",
+            owner: "panel",
+            startedAt: 0,
+          },
+        ],
+        pendingQuestions: [],
+        queue: [],
+      },
+    });
+    command("stop").run(undefined);
+    expect(stop).not.toHaveBeenCalled();
+    expect(lastNote()).toBe(i18n.t("commands.stop.elsewhere"));
+    stop.mockRestore();
   });
 });
 

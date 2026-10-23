@@ -53,6 +53,7 @@ beforeEach(() => {
     messages: [],
     conversations: [],
     activeId: null,
+    activeRunId: null,
     status: "idle",
     streamingText: "",
     reasoningText: "",
@@ -110,6 +111,7 @@ describe("plan approval prompt", () => {
     useConversationStore.getState().approvePlan();
     expect(port.fake.postMessage).toHaveBeenLastCalledWith({
       type: "plan_approval",
+      runId: useConversationStore.getState().activeRunId,
       approved: true,
     });
     expect(useConversationStore.getState().planApproval).toBeNull();
@@ -124,6 +126,7 @@ describe("plan approval prompt", () => {
     useConversationStore.getState().rejectPlan();
     expect(port.fake.postMessage).toHaveBeenLastCalledWith({
       type: "plan_approval",
+      runId: useConversationStore.getState().activeRunId,
       approved: false,
     });
     expect(useConversationStore.getState().planApproval).toBeNull();
@@ -138,6 +141,7 @@ describe("plan approval prompt", () => {
     useConversationStore.getState().revisePlan("  skip step b  ");
     expect(port.fake.postMessage).toHaveBeenLastCalledWith({
       type: "plan_approval",
+      runId: useConversationStore.getState().activeRunId,
       approved: false,
       feedback: "skip step b",
     });

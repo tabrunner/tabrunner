@@ -16,6 +16,7 @@ export type Command =
    *  on, and whether the panel stays open to watch it is the panel's own business. */
   | {
       type: "run";
+      runId: string;
       /** The conversation the task message was just stored in — the run's home.
        *  Carried, not re-derived worker-side: the shared active slot can be
        *  re-pointed (pill/notification click) between send and handling. */
@@ -28,7 +29,7 @@ export type Command =
        *  user now. */
       url?: string;
     }
-  | { type: "stop" }
+  | { type: "stop"; runId: string }
   /**
    * The panel naming the window it lives in, sent once right after connect.
    * "Is the user watching?" — the test every OS notification is gated on — has
@@ -40,9 +41,9 @@ export type Command =
    * Message typed while a run is in flight — the loop inserts it between tool
    * batches, so the model sees it in order without interrupting the run.
    */
-  | { type: "inject"; id: string; text: string }
+  | { type: "inject"; runId: string; id: string; text: string }
   /** The user edited or dropped a queued message before it was consumed. */
-  | { type: "unqueue"; id: string }
+  | { type: "unqueue"; runId: string; id: string }
   /** Cancel a run still waiting in the serial run queue (not the active one). */
   | { type: "cancel_queued"; id: string }
   /**
@@ -50,7 +51,7 @@ export type Command =
    * `feedback` turns a "no" into a revision request: the run stays alive, the
    * model replans with the changes, and the revised plan is asked about again.
    */
-  | { type: "plan_approval"; approved: boolean; feedback?: string }
+  | { type: "plan_approval"; runId: string; approved: boolean; feedback?: string }
   /**
    * The user answered a remote server's elicitation request mid-tool-call —
    * `value` carries the form fields it asked for, or a bare decline. Resolves
@@ -59,6 +60,7 @@ export type Command =
    */
   | {
       type: "elicitation_result";
+      runId: string;
       requestId: string;
       action: "accept" | "decline";
       value?: Record<string, unknown>;
@@ -175,6 +177,9 @@ export interface PlanApprovalPayload extends PlanPayload {
  * run it represents is already blinking the driven tab's favicon.
  */
 export interface BridgeActive {
+  clientId: string;
+  runId: string;
+  conversationId: string;
   /** run = a delegated task; direct = the client clicking through itself. */
   mode: "run" | "direct";
   /** The MCP client's name — the same label history shows on the thread. */
@@ -279,7 +284,7 @@ export type Event =
    *  stopped marks a user halt, so the settled band says "Stopped" and never claims "Done" */
   | { type: "done"; summary?: string; question?: boolean; stopped?: boolean }
   /** Who an external agent is in the browser — null when the browser is yours again */
-  | { type: "run_active"; active: BridgeActive | null }
+  | { type: "run_active"; active: BridgeActive[] }
   /**
    * The run is documenting itself. Drives the REC state everywhere it shows —
    * the panel's run band, the driven tab's badge, the toolbar badge. Emitted

@@ -1,4 +1,4 @@
-import { defineItem } from "@/lib/storage";
+import { createWriteQueue, defineItem } from "@/lib/storage";
 import { hostMatches, normalizeHost, scopeHostOf } from "@/lib/host";
 
 /**
@@ -56,6 +56,7 @@ Write each fact to stand alone. It is read months later, beside unrelated facts,
 Never save secrets: passwords, API keys, card numbers, security answers. Never save anything already in the memory you were shown.`;
 
 const docItem = (name: DocName) => defineItem<string>(`doc:${name}`, "");
+const writeDocument = createWriteQueue();
 
 /**
  * ponytail: memory is flat bullet lists capped by characters per scope,
@@ -73,7 +74,7 @@ export function getDoc(name: DocName): Promise<string> {
 }
 
 export function setDoc(name: DocName, content: string): Promise<void> {
-  return docItem(name).set(content);
+  return writeDocument(() => docItem(name).set(content));
 }
 
 export function watchDoc(name: DocName, cb: (content: string) => void): () => void {
@@ -196,39 +197,42 @@ function normalize(line: string): string {
  * is a no-op rather than an error — models restate what they already know all
  * the time.
  */
-export async function remember(fact: string, site?: string): Promise<ScopedFact | null> {
-  // Collapse first, then trim, then drop a list marker the model added itself —
-  // stripping before the trim misses "  - fact", which is what they actually send.
-  const entry = fact
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^[-*]\s*/, "")
-    .trim();
-  if (!entry) return null;
+export function remember(fact: string, site?: string): Promise<ScopedFact | null> {
+  return writeDocument(async () => {
+    // Collapse first, then trim, then drop a list marker the model added itself —
+    // stripping before the trim misses "  - fact", which is what they actually send.
+    const entry = fact
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^[-*]\s*/, "")
+      .trim();
+    if (!entry) return null;
 
-  const scope = site ? normalizeHost(site) : null;
-  const item = docItem("MEMORY.md");
-  const scoped = parseScopes(await item.get());
-  const lines = scope ? sectionFor(scoped.sections, scope).lines : scoped.global;
-  const saved: ScopedFact = { text: entry, ...(scope ? { site: scope } : {}) };
+    const scope = site ? normalizeHost(site) : null;
+    const item = docItem("MEMORY.md");
+    const scoped = parseScopes(await item.get());
+    const lines = scope ? sectionFor(scoped.sections, scope).lines : scoped.global;
+    const saved: ScopedFact = { text: entry, ...(scope ? { site: scope } : {}) };
 
-  // Dedupe within the scope only — the same lesson can legitimately hold both
-  // globally and on one site, and cross-scope "which copy wins" isn't worth it.
-  if (lines.some((line) => isFactLine(line) && normalize(line) === normalize(entry))) return saved;
+    // Dedupe within the scope only — the same lesson can legitimately hold both
+    // globally and on one site, and cross-scope "which copy wins" isn't worth it.
+    if (lines.some((line) => isFactLine(line) && normalize(line) === normalize(entry)))
+      return saved;
 
-  const stored = `- ${entry}`;
-  lines.push(stored);
-  // Evict this scope's oldest facts past its cap — never a heading, never the
-  // entry just written, and never another scope's lines.
-  const size = () => lines.filter(isFactLine).join("\n").length;
-  while (size() > MAX_SCOPE_CHARS) {
-    const oldest = lines.findIndex((line) => isFactLine(line) && line !== stored);
-    if (oldest === -1) break;
-    lines.splice(oldest, 1);
-  }
+    const stored = `- ${entry}`;
+    lines.push(stored);
+    // Evict this scope's oldest facts past its cap — never a heading, never the
+    // entry just written, and never another scope's lines.
+    const size = () => lines.filter(isFactLine).join("\n").length;
+    while (size() > MAX_SCOPE_CHARS) {
+      const oldest = lines.findIndex((line) => isFactLine(line) && line !== stored);
+      if (oldest === -1) break;
+      lines.splice(oldest, 1);
+    }
 
-  await item.set(serializeScopes(scoped));
-  return saved;
+    await item.set(serializeScopes(scoped));
+    return saved;
+  });
 }
 
 /** One fact with its scope; `site` absent means global — loaded on every run. */
@@ -259,16 +263,19 @@ export function listMemory(doc: string): MemoryGroup[] {
  * so the list and the store agree. A site section's last fact takes the
  * section heading with it.
  */
-export async function removeMemory(entry: string, site?: string): Promise<void> {
-  const scoped = parseScopes(await getDoc("MEMORY.md"));
-  const keep = (line: string) => !isFactLine(line) || stripMarker(line) !== entry;
-  if (site) {
-    const section = scoped.sections.find((s) => s.host === site);
-    if (section) section.lines = section.lines.filter(keep);
-  } else {
-    scoped.global = scoped.global.filter(keep);
-  }
-  await setDoc("MEMORY.md", serializeScopes(scoped));
+export function removeMemory(entry: string, site?: string): Promise<void> {
+  return writeDocument(async () => {
+    const item = docItem("MEMORY.md");
+    const scoped = parseScopes(await item.get());
+    const keep = (line: string) => !isFactLine(line) || stripMarker(line) !== entry;
+    if (site) {
+      const section = scoped.sections.find((s) => s.host === site);
+      if (section) section.lines = section.lines.filter(keep);
+    } else {
+      scoped.global = scoped.global.filter(keep);
+    }
+    await item.set(serializeScopes(scoped));
+  });
 }
 
 /** Everything the agent's system prompt needs, resolved once at run start. */

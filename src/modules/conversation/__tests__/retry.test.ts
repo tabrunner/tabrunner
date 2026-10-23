@@ -55,6 +55,7 @@ beforeEach(() => {
     messages: [],
     conversations: [],
     activeId: null,
+    activeRunId: null,
     status: "idle",
     usage: { input: 0, output: 0 },
     runStartedAt: null,
@@ -92,6 +93,7 @@ describe("retry", () => {
     expect(runCommands()).toEqual([
       {
         type: "run",
+        runId: useConversationStore.getState().activeRunId,
         conversationId: "c1",
         task: "second task",
         images: ["data:image/png;base64,x"],
@@ -115,7 +117,14 @@ describe("retry", () => {
 
     useConversationStore.getState().retry();
 
-    expect(runCommands()).toEqual([{ type: "run", conversationId: "c1", task: "do the thing" }]);
+    expect(runCommands()).toEqual([
+      {
+        type: "run",
+        runId: useConversationStore.getState().activeRunId,
+        conversationId: "c1",
+        task: "do the thing",
+      },
+    ]);
   });
 
   it("a run its tab outlived retries by putting the page back first", () => {
@@ -141,6 +150,7 @@ describe("retry", () => {
     expect(runCommands()).toEqual([
       {
         type: "run",
+        runId: useConversationStore.getState().activeRunId,
         conversationId: "c1",
         task: "book the flight",
         url: "https://flights.example/search?q=1",

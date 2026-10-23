@@ -29,7 +29,7 @@ beforeEach(() => {
   vi.mocked(startAgentRun).mockResolvedValue({ ok: true });
   vi.mocked(submitRun).mockImplementation((entry) => {
     entry.launch();
-    return { started: true };
+    return { started: true, id: entry.id };
   });
 });
 
@@ -132,6 +132,10 @@ describe("hourly alarm advancement", () => {
   it("skips an overlapping run without appending a new task or losing the fixed minute", async () => {
     const schedule = await seed();
     vi.mocked(getActiveRun).mockReturnValue({
+      id: "live-schedule",
+      ownerId: schedule.id,
+      readsClosed: false,
+      pendingReads: new Set(),
       conversationId: schedule.conversationId,
       owner: "schedule",
       controller: new AbortController(),

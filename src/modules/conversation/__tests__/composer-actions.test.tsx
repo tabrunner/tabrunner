@@ -57,6 +57,7 @@ beforeEach(() => {
     messages: [],
     conversations: [],
     activeId: null,
+    activeRunId: null,
     draft: "",
     pastedTexts: [],
     collapseDisabled: false,
@@ -69,9 +70,9 @@ beforeEach(() => {
     planApproved: false,
     queued: [],
     queuedRun: null,
-    board: { queue: [] },
+    board: { running: [], pendingQuestions: [], queue: [] },
     drivingTab: null,
-    bridgeActive: null,
+    bridgeActive: [],
   });
 });
 
@@ -103,14 +104,75 @@ describe("morph button", () => {
     useConversationStore.setState({
       queuedRun: { id: "q1", position: 1, task: "next thing" },
       board: {
+        running: [],
+        pendingQuestions: [],
         queue: [
-          { id: "q1", conversationId: "c1", owner: "panel", task: "next thing", enqueuedAt: 1 },
+          {
+            id: "q1",
+            conversationId: "c1",
+            owner: "panel",
+            ownerId: "panel:c1",
+            task: "next thing",
+            enqueuedAt: 1,
+          },
         ],
       },
     });
     const h = await render(<ChatInput />);
     expect(morphButton(h, "Stop")).toBeNull();
     expect(morphButton(h, "Send")).not.toBeNull();
+    await unmount(h);
+  });
+});
+
+describe("parallel runs on different conversations", () => {
+  it("keeps this panel's live band and Stop when a bridge client works elsewhere", async () => {
+    useConversationStore.setState({
+      activeId: "panel-chat",
+      activeRunId: "run-panel",
+      status: "running",
+      runStartedAt: Date.now(),
+      bridgeActive: [
+        {
+          clientId: "client-other",
+          runId: "run-other",
+          conversationId: "other-chat",
+          mode: "direct",
+          client: "Editor",
+        },
+      ],
+      board: {
+        running: [
+          {
+            id: "run-other",
+            ownerId: "client-other",
+            owner: "bridge",
+            conversationId: "other-chat",
+            task: "Read another page",
+            startedAt: 1,
+          },
+          {
+            id: "run-panel",
+            ownerId: "panel:panel-chat",
+            owner: "panel",
+            conversationId: "panel-chat",
+            task: "Check this invoice",
+            startedAt: Date.now(),
+          },
+        ],
+        pendingQuestions: [],
+        queue: [],
+      },
+    });
+    const h = await render(
+      <>
+        <RunStatus />
+        <ChatInput />
+      </>,
+    );
+    expect(morphButton(h, "Stop")).not.toBeNull();
+    expect(h.container.textContent).not.toContain("Editor");
+    expect(h.container.querySelector('[role="status"]')).not.toBeNull();
     await unmount(h);
   });
 });
@@ -123,6 +185,7 @@ describe("the parked plan gate", () => {
       planApproval: { steps: ["a"], current: 0, reapproval: false },
       draft: "isso",
       activeId: "gate-note",
+      activeRunId: "run-gate-note",
     });
     const h = await render(<ChatInput />);
     // The composer names where the text goes — never "add to the running task",

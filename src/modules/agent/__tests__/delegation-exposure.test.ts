@@ -31,7 +31,7 @@ describe("delegation exposure", () => {
     { enabled: false, supportsImages: false },
   ])("offers both instructions and tool together: %j", async ({ enabled, supportsImages }) => {
     // Construct the real typed driver, but replace its only reachable operation.
-    const driver = createDriver(-1);
+    const driver = createDriver(-1, { ownerId: "delegation-exposure" });
     vi.spyOn(driver, "snapshot").mockResolvedValue({
       pageContent: 'textbox "Search" [ref=e1]',
       viewport: { width: 800, height: 600 },

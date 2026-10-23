@@ -47,6 +47,7 @@ export interface ConversationState {
   conversations: ConversationMeta[];
   /** Open conversation; null until the first message of a fresh one is stored */
   activeId: string | null;
+  activeRunId: string | null;
   /**
    * The open conversation's first read has landed (or failed) — `messages` is
    * now the truth rather than the empty array every panel starts on. What holds
@@ -112,7 +113,7 @@ export interface ConversationState {
   /** The tab the current run is driving; null when idle. */
   drivingTab: DrivingPayload | null;
   /** An external client working in the browser (a bridge run or direct session) */
-  bridgeActive: BridgeActive | null;
+  bridgeActive: BridgeActive[];
   /** The ambient run state — what runs/queues anywhere, widget-fed. */
   board: RunBoard;
   /** This panel's own submission waiting in the serial queue. */
@@ -189,6 +190,7 @@ export interface ConversationState {
   clearPastedTexts: () => void;
   retry: () => void;
   stop: () => void;
+  stopRunById: (runId: string) => void;
   /** Answer a parked plan prompt — the loop resumes on approve, unwinds on reject. */
   approvePlan: () => void;
   rejectPlan: () => void;
@@ -230,13 +232,15 @@ export function pinOf(s: ConversationState): ConversationEngine | undefined {
  * nothing — never a fresh object, which would re-render every consumer on
  * every unrelated store change.
  */
-export function boardRunHere(s: ConversationState): RunBoard["running"] {
-  return s.activeId !== null && s.board.running?.conversationId === s.activeId
-    ? s.board.running
-    : undefined;
+export function boardRunHere(s: ConversationState): RunBoard["running"][number] | undefined {
+  return s.board.running.find((run) => run.conversationId === s.activeId);
 }
 
-/** Is a run working on THIS conversation — ours in flight, or the board's? */
+export function bridgeRunHere(s: ConversationState): BridgeActive | undefined {
+  return s.bridgeActive.find((run) => run.conversationId === s.activeId);
+}
+
+/** Is a run working on THIS conversation, including a reopened panel's run. */
 export function runsHere(s: ConversationState): boolean {
   return s.status === "running" || boardRunHere(s) !== undefined;
 }
@@ -407,6 +411,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
 
   /** Transcript-independent state — reset whenever the panel switches transcripts. */
   const resetRun = () => ({
+    activeRunId: null,
     streamingText: "",
     reasoningText: "",
     reasoningStartedAt: null,
@@ -484,6 +489,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
   const settleRun = (status: AgentStatus) => {
     set((st) => ({
       messages: settleLive(st.messages),
+      activeRunId: null,
       streamingText: "",
       reasoningText: "",
       reasoningStartedAt: null,
@@ -561,10 +567,10 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     images?: string[],
     url?: string,
   ) => {
+    const runId = crypto.randomUUID();
     sawAssistantText = false;
-    // Persistence is the worker's job now (it owns the transcript writer — the
-    // panel may close right after submit); this store only renders.
     set({
+      activeRunId: runId,
       status: "running",
       streamingText: "",
       reasoningText: "",
@@ -594,6 +600,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     });
     const dispatch: Command = {
       type: "run",
+      runId,
       // The run's home is where its task message just landed — carried here so
       // the worker never re-derives it from the shared active slot, which a
       // pill or notification click can re-point mid-flight.
@@ -1067,7 +1074,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     const { conversationId, ...rest } = msg;
     const event = rest as Event;
     if (conversationId !== undefined && conversationId !== get().activeId) return;
-    const live = get().board.running;
+    const live = boardRunHere(get());
     if (
       conversationId !== undefined &&
       live?.conversationId === conversationId &&
@@ -1095,6 +1102,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       sawAssistantText = false;
       set({
         status: "running",
+        activeRunId: live.id,
         runStartedAt: live.startedAt,
         runEndedAt: null,
         runStopped: false,
@@ -1139,6 +1147,8 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     }
   };
 
+  const currentRunId = (): string | null => boardRunHere(get())?.id ?? get().activeRunId ?? null;
+
   const attach = (): chrome.runtime.Port => {
     if (port) return port;
     if (reconnectTimer) {
@@ -1153,7 +1163,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       port = null;
       // The worker died with its state — nothing can be in the browser now; the
       // next connect re-asks and gets the fresh answer.
-      set({ bridgeActive: null });
+      set({ bridgeActive: [] });
       if (pingTimer) {
         clearInterval(pingTimer);
         pingTimer = null;
@@ -1247,10 +1257,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
    */
   const reconcileParkedAsks = (board: RunBoard) => {
     const s = get();
-    const running =
-      s.activeId !== null && board.running?.conversationId === s.activeId
-        ? board.running
-        : undefined;
+    const running = board.running.find((run) => run.conversationId === s.activeId);
     const parked = running?.owner === "panel";
     const ask = parked ? (running.approval ?? null) : null;
     if (ask && s.planApproval === null) {
@@ -1309,6 +1316,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     messages: [],
     conversations: [],
     activeId: null,
+    activeRunId: null,
     hydrated: false,
     status: "idle",
     streamingText: "",
@@ -1334,8 +1342,8 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     pastedTexts: [],
     collapseDisabled: false,
     drivingTab: null,
-    bridgeActive: null,
-    board: { queue: [] },
+    bridgeActive: [],
+    board: runBoardItem.fallback,
     queuedRun: null,
     compactingSince: null,
     deferred: null,
@@ -1360,7 +1368,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         const id = s.activeId;
         // Never over an owned view — see ownsLiveView.
         if (id === null || ownsLiveView()) return;
-        if (s.board.running?.conversationId !== id) return;
+        if (!boardRunHere(s)) return;
         void getMessages(id).then((messages) => {
           const now = get();
           if (now.activeId === id && !ownsLiveView()) {
@@ -1372,10 +1380,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         set({ board });
         // Mounting into a run already in flight: the live band's clock would
         // otherwise start at panel-open and call the run younger than it is.
-        const running =
-          get().activeId !== null && board.running?.conversationId === get().activeId
-            ? board.running
-            : undefined;
+        const running = boardRunHere(get());
         if (running) set({ runStartedAt: running.startedAt });
         // A panel opened onto a parked gate arms its card here — the ask is on
         // the board, no port event required. activeId may still be resolving;
@@ -1394,7 +1399,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         reconcileParkedAsks(board);
         // A worker restart resets the board to empty — drop the queued chip
         // the dead queue can never fulfill.
-        if (!board.running && board.queue.length === 0 && get().queuedRun) {
+        if (board.running.length === 0 && board.queue.length === 0 && get().queuedRun) {
           set({ queuedRun: null });
         }
         // The frozen reopened panel: this conversation's run moved (started,
@@ -1403,17 +1408,17 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         // this conversation moves it the same way (running → pendingQuestion).
         const activeId = get().activeId;
         if (!activeId) return;
-        const wasHere = prev.running?.conversationId === activeId;
+        const wasHere = prev.running.some((run) => run.conversationId === activeId);
         const isHere =
-          board.running?.conversationId === activeId ||
-          board.pendingQuestion?.conversationId === activeId;
+          board.running.some((run) => run.conversationId === activeId) ||
+          board.pendingQuestions.some((question) => question.conversationId === activeId);
         if (!isHere && !wasHere) return;
         // The live band's clock reads runStartedAt; a panel that reconnects
         // into a run already in flight would otherwise start it at panel-open
         // and call the run younger than it is. Anchor it to the run's real
         // start. Status stays the stream's — the board fallback in RunStatus
         // covers the close/has-none cases already.
-        const running = board.running?.conversationId === activeId ? board.running : undefined;
+        const running = boardRunHere(get());
         if (running) set({ runStartedAt: running.startedAt });
         // A run this panel only watches (reopened onto its own background run)
         // ends here, not on a `done` event — this is that run's settle point.
@@ -1560,15 +1565,18 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     cancelQueuedById: (id) => post({ type: "cancel_queued", id }),
 
     queueMessage: (text) => {
+      const runId = currentRunId();
+      if (!runId) return;
       const item = { id: crypto.randomUUID(), text };
       set({ queued: [...get().queued, item] });
-      // Port gone mid-run: onDisconnect recalls the queue to the composer.
-      post({ type: "inject", ...item });
+      post({ type: "inject", runId, ...item });
     },
 
     unqueueMessage: (id) => {
+      const runId = currentRunId();
+      if (!runId) return;
       set({ queued: get().queued.filter((q) => q.id !== id) });
-      post({ type: "unqueue", id });
+      post({ type: "unqueue", runId, id });
     },
 
     recallQueued: () => {
@@ -1584,7 +1592,8 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       // The loop holds its own copy — recallQueue is the run-end path, where
       // the worker's queue is already going away and posting would only wake a
       // dead port. This one happens mid-run, so the wire has to hear it.
-      for (const q of queued) post({ type: "unqueue", id: q.id });
+      const runId = currentRunId();
+      if (runId) for (const q of queued) post({ type: "unqueue", runId, id: q.id });
     },
 
     setEngine: (patch, thisChatOnly) => {
@@ -1662,7 +1671,11 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       startRun(p, conversationId, target.task, target.images, target.url);
     },
 
+    stopRunById: (runId) => post({ type: "stop", runId }),
+
     stop: () => {
+      const runId = currentRunId();
+      if (!runId) return;
       // A queued message turns the halt into a redirect: the queue is sent as the
       // next task once the current run has fully unwound (its done event). A second
       // stop during the unwind must preserve the pending text, not wipe it.
@@ -1672,7 +1685,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
               .queued.map((x) => x.text)
               .join("\n")
           : get().pendingSend;
-      post({ type: "stop" });
+      post({ type: "stop", runId });
       // Deliberately NOT settleRun: the loop's done event arrives as the worker
       // unwinds and flushes any partial stream into the transcript first.
       set((st) => ({
@@ -1688,8 +1701,9 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     },
 
     approvePlan: () => {
-      if (!get().planApproval) return;
-      post({ type: "plan_approval", approved: true });
+      const runId = currentRunId();
+      if (!get().planApproval || !runId) return;
+      post({ type: "plan_approval", runId, approved: true });
       // Approval is the handover: the gate is behind the run, so a dispatched
       // background run auto-closes.
       set({ planApproval: null, planApproved: true });
@@ -1705,18 +1719,21 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     },
 
     rejectPlan: () => {
-      if (!get().planApproval) return;
-      post({ type: "plan_approval", approved: false });
+      const runId = currentRunId();
+      if (!get().planApproval || !runId) return;
+      post({ type: "plan_approval", runId, approved: false });
       set({ planApproval: null });
     },
 
     answerElicitation: (action, value) => {
       const current = get().elicitation;
-      if (!current) return;
+      const runId = currentRunId();
+      if (!current || !runId) return;
       // The panel that clicked disarms its own card here; every other panel
       // showing the thread learns from the elicitation_done broadcast.
       post({
         type: "elicitation_result",
+        runId,
         requestId: current.requestId,
         action,
         ...(action === "accept" && value ? { value } : {}),
@@ -1725,10 +1742,11 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     },
 
     revisePlan: (feedback) => {
-      if (!get().planApproval) return;
+      const runId = currentRunId();
+      if (!get().planApproval || !runId) return;
       const note = feedback.trim();
       if (!note) return;
-      post({ type: "plan_approval", approved: false, feedback: note });
+      post({ type: "plan_approval", runId, approved: false, feedback: note });
       // The gate re-arms: the REVISED plan must earn the walk-away back. And
       // the band switches to "Revising the plan…" until the new card arrives,
       // so the redraft minutes never read as a swallowed note.

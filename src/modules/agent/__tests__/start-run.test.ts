@@ -364,6 +364,7 @@ describe("thread tab group", () => {
   describe("createRunGroup", () => {
     const runGroupFor = (over: Partial<Parameters<typeof createRunGroup>[0]> = {}) =>
       createRunGroup({
+        ownerId: "test-group-owner",
         task: "book the flight",
         keepName: false,
         drivenTabId: () => 42,

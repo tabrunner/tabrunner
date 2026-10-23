@@ -1,42 +1,46 @@
 # MCP bridge
 
-TabRunner's side panel is one way to give it a task. The MCP bridge is another: it lets an external
-AI client (Claude Code, Claude Desktop, ChatGPT desktop, anything speaking the
-[Model Context Protocol](https://modelcontextprotocol.io)) drive **the same agent, in the same
-browser, with the same logins**.
+```text
+run("Find the latest invoice in my email")
+```
 
-The main way in is one instruction: _do this in the browser_. TabRunner plans, clicks, reads, and
-reports back with its own model, its own memory, and its own permission rules. That's `run`, and
-it's the right default: you pay one MCP turn per real event instead of one per click.
+TabRunner opens a task in your logged-in Chrome and returns a run id. Call `get_status()`
+to follow its progress. It uses the same agent as the side panel, with its own model and
+rules about asking before consequential actions.
 
-When the job is small and exact, the client can also click through the page
-itself. See [Driving it yourself](#driving-it-yourself). Same browser, same logins, same stored
-transcript; what it gives up is TabRunner's model, and with it the rule about asking first.
+The bridge connects MCP clients such as Claude Code, Claude Desktop and Codex to your
+browser. Several clients can connect at once. Each gets its own chat, task controls and
+driven tabs. Up to four tasks can run at once across MCP clients, the panel and schedules;
+the panel itself still runs one task at a time.
+
+For a small, exact job, your client can use [direct browser tools](#driving-it-yourself)
+instead of delegating to TabRunner's model. Direct control records the work in the same
+client chat, but the external client must ask you before paying, sending or deleting.
 
 ## How it fits together
 
-```
-Claude Code / Claude Desktop / any MCP client
-        │  MCP over stdio
-        ▼
-daemon/  (bun; @modelcontextprotocol/sdk)
-        │  WebSocket  ws://127.0.0.1:17836/ws
-        ▼
-TabRunner extension  (background service worker)
-        │
-        ▼
-the agent loop → your real Chrome tabs
+```text
+MCP client A → stdio proxy A ─┐
+                            ├→ shared local broker ← WebSocket ← TabRunner extension
+MCP client B → stdio proxy B ─┘                                      │
+                                                                  ▼
+                                                         your Chrome tabs
 ```
 
-The direction of that WebSocket is forced, not chosen: **an MV3 service worker cannot listen on a
-socket**, so the extension can never be an MCP server itself. It dials out to a local daemon, and
-the daemon is what your AI client talks to.
+Each client starts a small local process. Those processes share one broker, the local
+process that routes their requests to the extension. You do not need separate ports for
+each client. The extension dials out because its background worker cannot listen on a socket.
+
+The extension uses one known WebSocket port, `17836` by default. The broker asks the operating
+system for a free HTTP port and saves that address and its access token in a private local file.
+Clients read that file automatically. Agents do not guess ports or scan a range.
 
 ## Setup
 
-**1. Install the extension** and add a provider if you haven't (a subscription sign-in or an API
-key); the bridge uses whatever provider and model the panel is set to. `health` tells you whether
-that provider is ready before you send a task.
+**1. Install the extension** and add a provider if you want to delegate tasks (a subscription
+sign-in or an API key). A new client chat starts with your default provider and keeps its engine
+once it runs. `health` reports the saved provider and credential state; it does not test a model
+request or validate a key. Direct browser tools need no provider.
 
 **2. Enable the bridge** in Settings → MCP. It's off by default. An extension that never uses MCP
 never dials the port at all.
@@ -69,7 +73,8 @@ model when to hand a task to TabRunner and how to follow it.
 **4. Check the link** by calling `health`. It reports whether the extension is connected, and tells
 you exactly what to do if it isn't.
 
-The daemon starts when your client starts it; there's nothing to leave running.
+The bridge starts with the first client. Later clients share it. After the last client closes,
+it finishes that client's cleanup and exits after a 10-second idle grace by default.
 
 ### Without the plugin
 
@@ -88,8 +93,9 @@ curl -fsSL https://github.com/tabrunner/tabrunner/releases/latest/download/tabru
 claude mcp add --scope user tabrunner -- bun ~/.tabrunner-mcp.js
 ```
 
-Use one setup, not both: two daemons can't share the port. To remove one you registered by hand,
-use the scope you added it with:
+Register TabRunner once in each MCP client so its tools do not appear twice. Different clients
+can use the same port and broker. To remove a registration you added by hand, use the scope
+you added it with:
 
 ```bash
 claude mcp remove --scope user tabrunner
@@ -103,24 +109,29 @@ No download needed. To run it by hand (to watch its log, say): `bun run bridge`.
 
 ### Configuration
 
-| Variable                                 | Default                            | What it does                                                                                                                                                                                             |
-| ---------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TABRUNNER_BRIDGE_PORT`                  | `17836`                            | The localhost port. Change it in both places. Settings → MCP in the extension must match.                                                                                                                |
-| `TABRUNNER_BRIDGE_EXPECTED_EXTENSION_ID` | `ilnohobdcigbmlikjbkdpbkhciephdle` | Which extension `health` trusts. One id covers every channel: the manifest `key` pins the website's unpacked zip and dev builds to the store listing's own id. Set this to trust your own build instead. |
+| Variable                                 | Default                            | What it does                                                                                                                                              |
+| ---------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TABRUNNER_BRIDGE_PORT`                  | `17836`                            | The shared local WebSocket port. Settings → MCP in the extension must match. All clients using this port must use the same MCP package version.           |
+| `TABRUNNER_BRIDGE_EXPECTED_EXTENSION_ID` | `ilnohobdcigbmlikjbkdpbkhciephdle` | The extension id accepted by the WebSocket handshake. Store, website zip and normal dev builds share this id. Set your custom build's id when it differs. |
+| `TABRUNNER_BRIDGE_RUNTIME_DIR`           | `~/.tabrunner/mcp`                 | The private folder for local broker discovery and its access token. Keep it owned by your user and unreadable by other users.                             |
+
+Clients sharing a broker must use the same package and bridge protocol versions. A mismatch
+asks you to update the clients and reconnect. It does not stop the existing broker or another
+program that owns the port.
 
 ## The tools
 
-| Tool                                    | What it does                                                                                                                                                                                                                                                                                                                                             |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `health`                                | Is TabRunner reachable? Reports the connection, the extension id and version, and the fix when something's off. Call it first.                                                                                                                                                                                                                           |
-| `run(task, url?, background?, images?)` | Give TabRunner a task in plain language. Returns immediately with a run id. Browser work takes minutes. Opens its own tab at `url` or the default start page; `background: false` drives the tab the user is on. Optional images ride along as base64. A task submitted while another runs **queues** and answers with its position instead of an error. |
-| `get_status(wait?, waitSeconds?)`       | Where the run stands. **Blocks until something changes** by default, so following a ten-minute task costs one call per real event, not one per poll.                                                                                                                                                                                                     |
-| `answer(text)`                          | Reply to a question the run stopped on.                                                                                                                                                                                                                                                                                                                  |
-| `steer(text)`                           | Drop a note into a running task, such as a correction or an extra constraint. It lands between tool calls; the run doesn't restart.                                                                                                                                                                                                                      |
-| `stop()`                                | End the run and cancel any of this client's queued runs. Stopping is normal control flow, not an error.                                                                                                                                                                                                                                                  |
-| `screenshot()`                          | A picture of what the browser is showing right now, as an image the model can actually look at. Works run or no run. While a run or a direct session is driving a tab, it shows that tab, even in the background.                                                                                                                                        |
-| `new_conversation()`                    | Forget the thread and start clean. Refused while this thread has a run active or queued. Stop it first.                                                                                                                                                                                                                                                  |
-| `compact()`                             | Summarize the thread's history so far. Runs then replay the summary instead of the whole transcript. Nothing is deleted; the raw messages stay in the user's panel. For long threads, or after a context-length error. Refused while a run is in flight.                                                                                                 |
+| Tool                                    | What it does                                                                                                                                                                                                                                                                                                             |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `health`                                | Is TabRunner reachable? Reports the connection, the extension id and version, and the fix when something's off. Call it first.                                                                                                                                                                                           |
+| `run(task, url?, background?, images?)` | Give TabRunner a task and get a run id. It reuses a tab this chat drove while it lives, otherwise opens a background tab. A URL opens its own page; `background: false` without a URL adopts your current tab. Extra tasks queue when this client is busy or all four task slots are taken. Images are base64 data URLs. |
+| `get_status(wait?, waitSeconds?)`       | Follow this client's task and queue. Blocks until something changes by default, so you do not need to poll on a timer. Other clients' steps, questions and queued tasks are not included.                                                                                                                                |
+| `answer(text)`                          | Reply to a question the run stopped on.                                                                                                                                                                                                                                                                                  |
+| `steer(text)`                           | Drop a note into a running task, such as a correction or an extra constraint. It lands between tool calls; the run doesn't restart.                                                                                                                                                                                      |
+| `stop(runId?)`                          | Stop this client's current task, or pass one of its queued run ids to cancel that exact task. Later queued tasks are kept. Other clients, panel tasks and schedules are untouched.                                                                                                                                       |
+| `screenshot()`                          | Capture this client's live task or direct session, even in a background tab. Fails if it has no claimed, attached page. It never captures another client's page or an unrelated visible tab.                                                                                                                             |
+| `new_conversation()`                    | Start a fresh chat for this client. Closes its direct session, but refuses while its delegated work is active or queued. Stop those tasks first. Other clients' chats are unchanged.                                                                                                                                     |
+| `compact()`                             | Summarize this client's chat for later tasks. Nothing is deleted from history. Refuses while this chat has active or queued work.                                                                                                                                                                                        |
 
 ### Driving it yourself
 
@@ -128,21 +139,21 @@ Delegating is the better path for anything long or open-ended because TabRunner'
 you pay one MCP turn instead of one per click. But sometimes you want the clicks. `browser_start`
 opens a direct-control session, and every `browser_*` tool drives the real tab:
 
-| Tool                                                  | What it does                                                                                                       |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `browser_start(goal, url?, background?)`              | Take the wheel in a new background tab, and get the first snapshot. The goal names the conversation the user sees. |
-| `browser_snapshot()`                                  | The page as an accessibility tree, with a `ref` on every interactive element.                                      |
-| `browser_network_requests(url_filter?, limit?)`       | What the tab asked the network, with method, URL, status and failures. No bodies.                                  |
-| `browser_console_messages(only_errors?, limit?)`      | The tab's console output and uncaught exceptions.                                                                  |
-| `browser_navigate(url)`                               | Go somewhere.                                                                                                      |
-| `browser_click(ref)`                                  | Click by ref with a real trusted event, not a synthetic dispatch.                                                  |
-| `browser_type(text)`                                  | Type into whatever is focused (click the field first).                                                             |
-| `browser_fill(ref, text)`                             | Set a field's value by ref. Works where typed keystrokes don't; `""` clears.                                       |
-| `browser_evaluate(expression)`                        | Run JS in the page for attributes, shadow DOM and the page's own fetch. Bounded, credential-stripped.              |
-| `browser_press_key(key)`                              | `Enter`, `Escape`, `Tab`, an arrow.                                                                                |
-| `browser_scroll(direction, amount?)`                  | Content below the fold isn't in a snapshot until you scroll to it.                                                 |
-| `browser_tabs(query?)` / `browser_switch_tab(tab_id)` | Find another tab (`query` keeps only titles and URLs that contain it), re-target every later action at it.         |
-| `browser_end()`                                       | Hand the browser back.                                                                                             |
+| Tool                                                  | What it does                                                                                                                                                                  |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `browser_start(goal, url?, background?)`              | Start direct control on this client's earlier page or a new background tab, and get its first snapshot. Adds the goal to this client's chat and returns the session's run id. |
+| `browser_snapshot()`                                  | The page as an accessibility tree, with a `ref` on every interactive element.                                                                                                 |
+| `browser_network_requests(url_filter?, limit?)`       | What the tab asked the network, with method, URL, status and failures. No bodies.                                                                                             |
+| `browser_console_messages(only_errors?, limit?)`      | The tab's console output and uncaught exceptions.                                                                                                                             |
+| `browser_navigate(url)`                               | Go somewhere.                                                                                                                                                                 |
+| `browser_click(ref)`                                  | Click by ref with a real trusted event, not a synthetic dispatch.                                                                                                             |
+| `browser_type(text)`                                  | Type into whatever is focused (click the field first).                                                                                                                        |
+| `browser_fill(ref, text)`                             | Set a field's value by ref. Works where typed keystrokes don't; `""` clears.                                                                                                  |
+| `browser_evaluate(expression)`                        | Run JS in the page for attributes, shadow DOM and the page's own fetch. Bounded, credential-stripped.                                                                         |
+| `browser_press_key(key)`                              | `Enter`, `Escape`, `Tab`, an arrow.                                                                                                                                           |
+| `browser_scroll(direction, amount?)`                  | Content below the fold isn't in a snapshot until you scroll to it.                                                                                                            |
+| `browser_tabs(query?)` / `browser_switch_tab(tab_id)` | Find another tab (`query` keeps only titles and URLs that contain it), re-target every later action at it.                                                                    |
+| `browser_end()`                                       | Hand the browser back.                                                                                                                                                        |
 
 Every verb goes through the **same `executeTool` the agent loop uses**: one browser
 implementation, no second catalog to drift. On the wire they all arrive as a single `browserAct`
@@ -155,11 +166,12 @@ on a ref you read two actions ago. A snapshot costs a few thousand tokens; pass 
 `browser_press_key` or `browser_scroll` to get only the action's result, then call `browser_snapshot`
 before your next ref.
 
-**Where it works.** Like `run`, `browser_start` opens a new background tab (at `url`, else the user's
-start page) and leaves the page the user is reading alone. Pass `background: false` only when the task
-is about the page the user is on: you then receive that page's contents. The tabs work without being on
-screen: `browser_switch_tab` moves the user's screen only while they are watching the tab you leave.
-`browser_tabs` lists every tab the user has open, so pass `query` when you know what you need.
+**Where it works.** Like `run`, `browser_start` reuses this client's earlier driven page while
+it lives; otherwise it opens a background tab at your start page. A URL opens its own page.
+`background: false` without a URL adopts your current tab and sends that page to the client.
+Tabs work off screen. A claimed tab cannot be taken by another task; end the task that owns it
+before switching another client onto it. `browser_tabs` lists open tabs, so pass `query` when
+you know which one you need.
 
 **Direct control has no ask_user.** TabRunner's policy of stopping before consequential actions
 lives in its system prompt, and driving directly takes that prompt out of the loop. Paying, sending
@@ -167,9 +179,11 @@ on the user's behalf, deleting and submitting become **yours** to put to the use
 TabRunner doesn't hide that this is happening: the badge and the tab dot stay up for the whole
 session, and every action is recorded in a conversation labelled with your client's name.
 
-**One driver at a time.** A session holds the same run slot a task does, so direct control and an
-agent run can never fight over a tab. A session left open expires after a few idle minutes rather
-than locking the user out of their own panel.
+**One task per client.** End direct control with `browser_end()` before calling `run` from the
+same client. A direct session refuses to start while that client's delegated work is active or
+queued. Other clients can work at the same time, up to the four-task limit. A direct session
+expires after five idle minutes, but not during an action. Ending or stopping waits for its
+in-flight browser work to finish before another task can claim those tabs.
 
 ### The shape of a session
 
@@ -198,43 +212,63 @@ address, and the user's own words are the answer.
 
 ## The conversation model
 
-The bridge keeps **one conversation of its own**, separate from whatever is open in the side panel.
-Each run continues the previous ones, so TabRunner remembers the pages it visited and what it found
-there. Ask a follow-up and it knows what "that invoice" means. `new_conversation` starts over.
+Each MCP session keeps its own chat, separate from the panel and every other client. Both
+`run` and `browser_start` continue that chat, so a follow-up can refer to an earlier page or
+invoice. `new_conversation` starts over for that client only. Chats appear in panel history
+with the client's name.
 
-The thread shows up in the panel's history like any other, so you can read exactly what the agent
-did on your behalf.
+The chat id survives an extension worker restart while the MCP client session remains alive.
+Closing and reopening an MCP client creates a fresh session and a new chat. Two sessions
+with the same display name are still separate clients.
 
-**One run at a time. The rest queue.** The panel and the bridge share a single run slot, because
-they share a single browser. A task submitted while one is in flight waits in a serial FIFO queue:
-`run` answers with its position, `get_status` lists the waiting line, and each queued task starts
-in order as the slot frees. Only direct-control sessions refuse a second starter because they can't queue.
+A client and a chat can each have only one live task. Extra delegated tasks wait in order for
+that client. Unrelated clients can start while one client is waiting, provided fewer than four
+tasks are active. The panel still has one task at a time; this does not add independent panel
+agents.
+
+Each task claims the tabs it drives. A second task is refused if it tries to use a claimed tab.
+Separate tabs are not separate accounts: they share the profile's cookies and logins, and
+changes to an account can affect work in another tab. Do not run conflicting changes to the
+same account just because the tasks use different tabs.
 
 ## When things go wrong
 
 Every failure comes back as text that says what happened, why, and what to do next.
 
-| Situation                          | What you get                                                                                                                                                   |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Extension not connected            | How to enable the bridge (Settings → MCP), install the extension, and wake the worker. It reconnects on its own within ~30s.                                   |
-| A different extension connected    | The id that connected, and the env var to accept it (a dev build has its own id).                                                                              |
-| No provider configured             | `health` says so up front. Add one in TabRunner's settings and pick it in the panel header.                                                                    |
-| Provider needs a sign-in or key    | `health` names it and which of the two it wants. Direct `browser_*` control keeps working without a provider.                                                  |
-| No tab to drive                    | Open a tab in the window you want TabRunner to work in.                                                                                                        |
-| A run is already going             | Your task queues behind it (position reported, `get_status` shows the line). A direct session is the only case that still refuses.                             |
-| The link drops mid-run             | **The run keeps going.** The extension reconnects and re-syncs; `get_status` picks up where it left off. A long task survives a daemon restart.                |
-| Chrome suspends the worker mid-run | Reported as an interrupted run, not left polling a ghost. A 30s keepalive alarm holds the worker for as long as the bridge is enabled, so this should be rare. |
-| Another daemon owns the port       | Which port, and how to give this one its own. Every MCP client spawns its own daemon, so this is normal with two clients open.                                 |
+| Situation                                       | What to do                                                                                                                                                                        |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Extension not connected                         | Enable Settings → MCP and open the side panel once to wake its worker. Call `health` again after about 30 seconds.                                                                |
+| Extension id or protocol mismatch               | Update the extension and MCP clients. A custom build must use its id in `TABRUNNER_BRIDGE_EXPECTED_EXTENSION_ID`. Normal store, zip and dev builds share the default id.          |
+| No provider configured, or no saved sign-in/key | Add a provider in TabRunner's settings. Direct browser tools can work without one. `health` checks saved state, not whether the provider will accept the next request.            |
+| This client is busy, or four tasks are active   | Delegated tasks queue. `get_status` shows this client's waiting tasks. End a direct session before submitting delegated work from that client.                                    |
+| The target tab is in use                        | Use another tab, or end the task that owns it before switching onto it.                                                                                                           |
+| A request times out or the link drops           | The action may already have happened. Restore the link, inspect `get_status` or `browser_snapshot`, then decide whether to retry. Browser actions are not replayed automatically. |
+| A short extension link outage                   | The same client's task can keep running during a 60-second reconnect grace. Reconnect resyncs its status. Longer outages abort and drain only the missing clients' work.          |
+| Chrome restarts the worker                      | A lost task is reported as interrupted. Its chat survives for the same live MCP session. Check the page before sending it again.                                                  |
+| Different MCP package versions                  | Update all clients sharing the broker to the same version, close them and reconnect. The existing broker is left alone.                                                           |
+| Another program owns the port                   | Close that program yourself, or choose a free `TABRUNNER_BRIDGE_PORT` and set the same port in the extension. TabRunner does not stop unknown listeners.                          |
+
+A client that stops responding loses its lease after 60 seconds by default. Closing a client
+starts cleanup without waiting for that lease: its queued tasks are cancelled and its active
+task is aborted, then cleaned up. Other clients, panel work and schedules keep running.
+Reopening the client starts a fresh session, not a replay of the old one.
 
 ## Security
 
-The WebSocket binds to `127.0.0.1`. Nothing off your machine can reach it. Within your machine,
-**anything that can open that port can drive your browser with your logged-in sessions**. That is
-the same trust model as any local automation daemon, and it is the reason the bridge is localhost-only
-and the port is not exposed.
+The broker listens only on `127.0.0.1`. Its HTTP endpoint requires a bearer token from a
+private runtime file, rejects unexpected Host/Origin headers and uses a separate MCP session
+for each client. The extension WebSocket checks the configured extension Origin, extension id
+and bridge protocol v2. The default id is the store extension's id; custom builds must
+configure theirs.
 
-The daemon is a pipe: it relays tasks and run events. No page content, credentials, or API keys are
-stored in it, and it never talks to anything but the extension and your MCP client.
+These checks do not protect you from software running as your own operating-system user.
+That software can read your local files. Only connect MCP clients you trust with your
+logged-in browser.
+
+Tasks, page snapshots, screenshots and run events pass through the local bridge. It keeps
+per-client status in memory, not page content or provider credentials on disk. Its runtime
+file stores only the local address, token and version/process details. Provider requests
+still go from the extension to the provider you chose.
 
 ## Connecting out to remote MCP servers
 
@@ -272,8 +306,8 @@ URL you control (fire-and-forget; one attempt, no retries).
 ## Developing on it
 
 ```bash
-bun run bridge        # run the daemon by hand, with its log on stderr
-bun run bridge:check  # end-to-end check: spawns the daemon, plays the extension, drives MCP
+bun run bridge        # start a stdio client; it discovers or starts the shared local broker
+bun run bridge:check  # check broker/client wiring without Chrome
 bun run bridge:bundle # build the single-file daemon releases ship → dist/tabrunner-<version>-mcp.js
 ```
 

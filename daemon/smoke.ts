@@ -1,548 +1,523 @@
 #!/usr/bin/env bun
-/**
- * End-to-end check for the bridge daemon: spawns it, plays the extension over
- * WebSocket, and drives it over MCP stdio exactly as a client would.
- *
- *   bun daemon/smoke.ts
- *
- * Asserts the parts that only break in the wiring — the hello/sync handshake,
- * request correlation, the long-poll waking on a pushed event, and the ask_user
- * question surviving the `done` that follows it. Exits non-zero on the first
- * failure; no framework, no fixtures.
- *
- * TABRUNNER_SMOKE_ENTRY points it at another daemon entry — the release bundle,
- * so what ships is what was checked:
- *
- *   TABRUNNER_SMOKE_ENTRY=../dist/tabrunner-<version>-mcp.js bun run bridge:check
- */
-import type { DaemonMessage, ExtensionMessage } from "./src/protocol";
-import { emptyStatus } from "./src/protocol";
+/** Shared-broker integration check. Uses private temp files and no real browser. */
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import {
+  BRIDGE_PROTOCOL_VERSION,
+  emptyStatus,
+  type BridgeRequest,
+  type CompactRunEvent,
+  type DaemonMessage,
+  type ExtensionMessage,
+} from "./src/protocol";
+import type { BrokerMetadata } from "./src/runtime";
 
-const PORT = 17_999;
-const EXTENSION_ID = "smoke-extension-id";
+const runtimeDir = await mkdtemp(join(tmpdir(), "tabrunner-bridge-check-"));
+const reserved = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() });
+const port = reserved.port;
+assert(port);
+await reserved.stop(true);
+const extensionId = "bridge-check-extension";
+const entry = resolve(import.meta.dir, process.env.TABRUNNER_SMOKE_ENTRY ?? "src/index.ts");
+const env = {
+  ...Object.fromEntries(
+    Object.entries(process.env).filter((pair): pair is [string, string] => pair[1] !== undefined),
+  ),
+  TABRUNNER_BRIDGE_PORT: String(port),
+  TABRUNNER_BRIDGE_RUNTIME_DIR: runtimeDir,
+  TABRUNNER_BRIDGE_EXPECTED_EXTENSION_ID: extensionId,
+  TABRUNNER_BRIDGE_PING_MS: "150",
+  TABRUNNER_BRIDGE_LEASE_MS: "1000",
+  TABRUNNER_BRIDGE_IDLE_MS: "500",
+};
+const clients: Client[] = [];
+const requests: BridgeRequest[] = [];
+let socket: WebSocket | null = null;
+let metadata: BrokerMetadata | null = null;
+let brokerExited = false;
+const closedClients: string[] = [];
+let delayCleanup = false;
+const deferredCleanup: BridgeRequest[] = [];
+const statuses = new Map<string, ReturnType<typeof emptyStatus>>();
 
-function check(label: string, ok: boolean, detail?: string): void {
-  if (ok) {
-    console.log(`  ✓ ${label}`);
-    return;
+function check(label: string, ok: unknown): void {
+  assert(ok, label);
+  console.log(`  passed: ${label}`);
+}
+
+async function until<T>(read: () => T | undefined, label: string, ms = 6_000): Promise<T> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    const result = read();
+    if (result !== undefined) return result;
+    await Bun.sleep(20);
   }
-  console.error(`  ✗ ${label}${detail ? `\n    ${detail}` : ""}`);
-  // Take the daemon down with us — a leaked one holds the port and every later
-  // run then fails on the bind instead of on its own merits.
-  daemon.kill();
-  process.exit(1);
+  throw new Error(`Timed out: ${label}`);
 }
 
-// ── The daemon under test ───────────────────────────────────────────
-
-const daemon = Bun.spawn(["bun", process.env.TABRUNNER_SMOKE_ENTRY ?? "src/index.ts"], {
-  cwd: import.meta.dir,
-  env: {
-    ...process.env,
-    TABRUNNER_BRIDGE_PORT: String(PORT),
-    TABRUNNER_BRIDGE_EXPECTED_EXTENSION_ID: EXTENSION_ID,
-  },
-  stdin: "pipe",
-  stdout: "pipe",
-  stderr: "inherit",
-});
-
-interface RpcResponse {
-  id?: number;
-  result?: { content?: { type: string; text?: string }[]; tools?: { name: string }[] };
-  error?: { message: string };
+function reply(request: BridgeRequest, result: unknown): void {
+  if (socket?.readyState !== WebSocket.OPEN) return;
+  socket.send(
+    JSON.stringify({
+      type: "response",
+      clientId: request.clientId,
+      requestId: request.requestId,
+      ok: true,
+      result,
+    } satisfies ExtensionMessage),
+  );
 }
 
-const pending = new Map<number, (msg: RpcResponse) => void>();
-let nextId = 1;
-
-void (async () => {
-  const decoder = new TextDecoder();
-  let buffer = "";
-  for await (const chunk of daemon.stdout) {
-    buffer += decoder.decode(chunk);
-    let cut = buffer.indexOf("\n");
-    while (cut !== -1) {
-      const line = buffer.slice(0, cut).trim();
-      buffer = buffer.slice(cut + 1);
-      if (line) {
-        const msg = JSON.parse(line) as RpcResponse;
-        if (msg.id !== undefined) pending.get(msg.id)?.(msg);
-      }
-      cut = buffer.indexOf("\n");
-    }
-  }
-})();
-
-function rpc(method: string, params?: unknown): Promise<RpcResponse> {
-  const id = nextId++;
-  daemon.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
-  daemon.stdin.flush();
-  return new Promise((resolve) => pending.set(id, resolve));
+function emit(
+  clientId: string,
+  runId: string | null,
+  conversationId: string | null,
+  event: CompactRunEvent,
+): void {
+  socket?.send(
+    JSON.stringify({
+      type: "event",
+      clientId,
+      runId,
+      conversationId,
+      event,
+    } satisfies ExtensionMessage),
+  );
 }
 
-function notify(method: string): void {
-  daemon.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method })}\n`);
-  daemon.stdin.flush();
+async function request(method: string, clientId?: string): Promise<BridgeRequest> {
+  return until(() => {
+    const at = requests.findIndex(
+      (r) => r.method === method && (!clientId || r.clientId === clientId),
+    );
+    return at < 0 ? undefined : requests.splice(at, 1)[0];
+  }, `${method} request`);
 }
 
-const bodyOf = (msg: RpcResponse) =>
-  msg.result?.content?.map((c) => c.text ?? `<${c.type}>`).join("\n") ?? "";
-
-// ── The extension stand-in ──────────────────────────────────────────
-
-let socket: WebSocket;
-const requests: BridgeRequestSeen[] = [];
-type BridgeRequestSeen = { requestId: string; method: string; params: Record<string, unknown> };
-let onRequest: ((req: BridgeRequestSeen) => void) | null = null;
-
-function send(msg: ExtensionMessage): void {
-  socket.send(JSON.stringify(msg));
-}
-
-function reply(requestId: string, result: unknown): void {
-  send({ type: "response", requestId, ok: true, result });
-}
-
-/**
- * Resolves with the next request the daemon makes for `method`, consuming it —
- * a cached match would otherwise hand the same request to a second call and
- * quietly assert nothing.
- */
-function awaitRequest(method: string): Promise<BridgeRequestSeen> {
-  const at = requests.findIndex((r) => r.method === method);
-  if (at !== -1) return Promise.resolve(requests.splice(at, 1)[0] as BridgeRequestSeen);
-  return new Promise((resolve) => {
-    onRequest = (req) => {
-      if (req.method !== method) return;
-      onRequest = null;
-      requests.splice(requests.indexOf(req), 1);
-      resolve(req);
-    };
+function startClient(name: string): {
+  client: Client;
+  transport: StdioClientTransport;
+  connected: Promise<void>;
+} {
+  const client = new Client({ name, version: "0" });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [entry],
+    env,
+    stderr: "inherit",
   });
+  clients.push(client);
+  return { client, transport, connected: client.connect(transport, { timeout: 10_000 }) };
 }
 
-async function connectExtension(): Promise<void> {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    try {
-      const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
-      await new Promise<void>((resolve, reject) => {
-        ws.onopen = () => resolve();
-        ws.onerror = () => reject(new Error("connect failed"));
-      });
-      socket = ws;
-      ws.onmessage = (e) => {
-        const msg = JSON.parse(String(e.data)) as DaemonMessage;
-        if (msg.type === "ping") return send({ type: "pong" });
-        const req = { requestId: msg.requestId, method: msg.method, params: msg.params };
-        requests.push(req);
-        onRequest?.(req);
-      };
+async function call(
+  client: Client,
+  name: string,
+  args: Record<string, unknown> = {},
+): Promise<string> {
+  const result = await client.callTool({ name, arguments: args }, undefined, { timeout: 8_000 });
+  if (!("content" in result) || !Array.isArray(result.content)) return "";
+  return result.content
+    .map((block: unknown) =>
+      typeof block === "object" &&
+      block !== null &&
+      "text" in block &&
+      typeof block.text === "string"
+        ? block.text
+        : "<image>",
+    )
+    .join("\n");
+}
+
+async function connectExtension(protocolVersion = BRIDGE_PROTOCOL_VERSION): Promise<WebSocket> {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+    headers: { origin: `chrome-extension://${extensionId}` },
+  });
+  await new Promise<void>((resolve, reject) => {
+    ws.onopen = () => resolve();
+    ws.onerror = () => reject(new Error("WebSocket failed"));
+  });
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(String(event.data)) as DaemonMessage;
+    if (msg.type === "ping") {
+      ws.send(JSON.stringify({ type: "pong" } satisfies ExtensionMessage));
       return;
+    }
+    if (msg.method === "sync") {
+      ws.send(
+        JSON.stringify({
+          type: "response",
+          clientId: msg.clientId,
+          requestId: msg.requestId,
+          ok: true,
+          result: statuses.get(msg.clientId) ?? emptyStatus(),
+        } satisfies ExtensionMessage),
+      );
+      return;
+    }
+    if (msg.method === "closeClient") {
+      closedClients.push(msg.clientId);
+      if (delayCleanup) deferredCleanup.push(msg);
+      else reply(msg, { ok: true });
+      return;
+    }
+    requests.push(msg);
+  };
+  ws.send(JSON.stringify({ type: "hello", extensionId, version: "0.14.2", protocolVersion }));
+  return ws;
+}
+
+try {
+  console.log("TabRunner shared MCP bridge check");
+  const first = startClient("same display name");
+  const second = startClient("same display name");
+  await Promise.all([first.connected, second.connected]);
+  await Promise.all([first.client.listTools(), second.client.listTools()]);
+  metadata = JSON.parse(await readFile(join(runtimeDir, `${port}.json`), "utf8")) as BrokerMetadata;
+  check(
+    "two simultaneous stdio clients discover one broker",
+    metadata.pid !== first.transport.pid && metadata.pid !== second.transport.pid,
+  );
+  check(
+    "runtime directory and token file are private",
+    ((await stat(runtimeDir)).mode & 0o777) === 0o700 &&
+      ((await stat(join(runtimeDir, `${port}.json`))).mode & 0o777) === 0o600,
+  );
+  check("all tools remain registered", (await first.client.listTools()).tools.length >= 23);
+  check("offline health gives a fix", (await call(first.client, "health")).includes("side panel"));
+  check(
+    "offline mutations fail without hanging",
+    (await call(first.client, "run", { task: "offline task" })).includes("isn't connected"),
+  );
+
+  const base = new URL(metadata.url);
+  const auth = { authorization: `Bearer ${metadata.token}` };
+  check("HTTP token is required", (await fetch(new URL("/health", base))).status === 401);
+  check(
+    "foreign HTTP Origin is rejected",
+    (
+      await fetch(new URL("/health", base), {
+        headers: { ...auth, origin: "https://evil.example" },
+      })
+    ).status === 403,
+  );
+  check(
+    "foreign Host is rejected",
+    (await fetch(new URL("/health", base), { headers: { ...auth, host: "evil.example" } }))
+      .status === 403,
+  );
+  check(
+    "ordinary sites cannot open the extension socket",
+    (await fetch(`http://127.0.0.1:${port}/ws`, { headers: { origin: "https://evil.example" } }))
+      .status === 403,
+  );
+  check(
+    "WebSocket upgrades are limited to /ws",
+    (
+      await fetch(`http://127.0.0.1:${port}/other`, {
+        headers: { origin: `chrome-extension://${extensionId}` },
+      })
+    ).status === 404,
+  );
+  const mismatch = await connectExtension(1);
+  await new Promise<void>((resolve) => {
+    mismatch.onclose = () => resolve();
+  });
+  check(
+    "old extension protocol is refused with an update instruction",
+    (await call(first.client, "health")).includes("Update the extension"),
+  );
+
+  socket = await connectExtension();
+  await Bun.sleep(100);
+  const a = call(first.client, "run", { task: "client A private task" });
+  let aAnswered = false;
+  void a.then(() => {
+    aAnswered = true;
+  });
+  const aRequest = await request("run");
+  socket.send(
+    JSON.stringify({
+      type: "response",
+      clientId: "wrong-client",
+      requestId: aRequest.requestId,
+      ok: true,
+      result: { runId: "wrong", conversationId: "wrong" },
+    } satisfies ExtensionMessage),
+  );
+  await Bun.sleep(30);
+  check("a response cannot claim another client's request", !aAnswered);
+  emit(aRequest.clientId, "a1", "ca", { type: "started", runId: "a1", conversationId: "ca" });
+  emit(aRequest.clientId, "a1", "ca", { type: "step", tool: "read", summary: "Early progress" });
+  reply(aRequest, { runId: "a1", conversationId: "ca" });
+  await a;
+  check(
+    "progress arriving before the receipt is preserved",
+    (await call(first.client, "get_status", { wait: false })).includes("Early progress"),
+  );
+  const b = call(second.client, "run", { task: "client B private task" });
+  const bRequest = await request("run");
+  reply(bRequest, { runId: "b1", conversationId: "cb" });
+  await b;
+  check(
+    "display-name collisions still produce separate opaque owners",
+    aRequest.clientId !== bRequest.clientId,
+  );
+  emit(aRequest.clientId, "a1", "ca", {
+    type: "driving",
+    tabId: 1,
+    windowId: 1,
+    title: "A private page",
+  });
+  emit(bRequest.clientId, "b1", "cb", {
+    type: "driving",
+    tabId: 2,
+    windowId: 1,
+    title: "B private page",
+  });
+  await Bun.sleep(50);
+  const aStatus = await call(first.client, "get_status", { wait: false });
+  const bStatus = await call(second.client, "get_status", { wait: false });
+  check(
+    "run statuses do not cross clients",
+    aStatus.includes("A private page") &&
+      !aStatus.includes("B private page") &&
+      bStatus.includes("B private page") &&
+      !bStatus.includes("A private page"),
+  );
+  const parked = call(first.client, "get_status", { waitSeconds: 5 });
+  let woke = false;
+  void parked.then(() => {
+    woke = true;
+  });
+  await Bun.sleep(100);
+  check("status waits while this client's run is quiet", !woke);
+  emit(bRequest.clientId, "b1", "cb", { type: "step", tool: "read", summary: "B read" });
+  await Bun.sleep(100);
+  check("another client's event does not wake the wait", !woke);
+  emit(aRequest.clientId, "old-a", "ca", { type: "done", summary: "stale answer" });
+  emit(aRequest.clientId, "old-a", "ca", { type: "started", runId: "old-a", conversationId: "ca" });
+  await Bun.sleep(100);
+  check("stale run events cannot wake or replace current status", !woke);
+  emit(aRequest.clientId, "a1", "ca", { type: "step", tool: "read", summary: "A read" });
+  check("the owner's event wakes its wait", (await parked).includes("A read"));
+  emit(aRequest.clientId, "a1", "ca", {
+    type: "question",
+    question: "Pay the invoice?",
+    choices: ["Pay", "Not now"],
+  });
+  emit(aRequest.clientId, "a1", "ca", { type: "done", summary: "waiting" });
+  await Bun.sleep(30);
+  const question = await call(first.client, "get_status", { wait: false });
+  check(
+    "question and choices survive the following done",
+    question.includes("state: question") && question.includes("Not now"),
+  );
+
+  const steer = call(second.client, "steer", { text: "Use the search" });
+  const steerRequest = await request("steer");
+  check(
+    "controls target only the caller's exact current run",
+    steerRequest.clientId === bRequest.clientId && steerRequest.runId === "b1",
+  );
+  reply(steerRequest, { ok: true });
+  await steer;
+  const cancel = call(second.client, "stop", { runId: "queued-exact-id" });
+  const cancelRequest = await request("stop");
+  check(
+    "queued stop forwards only the requested run id",
+    cancelRequest.clientId === bRequest.clientId && cancelRequest.runId === "queued-exact-id",
+  );
+  reply(cancelRequest, { stopped: true, panelBusy: false });
+  check("stop returns its owner-scoped receipt", (await cancel).includes("Stopped"));
+
+  const queued = call(second.client, "run", { task: "B queued task" });
+  const queuedRequest = await request("run");
+  reply(queuedRequest, { runId: "b2", conversationId: "cb", queued: 2 });
+  check("queued receipt stays queued", (await queued).includes("Queued at position 2"));
+  emit(bRequest.clientId, "b1", "cb", {
+    type: "queue",
+    queue: [
+      { runId: "b2", conversationId: "cb", position: 2, task: "B queued task", owner: "bridge" },
+    ],
+  });
+  emit(bRequest.clientId, "b2", "cb", { type: "started", runId: "b2", conversationId: "cb" });
+  emit(bRequest.clientId, "b2", "cb", { type: "queue", queue: [] });
+  emit(bRequest.clientId, "b2", "cb", { type: "done", summary: "B done" });
+  await Bun.sleep(50);
+  check(
+    "queued runs get their own fresh status",
+    (await call(second.client, "get_status", { wait: false })).includes("B done"),
+  );
+
+  await first.client.close();
+  await until(
+    () => (closedClients.includes(aRequest.clientId) ? true : undefined),
+    "first client cleanup",
+  );
+  check("first proxy exit closes only its own session", !closedClients.includes(bRequest.clientId));
+  check(
+    "broker survives the first stdio client exit",
+    (await second.client.listTools()).tools.length >= 23,
+  );
+  const direct = call(second.client, "browser_start", { goal: "B direct goal" });
+  const directRequest = await request("browserStart");
+  check(
+    "display name is kept as metadata, not identity",
+    directRequest.params.agent === "same display name" &&
+      directRequest.clientId === bRequest.clientId,
+  );
+  reply(directRequest, {
+    ok: true,
+    runId: "bd",
+    conversationId: "cb",
+    data: { pageContent: "[ref=e1] button" },
+  });
+  await direct;
+  const click = call(second.client, "browser_click", { ref: "e1", snapshot: false });
+  const clickRequest = await request("browserAct");
+  check(
+    "direct actions carry owner and exact direct run",
+    clickRequest.clientId === bRequest.clientId &&
+      clickRequest.runId === "bd" &&
+      clickRequest.params.snapshot === false,
+  );
+  statuses.set(bRequest.clientId, {
+    ...emptyStatus(),
+    runId: "bd",
+    conversationId: "cb",
+    state: "running",
+    startedAt: Date.now(),
+  });
+  socket.close();
+  check(
+    "lost browser action reports uncertainty instead of retrying",
+    (await click).includes("may already have changed"),
+  );
+  socket = await connectExtension();
+  await Bun.sleep(100);
+  check(
+    "browser mutations are not replayed after reconnect",
+    requests.filter((r) => r.method === "browserAct").length === 0,
+  );
+  check(
+    "surviving client resyncs its own status",
+    (await call(second.client, "get_status", { wait: false })).includes("state: running"),
+  );
+
+  statuses.set(bRequest.clientId, { ...emptyStatus(), conversationId: "cb" });
+  socket.close();
+  socket = await connectExtension();
+  await Bun.sleep(100);
+  check(
+    "a restarted worker reports the interrupted run",
+    (await call(second.client, "get_status", { wait: false })).includes("state: error"),
+  );
+  const reset = call(second.client, "new_conversation");
+  const resetRequest = await request("newConversation");
+  check(
+    "worker restart clears stale run ids from later controls",
+    resetRequest.runId === undefined && resetRequest.clientId === bRequest.clientId,
+  );
+  reply(resetRequest, { ok: true });
+  await reset;
+
+  const expiredTransport = new StreamableHTTPClientTransport(new URL(metadata.url), {
+    requestInit: { headers: auth },
+    reconnectionOptions: {
+      maxRetries: 0,
+      initialReconnectionDelay: 1000,
+      maxReconnectionDelay: 1000,
+      reconnectionDelayGrowFactor: 1,
+    },
+  });
+  const expired = new Client({ name: "lease-only", version: "0" });
+  await expired.connect(expiredTransport);
+  const expiredId = expiredTransport.sessionId;
+  assert(expiredId);
+  await until(
+    () => (closedClients.includes(expiredId) ? true : undefined),
+    "expired session cleanup",
+  );
+  check("lease expiry drains only the expired session", !closedClients.includes(bRequest.clientId));
+  await expired.close();
+
+  // A live mismatched broker must never be killed or replaced.
+  const original = await readFile(join(runtimeDir, `${port}.json`), "utf8");
+  const wrongVersion = JSON.stringify({ ...metadata, version: "other-version" });
+  await Bun.write(join(runtimeDir, `${port}.json`), wrongVersion);
+  const incompatible = startClient("wrong-version-check");
+  await assert.rejects(incompatible.connected);
+  await incompatible.client.close();
+  check(
+    "live version mismatch leaves the broker untouched",
+    (await fetch(new URL("/health", base), { headers: auth })).ok,
+  );
+  await Bun.write(join(runtimeDir, `${port}.json`), original);
+
+  delayCleanup = true;
+  await second.client.close();
+  await until(
+    () => (deferredCleanup.some((r) => r.clientId === bRequest.clientId) ? true : undefined),
+    "final cleanup request",
+  );
+  await Bun.sleep(700);
+  check(
+    "broker waits for cleanup before its idle grace",
+    (await fetch(new URL("/health", base), { headers: auth })).ok,
+  );
+  for (const cleanup of deferredCleanup) reply(cleanup, { ok: true });
+  delayCleanup = false;
+  await until(() => {
+    try {
+      process.kill(metadata!.pid, 0);
+      return undefined;
     } catch {
-      await Bun.sleep(50);
+      return true;
+    }
+  }, "idle broker exit");
+  brokerExited = true;
+  check("broker exits after all clients and cleanup are gone", true);
+  const unrelated = Bun.serve({
+    port,
+    hostname: "127.0.0.1",
+    fetch: () => new Response("test-owned unrelated listener"),
+  });
+  try {
+    const loser = Bun.spawn([process.execPath, entry, "--broker"], {
+      env,
+      stdout: "ignore",
+      stderr: "inherit",
+    });
+    check(
+      "a competing broker exits without replacing an unrelated listener",
+      (await loser.exited) === 0 &&
+        (await (await fetch(`http://127.0.0.1:${port}`)).text()) ===
+          "test-owned unrelated listener",
+    );
+  } finally {
+    await unrelated.stop(true);
+  }
+  console.log("All shared bridge checks passed");
+} finally {
+  delayCleanup = false;
+  for (const cleanup of deferredCleanup) reply(cleanup, { ok: true });
+  for (const client of clients) await client.close().catch(() => undefined);
+  socket?.close();
+  // This is the check's own broker PID, from its private runtime directory.
+  if (metadata && !brokerExited) {
+    try {
+      process.kill(metadata.pid, "SIGTERM");
+      await Bun.sleep(200);
+      process.kill(metadata.pid, "SIGKILL");
+    } catch {
+      /* already exited */
     }
   }
-  throw new Error(`daemon never accepted a WebSocket on ${PORT}`);
+  await rm(runtimeDir, { recursive: true, force: true });
 }
-
-// ── The run ─────────────────────────────────────────────────────────
-
-console.log("tabrunner bridge — end-to-end smoke");
-
-const init = await rpc("initialize", {
-  protocolVersion: "2024-11-05",
-  capabilities: {},
-  clientInfo: { name: "smoke", version: "0" },
-});
-check("MCP initialize answers", !init.error, init.error?.message);
-notify("notifications/initialized");
-
-const tools = (await rpc("tools/list")).result?.tools?.map((t) => t.name) ?? [];
-check(
-  "every tool is registered",
-  [
-    "health",
-    "run",
-    "get_status",
-    "answer",
-    "steer",
-    "stop",
-    "screenshot",
-    "new_conversation",
-    "compact",
-    "browser_start",
-    "browser_snapshot",
-    "browser_navigate",
-    "browser_click",
-    "browser_type",
-    "browser_press_key",
-    "browser_scroll",
-    "browser_tabs",
-    "browser_switch_tab",
-    "browser_end",
-  ].every((t) => tools.includes(t)),
-  `got ${tools.join(", ")}`,
-);
-
-const offline = bodyOf(await rpc("tools/call", { name: "health", arguments: {} }));
-check(
-  "health reports the extension missing, with a way forward",
-  offline.includes("connected: false") && offline.includes("side panel"),
-);
-
-const blocked = await rpc("tools/call", { name: "run", arguments: { task: "go to example.com" } });
-check(
-  "run refuses without an extension instead of hanging",
-  bodyOf(blocked).includes("isn't connected"),
-);
-
-// The extension arrives: hello, then the daemon syncs its status.
-await connectExtension();
-send({ type: "hello", extensionId: EXTENSION_ID, version: "0.1.0" });
-const sync = await awaitRequest("sync");
-reply(sync.requestId, emptyStatus());
-await Bun.sleep(50);
-
-// health asks the extension what it has to think with, so the answer has to be
-// served alongside the call rather than before it.
-const healthCall = rpc("tools/call", { name: "health", arguments: {} });
-const readyInfo = await awaitRequest("providerInfo");
-reply(readyInfo.requestId, {
-  name: "Anthropic (Subscription)",
-  ready: true,
-  auth: "subscription",
-  model: null,
-});
-const online = bodyOf(await healthCall);
-check(
-  "health sees the expected extension",
-  online.includes("connected: true") && online.includes("Ready"),
-);
-check(
-  "health names the provider a run would think with",
-  online.includes("Anthropic (Subscription)") && online.includes("model auto"),
-);
-
-// The failure this pre-empts: a reachable browser that has no model behind it.
-const unreadyCall = rpc("tools/call", { name: "health", arguments: {} });
-const unreadyInfo = await awaitRequest("providerInfo");
-reply(unreadyInfo.requestId, { name: null, ready: false, auth: null, model: null });
-const unready = bodyOf(await unreadyCall);
-check(
-  "health warns when no provider is configured, and says direct control still works",
-  unready.includes("no provider is configured") && unready.includes("browser_start"),
-);
-
-// A run: the daemon forwards it, the extension acknowledges, events flow back.
-const started = rpc("tools/call", { name: "run", arguments: { task: "read my inbox" } });
-const runRequest = await awaitRequest("run");
-check("the task reaches the extension verbatim", runRequest.params.task === "read my inbox");
-reply(runRequest.requestId, { runId: "run-1", conversationId: "conv-1" });
-check("run answers with its id", bodyOf(await started).includes("run-1"));
-
-// Accepting the run must flip the buffer to running — the event stream only
-// ever reports progress, so nothing else would say a task had begun.
-const live = bodyOf(await rpc("tools/call", { name: "get_status", arguments: { wait: false } }));
-check("the accepted run reads as running", live.includes("state: running"));
-
-// get_status(wait) must park until something actually happens.
-send({ type: "event", event: { type: "driving", tabId: 4, windowId: 1, title: "Inbox" } });
-await Bun.sleep(50);
-const waiting = rpc("tools/call", { name: "get_status", arguments: { waitSeconds: 5 } });
-let woke = false;
-void waiting.then(() => (woke = true));
-await Bun.sleep(300);
-check("get_status blocks while the run is quiet", !woke);
-send({
-  type: "event",
-  event: { type: "step", tool: "navigate", summary: "Navigated successfully", ok: true },
-});
-const progress = bodyOf(await waiting);
-check("a pushed step wakes the wait", woke && progress.includes("Navigated successfully"));
-check("the driven tab is named", progress.includes("Inbox"));
-
-// ask_user: the question is the closing state, even though a done follows it.
-send({
-  type: "event",
-  event: {
-    type: "question",
-    question: "Pay the $42 invoice?",
-    choices: ["Pay it now", "Not now"],
-  },
-});
-send({ type: "event", event: { type: "done", summary: "waiting on you" } });
-await Bun.sleep(50);
-const asked = bodyOf(await rpc("tools/call", { name: "get_status", arguments: { wait: false } }));
-check(
-  "the question survives the done behind it",
-  asked.includes("state: question") && asked.includes("$42"),
-);
-// The run is waiting on those exact words — a client that can't see them
-// invents its own wording for the options.
-check(
-  "the offered choices reach the client verbatim",
-  asked.includes("Pay it now") && asked.includes("Not now"),
-);
-check(
-  "the model is told to relay the options, not just the question",
-  asked.includes("relay this question AND its options"),
-);
-check(
-  "the model is told not to decide consequential actions itself",
-  asked.includes("never answer those yourself"),
-);
-
-const answered = rpc("tools/call", { name: "answer", arguments: { text: "yes, pay it" } });
-const answerRequest = await awaitRequest("answer");
-check("answer carries the user's words", answerRequest.params.text === "yes, pay it");
-// The extension answers exactly as it does for run — an answer IS a run.
-reply(answerRequest.requestId, { runId: "run-2", conversationId: "conv-1" });
-await answered;
-const resumed = bodyOf(await rpc("tools/call", { name: "get_status", arguments: { wait: false } }));
-check("answering puts the thread back to work", resumed.includes("state: running"));
-
-send({ type: "event", event: { type: "done", summary: "Paid. Receipt in the inbox." } });
-await Bun.sleep(50);
-const finished = bodyOf(
-  await rpc("tools/call", { name: "get_status", arguments: { wait: false } }),
-);
-check(
-  "the closing answer is served",
-  finished.includes("state: done") && finished.includes("Receipt in the inbox"),
-);
-
-// ── Queue lifecycle ─────────────────────────────────────────────────
-// A second run waits in line: the reply says so, the queue event lists it,
-// get_status parks until its `started` event claims the slot, and its own
-// done is never swallowed by the previous run's closing state.
-const first = rpc("tools/call", { name: "run", arguments: { task: "tidy the downloads folder" } });
-const firstRequest = await awaitRequest("run");
-reply(firstRequest.requestId, { runId: "run-3", conversationId: "conv-1" });
-await first;
-
-const second = rpc("tools/call", { name: "run", arguments: { task: "archive the receipts" } });
-const secondRequest = await awaitRequest("run");
-reply(secondRequest.requestId, { runId: "run-4", conversationId: "conv-1", queued: 1 });
-check(
-  "a second run answers with its queue position",
-  bodyOf(await second).includes("Queued at position 1"),
-);
-
-send({
-  type: "event",
-  event: { type: "queue", queue: [{ position: 1, task: "archive the receipts", owner: "bridge" }] },
-});
-await Bun.sleep(50);
-const withQueue = bodyOf(
-  await rpc("tools/call", { name: "get_status", arguments: { wait: false } }),
-);
-check(
-  "the queue is listed with the waiting task",
-  withQueue.includes("queue: 1 waiting") && withQueue.includes("archive the receipts"),
-);
-
-// The first run ends on a question — the queued one is still behind it.
-send({ type: "event", event: { type: "question", question: "Delete the old zips?" } });
-send({ type: "event", event: { type: "done", summary: "waiting on you" } });
-await Bun.sleep(50);
-const parked = rpc("tools/call", { name: "get_status", arguments: { waitSeconds: 5 } });
-let parkedWoke = false;
-void parked.then(() => (parkedWoke = true));
-await Bun.sleep(300);
-check("get_status parks while this client's run is queued", !parkedWoke);
-
-// The queued run claims the slot — the mirror resets, the wait wakes.
-send({ type: "event", event: { type: "started", runId: "run-4", conversationId: "conv-1" } });
-const startedBody = bodyOf(await parked);
-check(
-  "the started event wakes the parked wait into running",
-  startedBody.includes("state: running"),
-);
-
-send({ type: "event", event: { type: "queue", queue: [] } });
-send({ type: "event", event: { type: "done", summary: "Receipts archived." } });
-await Bun.sleep(50);
-const queuedDone = bodyOf(
-  await rpc("tools/call", { name: "get_status", arguments: { wait: false } }),
-);
-check(
-  "the queued run's own done is served, not swallowed by the earlier question",
-  queuedDone.includes("state: done") && queuedDone.includes("Receipts archived"),
-);
-
-// A queue with nothing running (e.g. behind a direct session) still shows.
-const fresh = rpc("tools/call", { name: "new_conversation", arguments: {} });
-const freshRequest = await awaitRequest("newConversation");
-reply(freshRequest.requestId, { ok: true });
-await fresh;
-send({
-  type: "event",
-  event: { type: "queue", queue: [{ position: 1, task: "panel's task", owner: "panel" }] },
-});
-await Bun.sleep(50);
-const idleQueue = bodyOf(
-  await rpc("tools/call", { name: "get_status", arguments: { wait: false } }),
-);
-check(
-  "an idle state still lists the queue",
-  idleQueue.includes("state: idle") && idleQueue.includes("queue: 1 waiting"),
-);
-send({ type: "event", event: { type: "queue", queue: [] } });
-await Bun.sleep(50);
-
-// Compaction crosses the wire as one method and answers with the receipt.
-const compacted = rpc("tools/call", { name: "compact", arguments: {} });
-const compactRequest = await awaitRequest("compact");
-reply(compactRequest.requestId, { messages: 18, before: 48231, after: 1230 });
-check(
-  "compact folds the thread and hands back the receipt",
-  bodyOf(await compacted).includes("Compacted 18 messages") &&
-    bodyOf(await compacted).includes("48231"),
-);
-// …and a short thread answers instead of failing.
-const shortThread = rpc("tools/call", { name: "compact", arguments: {} });
-const shortRequest = await awaitRequest("compact");
-reply(shortRequest.requestId, { nothing: true });
-check(
-  "compact on a short thread says so, without an error",
-  bodyOf(await shortThread).includes("Nothing to compact"),
-);
-
-// A screenshot comes back as a real MCP image block.
-const shot = rpc("tools/call", { name: "screenshot", arguments: {} });
-const shotRequest = await awaitRequest("screenshot");
-reply(shotRequest.requestId, {
-  dataUrl: "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
-  tabId: 4,
-  title: "Inbox",
-  url: "https://mail.example.com/",
-  driven: true,
-});
-const shotContent = (await shot).result?.content ?? [];
-check(
-  "screenshot returns an image the model can see",
-  shotContent[0]?.type === "image" && (shotContent[1]?.text ?? "").includes("mail.example.com"),
-);
-
-// Stop must never report a no-op as success: a panel-owned run is untouchable
-// from here, and "Stopped." would tell the model the browser was free.
-const stoppedNothing = rpc("tools/call", { name: "stop", arguments: {} });
-const idleStop = await awaitRequest("stop");
-reply(idleStop.requestId, { stopped: false, panelBusy: true });
-check(
-  "a stop that stopped nothing says so, and names the panel",
-  bodyOf(await stoppedNothing).includes("only the panel can stop it"),
-);
-
-const stoppedOurs = rpc("tools/call", { name: "stop", arguments: {} });
-const realStop = await awaitRequest("stop");
-reply(realStop.requestId, { stopped: false, panelBusy: false });
-check("an idle stop is still not an error", bodyOf(await stoppedOurs).includes("Nothing to stop"));
-
-// Direct control: the goal names the thread, and the opening snapshot rides
-// back with it so the client's first move isn't a wasted round trip.
-const driving = rpc("tools/call", {
-  name: "browser_start",
-  arguments: { goal: "find the Q3 invoice" },
-});
-const startRequest = await awaitRequest("browserStart");
-check(
-  "browser_start carries the goal and names the client from MCP initialize",
-  startRequest.params.goal === "find the Q3 invoice" && startRequest.params.agent === "smoke",
-);
-reply(startRequest.requestId, { ok: true, data: { pageContent: '[ref=e1] link "Invoices"' } });
-const drivingBody = bodyOf(await driving);
-check(
-  "browser_start returns the opening snapshot under the stated goal",
-  drivingBody.includes("find the Q3 invoice") && drivingBody.includes('[ref=e1] link "Invoices"'),
-);
-
-// Every raw verb crosses as one browserAct method — the MCP surface is wide,
-// the wire is narrow, and the extension keeps one browser implementation.
-const clicking = rpc("tools/call", { name: "browser_click", arguments: { ref: "e1" } });
-const clickRequest = await awaitRequest("browserAct");
-check(
-  "browser_click crosses the wire as browserAct with the agent tool name",
-  clickRequest.params.tool === "click" &&
-    (clickRequest.params.args as Record<string, unknown>).ref === "e1",
-);
-check("a plain click leaves snapshot unset", !("snapshot" in clickRequest.params));
-reply(clickRequest.requestId, { ok: true, data: { pageContent: '[ref=e7] link "invoice-q3"' } });
-check(
-  "an action hands back the page it produced, with the staleness warning",
-  bodyOf(await clicking).includes("valid only for THIS snapshot"),
-);
-
-// A refused action reaches the model as a failed step, never a lying "ok" —
-// a stale ref, a missing element, a dead tab. The error has to be visible.
-const refused = rpc("tools/call", { name: "browser_click", arguments: { ref: "gone" } });
-const refusedRequest = await awaitRequest("browserAct");
-reply(refusedRequest.requestId, { ok: false, error: "No element with ref 'gone'." });
-const refusedBody = bodyOf(await refused);
-check(
-  "a failed action says it failed, and why",
-  refusedBody.includes("click: failed") && refusedBody.includes("No element with ref 'gone'."),
-);
-
-const scrolling = rpc("tools/call", {
-  name: "browser_scroll",
-  arguments: { direction: "up", amount: 200 },
-});
-const scrollRequest = await awaitRequest("browserAct");
-check(
-  "scroll direction picks the right underlying tool",
-  scrollRequest.params.tool === "scroll_up" &&
-    (scrollRequest.params.args as Record<string, unknown>).amount === 200,
-);
-reply(scrollRequest.requestId, { ok: true, data: {} });
-await scrolling;
-
-// The options that keep a session off the user's page and keep answers small
-// have to cross the wire, and only when they are set.
-const startingAt = rpc("tools/call", {
-  name: "browser_start",
-  arguments: { goal: "read the docs", url: "https://tabrunner.app/docs", background: false },
-});
-const startAtRequest = await awaitRequest("browserStart");
-check(
-  "browser_start passes url and background: false to the extension",
-  startAtRequest.params.url === "https://tabrunner.app/docs" &&
-    startAtRequest.params.background === false,
-);
-reply(startAtRequest.requestId, { ok: true, data: {} });
-await startingAt;
-
-const leanClick = rpc("tools/call", {
-  name: "browser_click",
-  arguments: { ref: "e2", snapshot: false },
-});
-const leanRequest = await awaitRequest("browserAct");
-check("snapshot: false crosses the wire", leanRequest.params.snapshot === false);
-reply(leanRequest.requestId, { ok: true, data: { url: "https://x.test/" } });
-await leanClick;
-
-const findingTabs = rpc("tools/call", { name: "browser_tabs", arguments: { query: "docs" } });
-const tabsRequest = await awaitRequest("browserAct");
-check(
-  "browser_tabs passes its query to list_tabs",
-  tabsRequest.params.tool === "list_tabs" &&
-    (tabsRequest.params.args as Record<string, unknown>).query === "docs",
-);
-reply(tabsRequest.requestId, { ok: true, data: { tabs: [] } });
-await findingTabs;
-
-// An extension-side refusal reaches the model as an oriented error, not a crash.
-const steered = rpc("tools/call", { name: "steer", arguments: { text: "use the search box" } });
-const steerRequest = await awaitRequest("steer");
-send({
-  type: "response",
-  requestId: steerRequest.requestId,
-  ok: false,
-  error: { code: "no-run", message: "No run is in progress to steer. Start one with run." },
-});
-check("a rejected command explains itself", bodyOf(await steered).includes("Start one with run"));
-
-console.log("\nall checks passed");
-daemon.kill();
-process.exit(0);

@@ -11,8 +11,27 @@ import { startInspecting } from "./inspect";
  * frameworks (React, Vue) and SPAs can't distinguish from human input.
  */
 
-const attachedTabs = new Set<TabId>();
-let activeTab: TabId | null = null;
+const tabOwners = new Map<TabId, string>();
+const attachedTabs = new Map<TabId, string>();
+const pendingAttaches = new Map<TabId, { ownerId: string; promise: Promise<void> }>();
+const releasingOwners = new Map<string, Promise<void>>();
+
+/** Runs and direct sessions share one exclusive claim, including before attach. */
+export function claimTab(ownerId: string, tabId: TabId): void {
+  const owner = tabOwners.get(tabId);
+  if ((owner !== undefined && owner !== ownerId) || releasingOwners.has(ownerId)) {
+    throw new Error(i18n.t("errors.tabInUse", { tabId }));
+  }
+  tabOwners.set(tabId, ownerId);
+}
+
+export function tabOwner(tabId: TabId): string | undefined {
+  return tabOwners.get(tabId);
+}
+
+export function isAttached(tabId: TabId): boolean {
+  return attachedTabs.has(tabId);
+}
 
 let wired = false;
 
@@ -28,13 +47,9 @@ function wireSession(): void {
   wired = true;
   chrome.tabs.onRemoved.addListener((tabId) => {
     attachedTabs.delete(tabId);
-    if (activeTab === tabId) activeTab = null;
   });
   chrome.debugger.onDetach.addListener((source) => {
-    if (source.tabId) {
-      attachedTabs.delete(source.tabId);
-      if (activeTab === source.tabId) activeTab = null;
-    }
+    if (source.tabId !== undefined) attachedTabs.delete(source.tabId);
   });
   startInspecting();
 }
@@ -59,27 +74,22 @@ export class RestrictedUrlError extends Error {
   }
 }
 
-async function attach(tabId: TabId): Promise<void> {
+async function attach(ownerId: string, tabId: TabId): Promise<void> {
   wireSession();
-  if (attachedTabs.has(tabId)) {
-    activeTab = tabId;
-    return;
-  }
   try {
     await chrome.debugger.attach({ tabId }, "1.3");
-    attachedTabs.add(tabId);
-    activeTab = tabId;
+    attachedTabs.set(tabId, ownerId);
     // Feed the run's network/console capture (inspect.ts) from the attach on —
     // by the time the model looks, the failing request is already in the log.
-    await send("Network.enable");
-    await send("Runtime.enable");
+    await send(tabId, "Network.enable");
+    await send(tabId, "Runtime.enable");
     // A tab nobody can see (in the background, under another window, minimized)
     // is hidden to Chrome too, and a hidden page holds mouse presses, keys and
     // the wheel in a queue until someone shows it: every action answers ok and
     // nothing happens. Focus emulation makes the page behave as visible and
     // focused, so the work lands without moving the user's screen. Puppeteer
     // does the same for each page it drives. It ends with the attach.
-    await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    await send(tabId, "Emulation.setFocusEmulationEnabled", { enabled: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("Another debugger is already attached")) {
@@ -92,42 +102,67 @@ async function attach(tabId: TabId): Promise<void> {
   }
 }
 
-async function send(method: string, params?: Record<string, unknown>): Promise<unknown> {
-  if (activeTab === null) throw new Error(i18n.t("errors.noTabAttached"));
-  return chrome.debugger.sendCommand({ tabId: activeTab }, method, params);
+async function send(
+  tabId: TabId,
+  method: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (!isAttached(tabId)) throw new Error(i18n.t("errors.noTabAttached"));
+  return chrome.debugger.sendCommand({ tabId }, method, params);
 }
 
-export async function ensureAttached(tabId: TabId): Promise<void> {
-  await attach(tabId);
+export async function ensureAttached(ownerId: string, tabId: TabId): Promise<void> {
+  claimTab(ownerId, tabId);
+  const pending = pendingAttaches.get(tabId);
+  if (pending) return pending.promise;
+  if (isAttached(tabId)) return;
+  const promise = attach(ownerId, tabId).finally(() => pendingAttaches.delete(tabId));
+  pendingAttaches.set(tabId, { ownerId, promise });
+  return promise;
 }
 
-/**
- * Let go of every tab this session attached. Chrome's "is debugging this
- * browser" infobar leaves only with the session, so a run that kept its attach
- * would pin the banner on the page long after the work ended — the session
- * even outlives the MV3 worker. Called when the run slot is released, which
- * the single-slot invariant makes safe: nothing else can be mid-flight. The
- * next run's first action re-attaches — cheap, and the banner's return while
- * the agent is actually working is honest signal. Best-effort per tab: one
- * that died or was cancelled away must not stop the sweep or fail the unwind.
- */
-export async function detachAll(): Promise<void> {
-  const tabs = [...attachedTabs];
-  attachedTabs.clear();
-  activeTab = null;
-  await Promise.all(
-    tabs.map((tabId) =>
-      chrome.debugger.detach({ tabId }).catch(() => {
-        // Already closed or cancelled — the infobar is down either way.
-      }),
-    ),
-  );
+/** Drain this owner's pending attaches before detaching only its sessions. */
+export function releaseBrowserOwner(ownerId: string): Promise<void> {
+  const releasing = releasingOwners.get(ownerId);
+  if (releasing) return releasing;
+  const release = (async () => {
+    await Promise.allSettled(
+      [...pendingAttaches.values()]
+        .filter((pending) => pending.ownerId === ownerId)
+        .map((pending) => pending.promise),
+    );
+    await Promise.all(
+      [...attachedTabs]
+        .filter(([, owner]) => owner === ownerId)
+        .map(async ([tabId]) => {
+          try {
+            await chrome.debugger.detach({ tabId });
+          } catch {
+            // Already closed or cancelled. Continue releasing this owner's tabs.
+          }
+          attachedTabs.delete(tabId);
+        }),
+    );
+  })().finally(() => {
+    for (const [tabId, owner] of tabOwners) {
+      if (owner === ownerId) tabOwners.delete(tabId);
+    }
+    releasingOwners.delete(ownerId);
+  });
+  releasingOwners.set(ownerId, release);
+  return release;
 }
 
 /** Click at coordinates via trusted CDP mouse events. */
-export async function clickAt(x: number, y: number): Promise<void> {
-  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "none", buttons: 0 });
-  await send("Input.dispatchMouseEvent", {
+export async function clickAt(tabId: TabId, x: number, y: number): Promise<void> {
+  await send(tabId, "Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x,
+    y,
+    button: "none",
+    buttons: 0,
+  });
+  await send(tabId, "Input.dispatchMouseEvent", {
     type: "mousePressed",
     x,
     y,
@@ -135,7 +170,7 @@ export async function clickAt(x: number, y: number): Promise<void> {
     buttons: 1,
     clickCount: 1,
   });
-  await send("Input.dispatchMouseEvent", {
+  await send(tabId, "Input.dispatchMouseEvent", {
     type: "mouseReleased",
     x,
     y,
@@ -168,28 +203,28 @@ export function resetPlatformModifierForTest(): void {
 }
 
 /** Type text via CDP insertText (trusted input). Clears existing field first. */
-export async function typeText(text: string): Promise<void> {
+export async function typeText(tabId: TabId, text: string): Promise<void> {
   const mod = await getPlatformModifier();
-  await send("Input.dispatchKeyEvent", {
+  await send(tabId, "Input.dispatchKeyEvent", {
     type: "keyDown",
     key: "a",
     code: "KeyA",
     windowsVirtualKeyCode: 65,
     modifiers: mod,
   });
-  await send("Input.dispatchKeyEvent", {
+  await send(tabId, "Input.dispatchKeyEvent", {
     type: "keyUp",
     key: "a",
     code: "KeyA",
     windowsVirtualKeyCode: 65,
     modifiers: mod,
   });
-  await send("Input.insertText", { text });
+  await send(tabId, "Input.insertText", { text });
 }
 
 /** Append text without clearing (for contenteditable or partial input). */
-export async function insertText(text: string): Promise<void> {
-  await send("Input.insertText", { text });
+export async function insertText(tabId: TabId, text: string): Promise<void> {
+  await send(tabId, "Input.insertText", { text });
 }
 
 /** A key name resolved to its CDP event fields. */
@@ -271,7 +306,7 @@ export async function resolveModifiers(modifiers: string[]): Promise<number> {
   return bits;
 }
 
-export async function pressKey(key: string, modifiers: string[] = []): Promise<void> {
+export async function pressKey(tabId: TabId, key: string, modifiers: string[] = []): Promise<void> {
   const spec = resolveKey(key);
   const bits = await resolveModifiers(modifiers);
   const shifted = (bits & SHIFT) !== 0;
@@ -290,17 +325,17 @@ export async function pressKey(key: string, modifiers: string[] = []): Promise<v
     windowsVirtualKeyCode: spec.vkc,
     modifiers: bits,
   };
-  await send("Input.dispatchKeyEvent", {
+  await send(tabId, "Input.dispatchKeyEvent", {
     type: "keyDown",
     ...event,
     ...(text ? { text } : {}),
   });
-  await send("Input.dispatchKeyEvent", { type: "keyUp", ...event });
+  await send(tabId, "Input.dispatchKeyEvent", { type: "keyUp", ...event });
 }
 
 /** Scroll the page by relative amounts. */
-export async function scroll(deltaX: number, deltaY: number): Promise<void> {
-  await send("Input.dispatchMouseEvent", {
+export async function scroll(tabId: TabId, deltaX: number, deltaY: number): Promise<void> {
+  await send(tabId, "Input.dispatchMouseEvent", {
     type: "mouseWheel",
     x: 0,
     y: 0,
@@ -318,17 +353,12 @@ export async function scroll(deltaX: number, deltaY: number): Promise<void> {
  * several times larger for no readability gain at q80 — on a slow uplink that
  * difference is seconds per step.
  */
-export async function screenshot(quality = 80): Promise<string> {
-  const result = (await send("Page.captureScreenshot", {
+export async function screenshot(tabId: TabId, quality = 80): Promise<string> {
+  const result = (await send(tabId, "Page.captureScreenshot", {
     format: "jpeg",
     quality,
   })) as { data: string };
   return `data:image/jpeg;base64,${result.data}`;
-}
-
-/** The tab this session is currently pointed at, or null when nothing is attached. */
-export function attachedTab(): TabId | null {
-  return activeTab;
 }
 
 /**
@@ -342,11 +372,12 @@ export function attachedTab(): TabId | null {
  * on a page the user never approved touching.
  */
 export async function captureFrame(
+  tabId: TabId,
   quality: number,
 ): Promise<{ dataUrl: string; viewport: { width: number; height: number } }> {
   const [dataUrl, metrics] = await Promise.all([
-    screenshot(quality),
-    send("Page.getLayoutMetrics") as Promise<{
+    screenshot(tabId, quality),
+    send(tabId, "Page.getLayoutMetrics") as Promise<{
       cssLayoutViewport?: { clientWidth: number; clientHeight: number };
     }>,
   ]);
@@ -372,9 +403,9 @@ interface EvalResponse {
  * the MAIN world dies on any strict script-src page), awaitPromise and
  * replMode come free, and the debugger is already attached for trusted input.
  */
-export async function evaluateRaw(expression: string): Promise<unknown> {
+export async function evaluateRaw(tabId: TabId, expression: string): Promise<unknown> {
   const attempt = (expr: string, replMode: boolean) =>
-    send("Runtime.evaluate", {
+    send(tabId, "Runtime.evaluate", {
       expression: expr,
       returnByValue: true,
       awaitPromise: true,

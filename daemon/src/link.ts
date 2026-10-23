@@ -1,13 +1,15 @@
-import type { ServerWebSocket } from "bun";
+import type { Server, ServerWebSocket } from "bun";
+import { z } from "zod";
+import { config } from "./config";
 import {
+  BRIDGE_PROTOCOL_VERSION,
   applyCompact,
   emptyStatus,
+  type BridgeRunEvent,
   type BridgeStatus,
   type DaemonMessage,
-  type ExtensionMessage,
 } from "./protocol";
 
-/** A failure with a code the MCP layer turns into oriented text for the model. */
 export class BridgeError extends Error {
   constructor(
     readonly code: string,
@@ -23,129 +25,175 @@ export const NOT_CONNECTED =
   "Cause: the bridge is off, the extension isn't installed, its service worker is asleep, or it's pointed at another port.\n" +
   "Fix: enable the bridge under TabRunner's Settings → MCP, then open its side panel once to wake the worker. It reconnects on its own within ~30s. Call health again then.";
 
-const WORKER_GONE =
-  "The task stopped: Chrome suspended or restarted TabRunner's service worker while it was working.\n" +
-  "Fix: send the task again with run. Keeping the side panel open while a long task runs prevents this.";
-
+const LOST_CONNECTION =
+  "The connection to TabRunner was lost before it answered. The request may already have changed the browser.\n" +
+  "Fix: call health, then get_status or browser_snapshot to check what happened. Do not repeat the action until you have checked.";
 const TIMED_OUT =
-  "TabRunner didn't answer in time. The browser may be busy or the worker may have been suspended mid-request.\n" +
-  "Fix: call health to check the link, then retry.";
-
-/** One request/response round trip. Long work is polled, never held open here. */
+  "TabRunner didn't answer in time. The browser may be busy or the worker may have restarted. The request may already have changed the browser.\n" +
+  "Fix: call health, then get_status or browser_snapshot to check the result before retrying.";
+const WORKER_GONE =
+  "The task stopped because Chrome restarted TabRunner's service worker.\n" +
+  "Fix: check the page before sending the task again. Keep the side panel open during long tasks.";
 const REQUEST_TIMEOUT_MS = 30_000;
-/**
- * For lookups a caller would rather skip than wait for. health is a pre-flight
- * check — an answer that takes half a minute has already failed at its job.
- */
 export const QUICK_TIMEOUT_MS = 4_000;
-/** Keeps the socket warm and detects a half-open link between reconciles. */
-const PING_MS = 20_000;
+
+const queueSchema = z.array(
+  z.object({
+    runId: z.string(),
+    conversationId: z.string(),
+    position: z.number(),
+    task: z.string(),
+    owner: z.enum(["panel", "bridge", "schedule"]),
+  }),
+);
+const compactSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("started"), runId: z.string(), conversationId: z.string() }),
+  z.object({ type: z.literal("step_start"), tool: z.string() }),
+  z.object({
+    type: z.literal("step"),
+    tool: z.string(),
+    summary: z.string(),
+    ok: z.boolean().optional(),
+  }),
+  z.object({ type: z.literal("plan"), steps: z.array(z.string()), current: z.number() }),
+  z.object({
+    type: z.literal("driving"),
+    tabId: z.number(),
+    windowId: z.number(),
+    title: z.string(),
+  }),
+  z.object({ type: z.literal("queue"), queue: queueSchema }),
+  z.object({ type: z.literal("error"), message: z.string() }),
+  z.object({ type: z.literal("done"), summary: z.string().optional() }),
+  z.object({
+    type: z.literal("question"),
+    question: z.string(),
+    choices: z.array(z.string()).optional(),
+  }),
+]);
+const messageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("hello"),
+    extensionId: z.string(),
+    version: z.string(),
+    protocolVersion: z.number().optional(),
+  }),
+  z.object({ type: z.literal("pong") }),
+  z.object({
+    type: z.literal("response"),
+    clientId: z.string(),
+    requestId: z.string(),
+    ok: z.boolean(),
+    result: z.unknown().optional(),
+    error: z.object({ code: z.string(), message: z.string() }).optional(),
+  }),
+  z.object({
+    type: z.literal("event"),
+    clientId: z.string(),
+    runId: z.string().nullable(),
+    conversationId: z.string().nullable(),
+    event: compactSchema,
+  }),
+]);
+const statusSchema = z.object({
+  conversationId: z.string().nullable(),
+  runId: z.string().nullable(),
+  state: z.enum(["idle", "running", "question", "done", "error"]),
+  startedAt: z.number().nullable(),
+  finishedAt: z.number().nullable(),
+  steps: z.array(z.object({ tool: z.string(), summary: z.string(), ok: z.boolean().optional() })),
+  plan: z.object({ steps: z.array(z.string()), current: z.number() }).nullable(),
+  driving: z.object({ tabId: z.number(), windowId: z.number(), title: z.string() }).nullable(),
+  queue: queueSchema,
+  question: z.string().nullable(),
+  choices: z.array(z.string()).nullable(),
+  error: z.string().nullable(),
+  summary: z.string().nullable(),
+});
 
 interface Pending {
+  clientId: string;
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
 
-/**
- * The daemon's half of the bridge: a localhost WebSocket server the extension
- * dials into, request/response correlation over it, and a mirror of the run
- * status that `get_status` serves — including while the extension is away, so a
- * dropped link never loses a finished run's answer.
- */
-export class BridgeLink {
-  private socket: ServerWebSocket<unknown> | null = null;
-  private pending = new Map<string, Pending>();
-  private waiters = new Set<() => void>();
-  /** Bumped on every meaningful change — `get_status(wait)` parks until it moves. */
-  private seq = 0;
-  private listening = false;
-  private bindError: string | null = null;
-
+/** One MCP session's mirror and request scope. Names never identify a client. */
+export class ClientBridgeLink {
   status: BridgeStatus = emptyStatus();
-  extension: { id: string; version: string } | null = null;
+  private seq = 0;
+  private waiters = new Set<() => void>();
+  private queuedRuns = new Set<string>();
+  private seenRuns = new Set<string>();
+  private pendingStarts = 0;
+  closed = false;
 
-  constructor(private readonly port: number) {}
+  constructor(
+    readonly clientId: string,
+    private readonly owner: BridgeLink,
+  ) {}
 
   get connected(): boolean {
-    return this.socket !== null;
+    return this.owner.connected;
   }
-
+  get extension() {
+    return this.owner.extension;
+  }
+  get problem(): string | null {
+    return this.owner.problem;
+  }
+  get port(): number {
+    return config.port;
+  }
+  get expectedExtensionId(): string {
+    return config.expectedExtensionId;
+  }
   get revision(): number {
     return this.seq;
   }
 
-  /** Why the WS port isn't serving, if it isn't — surfaced by health. */
-  get problem(): string | null {
-    return this.listening ? null : this.bindError;
-  }
-
-  listen(): void {
-    try {
-      Bun.serve({
-        port: this.port,
-        hostname: "127.0.0.1",
-        fetch: (req, server) => {
-          if (server.upgrade(req)) return undefined;
-          // A browser hitting the port by hand should learn what it found.
-          return new Response("TabRunner MCP bridge. The extension connects here over /ws.\n", {
-            headers: { "content-type": "text/plain" },
-          });
-        },
-        websocket: {
-          open: (ws) => this.onOpen(ws),
-          message: (_ws, message) => this.onMessage(String(message)),
-          close: (ws) => this.onClose(ws),
-        },
-      });
-      this.listening = true;
-      setInterval(
-        () => this.socket?.send(JSON.stringify({ type: "ping" } satisfies DaemonMessage)),
-        PING_MS,
+  async request<T>(
+    method: string,
+    params: Record<string, unknown> = {},
+    timeoutMs = REQUEST_TIMEOUT_MS,
+    targetRunId?: string,
+  ): Promise<T> {
+    if (this.closed)
+      throw new BridgeError(
+        "closed-client",
+        "This MCP session has closed. Restart this MCP client to connect again.",
       );
-    } catch (e) {
-      // Every MCP client spawns its own daemon process, so a second client finds
-      // the port taken. Serving MCP anyway (and saying so) beats exiting: the
-      // model gets an answer it can act on instead of a dead server.
-      this.bindError =
-        `Another TabRunner bridge is already listening on port ${this.port}, so this one can't reach the extension.\n` +
-        `Cause: one daemon owns the port, and every MCP client starts its own.\n` +
-        `Fix: drive the browser from the client that started first, or give this one its own port with TABRUNNER_BRIDGE_PORT (the extension's port setting must match).\n` +
-        `Detail: ${e instanceof Error ? e.message : String(e)}`;
-      console.error(`[tabrunner] ${this.bindError}`);
+    const starts = method === "run" || method === "answer" || method === "browserStart";
+    if (starts) this.pendingStarts++;
+    try {
+      return await this.owner.request<T>(
+        this.clientId,
+        method,
+        params,
+        timeoutMs,
+        targetRunId ??
+          (method === "run" ||
+          method === "browserStart" ||
+          method === "sync" ||
+          method === "providerInfo"
+            ? undefined
+            : (this.status.runId ?? undefined)),
+      );
+    } finally {
+      if (starts) this.pendingStarts--;
     }
   }
 
-  /** Ask the extension to do something and wait for its answer. */
-  request<T>(
-    method: string,
-    params: Record<string, unknown> = {},
-    timeoutMs: number = REQUEST_TIMEOUT_MS,
-  ): Promise<T> {
-    const socket = this.socket;
-    if (!socket) return Promise.reject(new BridgeError("no-extension", NOT_CONNECTED));
-    const requestId = crypto.randomUUID();
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(requestId);
-        reject(new BridgeError("timeout", TIMED_OUT));
-      }, timeoutMs);
-      this.pending.set(requestId, { resolve: (v) => resolve(v as T), reject, timer });
-      socket.send(
-        JSON.stringify({ type: "request", requestId, method, params } satisfies DaemonMessage),
-      );
-    });
-  }
-
-  /**
-   * Claim the run locally the moment the extension accepts it. The compact
-   * event stream only reports progress, never "a run began" — without this the
-   * buffer would still read `idle` while the browser was already working, and
-   * `get_status` would tell the model nothing had started.
-   */
-  startRun(runId: string, conversationId: string): void {
+  startRun(runId: string, conversationId: string, queued?: number): void {
+    if (queued !== undefined) {
+      this.queuedRuns.add(runId);
+      return;
+    }
+    if (this.status.runId === runId) return;
+    this.seenRuns.add(runId);
     this.status = {
       ...emptyStatus(),
+      queue: this.status.queue,
       state: "running",
       runId,
       conversationId,
@@ -154,18 +202,70 @@ export class BridgeLink {
     this.bump();
   }
 
-  /** Back to a clean thread — the extension has dropped its conversation too. */
+  forgetRun(runId: string): void {
+    this.queuedRuns.delete(runId);
+    this.seenRuns.add(runId);
+  }
+
   reset(): void {
     this.status = emptyStatus();
+    this.queuedRuns.clear();
     this.bump();
   }
 
-  /**
-   * Park until the run state moves past `sinceRevision`, or the wait runs out.
-   * This is what keeps a ten-minute task from costing ten minutes of polling.
-   */
+  event(message: BridgeRunEvent): void {
+    const { event, runId, conversationId } = message;
+    if (event.type === "queue") {
+      for (const entry of event.queue) this.queuedRuns.add(entry.runId);
+    }
+    if (event.type === "started") {
+      if (runId !== event.runId || conversationId !== event.conversationId) return;
+      if (runId === this.status.runId) return;
+      if (!this.queuedRuns.has(runId) && !(this.pendingStarts > 0 && !this.seenRuns.has(runId)))
+        return;
+      this.queuedRuns.delete(runId);
+      this.seenRuns.add(runId);
+    } else if (
+      event.type !== "queue" &&
+      (runId !== this.status.runId ||
+        conversationId !== this.status.conversationId ||
+        runId === null)
+    )
+      return;
+    if (applyCompact(this.status, event)) this.bump();
+  }
+
+  async resync(): Promise<void> {
+    const previous = structuredClone(this.status);
+    try {
+      const fresh = statusSchema.parse(await this.request<unknown>("sync"));
+      if (
+        this.closed ||
+        (this.status.runId !== previous.runId && fresh.runId !== this.status.runId)
+      )
+        return;
+      this.status =
+        previous.state === "running" && fresh.runId === null
+          ? {
+              ...previous,
+              runId: fresh.runId,
+              conversationId: fresh.conversationId ?? previous.conversationId,
+              queue: fresh.queue,
+              state: "error",
+              error: WORKER_GONE,
+              finishedAt: Date.now(),
+            }
+          : fresh;
+      if (fresh.runId) this.seenRuns.add(fresh.runId);
+      this.queuedRuns = new Set(fresh.queue.map((entry) => entry.runId));
+    } catch {
+      // A later hello retries this read. Browser actions are never replayed.
+    }
+    this.bump();
+  }
+
   waitForChange(sinceRevision: number, timeoutMs: number): Promise<void> {
-    if (this.seq !== sinceRevision) return Promise.resolve();
+    if (this.seq !== sinceRevision || this.closed) return Promise.resolve();
     return new Promise((resolve) => {
       const wake = () => {
         clearTimeout(timer);
@@ -177,83 +277,215 @@ export class BridgeLink {
     });
   }
 
-  // ── Socket plumbing ───────────────────────────────────────────────
+  bump(): void {
+    this.seq++;
+    for (const wake of [...this.waiters]) wake();
+  }
+}
 
-  private onOpen(ws: ServerWebSocket<unknown>): void {
-    const previous = this.socket;
-    this.socket = ws;
-    // One extension at a time — a reconnect supersedes the socket it replaced.
-    previous?.close();
-    console.error("[tabrunner] extension connected");
+/** One elected broker owns the extension socket. Every MCP session gets its own link. */
+export class BridgeLink {
+  private socket: ServerWebSocket<undefined> | null = null;
+  private listener: Server<undefined> | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private pending = new Map<string, Pending>();
+  private clients = new Map<string, ClientBridgeLink>();
+  private closing = new Map<string, () => void>();
+  private closingRequests = new Set<string>();
+  extension: { id: string; version: string } | null = null;
+  problem: string | null = null;
+
+  get connected(): boolean {
+    return this.socket !== null && this.extension !== null;
   }
 
-  private onClose(ws: ServerWebSocket<unknown>): void {
-    // Only the current socket clears the slot: a superseded one closing later
-    // must not disconnect the connection that replaced it.
+  listen(): void {
+    this.listener = Bun.serve<undefined>({
+      port: config.port,
+      hostname: "127.0.0.1",
+      fetch: (req, server) => {
+        if (new URL(req.url).pathname !== "/ws") return new Response("Not found", { status: 404 });
+        if (
+          req.headers.get("host") !== `127.0.0.1:${config.port}` ||
+          req.headers.get("origin") !== `chrome-extension://${config.expectedExtensionId}`
+        )
+          return new Response("Only the configured TabRunner extension can connect.", {
+            status: 403,
+          });
+        if (server.upgrade(req, { data: undefined })) return undefined;
+        return new Response("WebSocket required", { status: 400 });
+      },
+      websocket: {
+        open: () => {},
+        message: (ws, message) => this.onMessage(ws, String(message)),
+        close: (ws) => this.onClose(ws),
+      },
+    });
+    this.pingTimer = setInterval(() => {
+      this.ping();
+      for (const clientId of this.closing.keys()) this.drainClient(clientId);
+    }, config.pingMs);
+  }
+
+  createClient(clientId: string): ClientBridgeLink {
+    const client = new ClientBridgeLink(clientId, this);
+    this.clients.set(clientId, client);
+    if (this.connected) {
+      this.ping();
+      void client.resync();
+    }
+    return client;
+  }
+
+  closeClient(clientId: string): Promise<void> {
+    const client = this.clients.get(clientId);
+    if (!client) return Promise.resolve();
+    this.clients.delete(clientId);
+    client.closed = true;
+    client.bump();
+    this.rejectPending(clientId);
+    // A client that never reached an extension has nothing there to drain.
+    if (!this.extension && !this.socket && !this.everConnected) return Promise.resolve();
+    const drained = new Promise<void>((resolve) => this.closing.set(clientId, resolve));
+    this.ping();
+    this.drainClient(clientId);
+    return drained;
+  }
+
+  private everConnected = false;
+
+  private drainClient(clientId: string): void {
+    if (!this.connected || this.closingRequests.has(clientId)) return;
+    this.closingRequests.add(clientId);
+    void this.request(clientId, "closeClient")
+      .then(() => {
+        this.closing.get(clientId)?.();
+        this.closing.delete(clientId);
+      })
+      .catch(() => {
+        // Only cleanup is retried after reconnect. No browser mutation is replayed.
+      })
+      .finally(() => this.closingRequests.delete(clientId));
+  }
+
+  request<T>(
+    clientId: string,
+    method: string,
+    params: Record<string, unknown> = {},
+    timeoutMs = REQUEST_TIMEOUT_MS,
+    runId?: string,
+  ): Promise<T> {
+    const socket = this.socket;
+    if (!socket || !this.connected)
+      return Promise.reject(new BridgeError("no-extension", this.problem ?? NOT_CONNECTED));
+    const requestId = crypto.randomUUID();
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(requestId);
+        reject(new BridgeError("timeout", TIMED_OUT));
+      }, timeoutMs);
+      this.pending.set(requestId, {
+        clientId,
+        resolve: (value) => resolve(value as T),
+        reject,
+        timer,
+      });
+      socket.send(
+        JSON.stringify({
+          type: "request",
+          clientId,
+          requestId,
+          method,
+          params,
+          ...(runId ? { runId } : {}),
+        } satisfies DaemonMessage),
+      );
+    });
+  }
+
+  private ping(): void {
+    if (this.connected)
+      this.socket?.send(
+        JSON.stringify({
+          type: "ping",
+          clientIds: [...this.clients.keys()],
+        } satisfies DaemonMessage),
+      );
+  }
+
+  private onClose(ws: ServerWebSocket<undefined>): void {
     if (this.socket !== ws) return;
     this.socket = null;
     this.extension = null;
-    console.error("[tabrunner] extension disconnected");
-    this.bump();
+    this.rejectPending();
+    for (const client of this.clients.values()) client.bump();
   }
 
-  private onMessage(raw: string): void {
-    let msg: ExtensionMessage;
+  private rejectPending(clientId?: string): void {
+    for (const [id, pending] of this.pending) {
+      if (clientId !== undefined && pending.clientId !== clientId) continue;
+      clearTimeout(pending.timer);
+      this.pending.delete(id);
+      pending.reject(new BridgeError("connection-lost", LOST_CONNECTION));
+    }
+  }
+
+  private onMessage(ws: ServerWebSocket<undefined>, raw: string): void {
+    let parsed: unknown;
     try {
-      msg = JSON.parse(raw) as ExtensionMessage;
+      parsed = JSON.parse(raw);
     } catch {
       return;
     }
-    switch (msg.type) {
-      case "hello":
-        this.extension = { id: msg.extensionId, version: msg.version };
-        void this.resync();
-        break;
-      case "response": {
-        const entry = this.pending.get(msg.requestId);
-        if (!entry) return;
-        this.pending.delete(msg.requestId);
-        clearTimeout(entry.timer);
-        if (msg.ok) entry.resolve(msg.result);
-        else
-          entry.reject(
-            new BridgeError(
-              msg.error?.code ?? "rejected",
-              msg.error?.message ?? "TabRunner rejected the request.",
-            ),
-          );
-        break;
+    const result = messageSchema.safeParse(parsed);
+    if (!result.success) return;
+    const msg = result.data;
+    if (msg.type === "hello") {
+      if (
+        msg.extensionId !== config.expectedExtensionId ||
+        msg.protocolVersion !== BRIDGE_PROTOCOL_VERSION
+      ) {
+        if (!this.connected)
+          this.problem = `TabRunner's extension and MCP bridge do not match (bridge protocol ${BRIDGE_PROTOCOL_VERSION}, extension protocol ${msg.protocolVersion ?? "missing"}). Update the extension and MCP client, then reconnect.`;
+        ws.close(1008, "TabRunner bridge version or extension mismatch");
+        return;
       }
-      case "event":
-        if (applyCompact(this.status, msg.event)) this.bump();
-        break;
-      case "pong":
-        break;
+      if (this.socket !== ws) {
+        this.rejectPending();
+        this.socket?.close();
+        this.socket = ws;
+      }
+      this.everConnected = true;
+      this.extension = { id: msg.extensionId, version: msg.version };
+      this.problem = null;
+      this.ping();
+      for (const client of this.clients.values()) void client.resync();
+      for (const clientId of this.closing.keys()) this.drainClient(clientId);
+      return;
+    }
+    if (this.socket !== ws || !this.connected) return;
+    if (msg.type === "event") this.clients.get(msg.clientId)?.event(msg);
+    if (msg.type === "response") {
+      const pending = this.pending.get(msg.requestId);
+      if (!pending || pending.clientId !== msg.clientId) return;
+      this.pending.delete(msg.requestId);
+      clearTimeout(pending.timer);
+      if (msg.ok) pending.resolve(msg.result);
+      else
+        pending.reject(
+          new BridgeError(
+            msg.error?.code ?? "rejected",
+            msg.error?.message ??
+              "TabRunner rejected the request. Call health, check the current page and try again.",
+          ),
+        );
     }
   }
 
-  /**
-   * On every (re)connect, take the extension's own status as the truth. The run
-   * survives a dropped link — but not a suspended worker, so a run that was live
-   * here and is gone over there is reported as interrupted rather than left
-   * polling a ghost forever.
-   */
-  private async resync(): Promise<void> {
-    const previous = this.status;
-    try {
-      const fresh = await this.request<BridgeStatus>("sync");
-      this.status =
-        previous.state === "running" && fresh.runId !== previous.runId
-          ? { ...previous, state: "error", error: WORKER_GONE, finishedAt: Date.now() }
-          : fresh;
-    } catch {
-      // The link died again mid-sync; the next hello re-syncs.
-    }
-    this.bump();
-  }
-
-  private bump(): void {
-    this.seq++;
-    for (const wake of [...this.waiters]) wake();
+  async close(): Promise<void> {
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.rejectPending();
+    this.socket?.close();
+    await this.listener?.stop(true);
   }
 }

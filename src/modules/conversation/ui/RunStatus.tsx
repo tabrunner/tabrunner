@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { boardRunHere, runsHere, useConversationStore } from "./store";
+import { boardRunHere, bridgeRunHere, runsHere, useConversationStore } from "./store";
 import { DrivenTabChip } from "./DrivenTabChip";
 import { PlanMark } from "./PlanMark";
 import { ContextGauge } from "./ContextGauge";
@@ -23,7 +23,7 @@ export function RunStatus() {
   const replanning = useConversationStore((s) => s.replanning);
   const recording = useConversationStore((s) => s.recording);
   const usage = useConversationStore((s) => s.usage);
-  const bridgeActive = useConversationStore((s) => s.bridgeActive);
+  const bridgeActive = useConversationStore(bridgeRunHere);
   // Selecting only the plan message (reference-stable until rewritten) keeps
   // this bar from re-rendering on every unrelated message churn mid-run.
   const plan = useConversationStore((s) => s.messages.findLast((m) => m.role === "plan"));
@@ -35,7 +35,7 @@ export function RunStatus() {
   const awaitingAnswer = useConversationStore(
     (s) =>
       pendingAskId(s.messages, runsHere(s)) !== undefined ||
-      (s.activeId !== null && s.board.pendingQuestion?.conversationId === s.activeId),
+      s.board.pendingQuestions.some((question) => question.conversationId === s.activeId),
   );
   // A crowded footer (queued lines, a queued run, a stop-redirect in transit)
   // evicts the band's tip — one shared rule, see useQueueBusy.

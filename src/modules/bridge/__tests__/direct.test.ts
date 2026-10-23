@@ -1,263 +1,304 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { acquireRun, getActiveRun, releaseRun } from "@/modules/agent/active-runs";
+import { acquireRun, getOwnerRun, listActiveRuns, releaseRun } from "@/modules/agent/active-runs";
+import { cancelQueued, listQueue } from "@/modules/agent/run-queue";
+import type { ToolResult } from "@/modules/agent/tools";
+import type { DriverOptions, TabInfo } from "@/modules/browser/driver";
 
-/**
- * The session's own logic — who may hold the browser, and whether an action
- * hands back refs that are still valid. The browser itself is mocked: what is
- * worth pinning here is the lock and the snapshot-attach, not CDP.
- */
+const executeTool = vi.fn<(...args: unknown[]) => Promise<ToolResult>>();
+const waitForLoad = vi.fn();
+const showIndicator = vi.fn(() => Promise.resolve());
+const hideIndicator = vi.fn(() => Promise.resolve());
+const releaseBrowser = vi.fn<(ownerId: string) => Promise<void>>();
+const openConversation = vi.fn(() => Promise.resolve());
+const claims = new Map<number, string>();
+const storedTabs = new Map<string, { tabId: number; title: string; url: string }[]>();
+const drivers: DriverOptions[] = [];
+const sessions: InstanceType<typeof DirectSession>[] = [];
+const created: string[] = [];
+const removed: number[] = [];
+let nextTab = 42;
+let queried = 0;
 
-const executeTool = vi.fn();
 vi.mock("@/modules/agent/tools", () => ({
-  executeTool: (...a: unknown[]) => executeTool(...a),
+  executeTool: (...args: unknown[]) => executeTool(...args),
   formatSuccessSummary: () => "did the thing",
   formatDetail: () => undefined,
 }));
 vi.mock("@/modules/browser", () => ({
-  createDriver: () => ({}),
-  showAgentIndicator: () => Promise.resolve(),
-  hideAgentIndicator: () => Promise.resolve(),
-  detachAll: () => Promise.resolve(),
+  createDriver: (_tabId: number, options: DriverOptions) => {
+    drivers.push(options);
+    return {};
+  },
+  claimTab: (ownerId: string, tabId: number) => {
+    if (claims.has(tabId) && claims.get(tabId) !== ownerId) throw new Error("tab in use");
+    claims.set(tabId, ownerId);
+  },
+  releaseBrowserOwner: (ownerId: string) => releaseBrowser(ownerId),
+  showAgentIndicator: () => showIndicator(),
+  hideAgentIndicator: () => hideIndicator(),
   isRestrictedUrl: (url?: string) => url?.startsWith("chrome://") ?? false,
-  waitForLoad: (...a: unknown[]) => waitForLoad(...a),
+  waitForLoad: (...args: unknown[]) => waitForLoad(...args),
 }));
-const waitForLoad = vi.fn();
+vi.mock("@/modules/conversation", () => ({
+  appendMessageTo: () => Promise.resolve(),
+  openAgentConversation: () => openConversation(),
+  getThreadTabsFor: (conversationId: string) =>
+    Promise.resolve({ tabs: storedTabs.get(conversationId) ?? [] }),
+  recordDrivenTabFor: (
+    conversationId: string,
+    tab: { tabId: number; title: string; url: string },
+  ) => {
+    storedTabs.set(conversationId, [tab]);
+    return Promise.resolve();
+  },
+}));
 
 const { DirectSession } = await import("../direct");
-
-/** The user's own tab — what `background: false` asks for. */
 const ON_SCREEN = { background: false };
 
-const created: string[] = [];
-const removed: number[] = [];
-let queried = 0;
+function session(clientId = "a", onClose?: () => void) {
+  const direct = new DirectSession(clientId, onClose);
+  sessions.push(direct);
+  return direct;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  sessions.length = 0;
   created.length = 0;
   removed.length = 0;
+  drivers.length = 0;
+  claims.clear();
+  storedTabs.clear();
   queried = 0;
-  waitForLoad.mockReset();
-  waitForLoad.mockResolvedValue(undefined);
-  executeTool.mockReset();
-  executeTool.mockResolvedValue({ ok: true, data: { pageContent: "[ref=e1] button" } });
-  (globalThis.chrome as unknown as Record<string, unknown>).tabs = {
-    query: () => {
-      queried += 1;
-      return Promise.resolve([{ id: 7, windowId: 1, title: "Inbox", url: "https://x.test/" }]);
+  nextTab = 42;
+  waitForLoad.mockReset().mockResolvedValue(undefined);
+  executeTool.mockReset().mockResolvedValue({ ok: true, data: { pageContent: "[ref=e1] button" } });
+  openConversation.mockReset().mockResolvedValue(undefined);
+  showIndicator.mockClear();
+  hideIndicator.mockClear();
+  releaseBrowser.mockReset().mockImplementation((ownerId) => {
+    for (const [tabId, owner] of claims) if (owner === ownerId) claims.delete(tabId);
+    return Promise.resolve();
+  });
+  Object.assign(chrome, {
+    tabs: {
+      query: () => {
+        queried++;
+        return Promise.resolve([{ id: 7, windowId: 1, title: "Inbox", url: "https://user.test/" }]);
+      },
+      create: ({ url }: { url: string }) => {
+        created.push(url);
+        return Promise.resolve({ id: nextTab++ });
+      },
+      get: (id: number) =>
+        Promise.resolve({ id, windowId: 1, title: "App", url: "https://app.test/" }),
+      remove: (id: number) => {
+        removed.push(id);
+        return Promise.resolve();
+      },
     },
-    create: ({ url }: { url: string }) => {
-      created.push(url);
-      return Promise.resolve({ id: 42 });
-    },
-    remove: (id: number) => {
-      removed.push(id);
+  });
+});
+
+afterEach(async () => {
+  for (const entry of listQueue()) cancelQueued(entry.id);
+  for (const direct of sessions) await direct.end();
+  for (const run of listActiveRuns()) releaseRun(run);
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
+describe("DirectSession ownership", () => {
+  it("claims the chosen tab before the indicator and uses its run ID in the driver", async () => {
+    const direct = session();
+    showIndicator.mockImplementationOnce(() => {
+      expect(claims.get(7)).toBe(direct.run?.id);
       return Promise.resolve();
-    },
-    onRemoved: { addListener: () => {}, removeListener: () => {} },
-    onUpdated: { addListener: () => {}, removeListener: () => {} },
-  };
-});
-
-afterEach(() => {
-  const run = getActiveRun();
-  if (run) releaseRun(run);
-});
-
-describe("DirectSession", () => {
-  it("opens on the active tab when asked to, and hands back the first snapshot", async () => {
-    const session = new DirectSession();
-    const result = await session.start("find the invoice", "Claude Code", ON_SCREEN);
-
+    });
+    const result = await direct.start("find the invoice", "Editor", ON_SCREEN, "chat-a");
     expect(result.ok).toBe(true);
-    expect(session.open).toBe(true);
-    expect(session.drivenTab).toBe(7);
-    // The opening move is always a look — spending a round trip on it is waste.
+    expect(direct.drivenTab).toBe(7);
+    expect(drivers[0]?.ownerId).toBe(direct.run?.id);
     expect(executeTool).toHaveBeenCalledWith(
       expect.objectContaining({ name: "snapshot" }),
       expect.anything(),
+      expect.objectContaining({ signal: direct.run?.controller.signal }),
     );
   });
 
-  it("refuses to open while the panel is driving, and says where the run is", async () => {
-    const claim = acquireRun("panel-conversation", "panel");
-    expect(claim.ok).toBe(true);
-
-    const session = new DirectSession();
-    // One browser, one driver — and the refusal has to name the holder, or the
-    // client has no idea what to do next.
-    await expect(session.start("do a thing", "Claude Code", ON_SCREEN)).rejects.toThrow(/panel/i);
-    expect(session.open).toBe(false);
+  it("allows another owner but refuses a second task for this client", async () => {
+    acquireRun("panel-chat", "panel", "panel");
+    const a = session("a");
+    const b = session("b");
+    await a.start("first goal", "Editor", { background: true }, "chat-a");
+    await b.start("second goal", "Editor", { background: true }, "chat-b");
+    expect(listActiveRuns()).toHaveLength(3);
+    await expect(a.start("another goal", "Editor", ON_SCREEN, "chat-a")).rejects.toThrow(/MCP/);
   });
 
-  it("hands the browser back when it ends", async () => {
-    const session = new DirectSession();
-    await session.start("a goal", "Claude Code", ON_SCREEN);
-    await session.end();
-
-    expect(session.open).toBe(false);
-    expect(getActiveRun()).toBeNull();
-    // The slot is free, so the panel can run again.
-    expect(acquireRun("panel-conversation", "panel").ok).toBe(true);
+  it("refuses another owner's tab without changing their browser claim", async () => {
+    const a = session("a");
+    const b = session("b");
+    await a.start("first goal", "Editor", ON_SCREEN, "chat-a");
+    await expect(b.start("second goal", "Editor", ON_SCREEN, "chat-b")).rejects.toThrow(
+      "tab in use",
+    );
+    expect(getOwnerRun("bridge", "b")).toBeNull();
+    expect(claims.get(7)).toBe(a.run?.id);
   });
 
-  it("fires onClose when the session ends", async () => {
-    const onClose = vi.fn();
-    const session = new DirectSession(onClose);
-    await session.start("a goal", "Claude Code", ON_SCREEN);
-    await session.end();
-
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("fires onClose when an idle session expires, so the browser is not claimed forever", async () => {
-    vi.useFakeTimers();
-    try {
-      const onClose = vi.fn();
-      const session = new DirectSession(onClose);
-      await session.start("a goal", "Claude Code", ON_SCREEN);
-      expect(onClose).not.toHaveBeenCalled();
-
-      // 5 minutes of silence — the expiry calls end() asynchronously; flush the
-      // microtask queue for the hide-indicator await before asserting.
-      vi.advanceTimersByTime(5 * 60_000 + 1);
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(onClose).toHaveBeenCalledTimes(1);
-      expect(session.open).toBe(false);
-      expect(getActiveRun()).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("tells a client that never opened a session what to do", async () => {
-    const session = new DirectSession();
-    await expect(session.act("click", { ref: "e1" })).rejects.toThrow(/browser_start/);
-  });
-
-  it("re-snapshots after a mutating action, because refs go stale", async () => {
-    const session = new DirectSession();
-    await session.start("a goal", "Claude Code", ON_SCREEN);
-    executeTool.mockClear();
-    executeTool.mockResolvedValue({ ok: true, data: { pageContent: "[ref=e9] link" } });
-
-    const result = await session.act("click", { ref: "e1" });
-
+  it("aborts immediately but holds claims until an in-flight action and cleanup drain", async () => {
+    const direct = session();
+    await direct.start("a goal", "Editor", ON_SCREEN, "chat-a");
+    const run = direct.run;
+    const actionResult = deferred<ToolResult>();
+    executeTool.mockImplementationOnce(() => actionResult.promise);
+    const action = direct.act("click", { ref: "e1" });
+    await vi.advanceTimersByTimeAsync(0);
+    const ending = direct.end();
+    expect(run?.controller.signal.aborted).toBe(true);
+    expect(getOwnerRun("bridge", "a")).toBe(run);
+    expect(releaseBrowser).not.toHaveBeenCalled();
+    actionResult.resolve({ ok: true });
+    await action;
+    await ending;
+    expect(getOwnerRun("bridge", "a")).toBeNull();
+    expect(releaseBrowser).toHaveBeenCalledExactlyOnceWith(run?.id);
     expect(executeTool).toHaveBeenCalledTimes(2);
-    expect(executeTool.mock.calls[1]?.[0]).toMatchObject({ name: "snapshot" });
-    expect((result.data as { pageContent: string }).pageContent).toBe("[ref=e9] link");
   });
 
-  it("does not re-snapshot after a read", async () => {
-    const session = new DirectSession();
-    await session.start("a goal", "Claude Code", ON_SCREEN);
-    executeTool.mockClear();
-
-    await session.act("list_tabs", {});
-
-    expect(executeTool).toHaveBeenCalledTimes(1);
+  it("does not release the run before asynchronous browser cleanup finishes", async () => {
+    const direct = session();
+    await direct.start("a goal", "Editor", ON_SCREEN, "chat-a");
+    const cleanup = deferred<void>();
+    releaseBrowser.mockImplementationOnce(() => cleanup.promise);
+    const ending = direct.end();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getOwnerRun("bridge", "a")).not.toBeNull();
+    cleanup.resolve();
+    await ending;
+    expect(getOwnerRun("bridge", "a")).toBeNull();
   });
 
-  it("leaves out the page when the client says it does not want it", async () => {
-    const session = new DirectSession();
-    await session.start("a goal", "Claude Code", ON_SCREEN);
-    executeTool.mockClear();
-    executeTool.mockResolvedValue({ ok: true, data: { x: 1, y: 2 } });
+  it("cleans up an outer start failure and leaves other owners alone", async () => {
+    const a = session("a");
+    await a.start("first goal", "Editor", { background: true }, "chat-a");
+    const b = session("b");
+    openConversation.mockRejectedValueOnce(new Error("storage unavailable"));
+    await expect(b.start("second goal", "Editor", { background: true }, "chat-b")).rejects.toThrow(
+      "storage unavailable",
+    );
+    expect(getOwnerRun("bridge", "b")).toBeNull();
+    expect(getOwnerRun("bridge", "a")?.id).toBe(a.run?.id);
+    expect(claims.get(42)).toBe(a.run?.id);
+  });
 
-    const result = await session.act("click", { ref: "e1" }, false);
-
-    expect(executeTool).toHaveBeenCalledTimes(1);
-    expect(result.data).toEqual({ x: 1, y: 2 });
+  it("expires idle sessions but does not expire under a long action", async () => {
+    const onClose = vi.fn();
+    const direct = session("a", onClose);
+    await direct.start("a goal", "Editor", ON_SCREEN, "chat-a");
+    const pending = deferred<ToolResult>();
+    executeTool.mockImplementationOnce(() => pending.promise);
+    const action = direct.act("click", {}, false);
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+    expect(direct.run?.controller.signal.aborted).toBe(false);
+    pending.resolve({ ok: true });
+    await action;
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+    expect(direct.open).toBe(false);
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });
 
-// The snapshot goes to the client, so a session must not be handed the page
-// the user is reading unless the client chose that.
-describe("DirectSession start", () => {
-  it("works a tab of its own by default and never looks at the user's", async () => {
-    const session = new DirectSession();
-    await session.start("a goal", "Claude Code", { background: true });
+describe("DirectSession page results", () => {
+  it("re-snapshots after a mutation and merges the fresh page with its result", async () => {
+    const direct = session();
+    await direct.start("a goal", "Editor", ON_SCREEN, "chat-a");
+    executeTool.mockClear();
+    executeTool.mockResolvedValueOnce({ ok: true, data: { x: 1, y: 2 } });
+    executeTool.mockResolvedValueOnce({ ok: true, data: { pageContent: "new page" } });
+    expect((await direct.act("click", { ref: "e1" })).data).toEqual({
+      x: 1,
+      y: 2,
+      pageContent: "new page",
+    });
+    expect(executeTool).toHaveBeenCalledTimes(2);
+  });
 
+  it("skips the extra snapshot for reads and explicit snapshot:false", async () => {
+    const direct = session();
+    await direct.start("a goal", "Editor", ON_SCREEN, "chat-a");
+    executeTool.mockClear();
+    await direct.act("list_tabs", {});
+    await direct.act("click", { ref: "e1" }, false);
+    expect(executeTool).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens its own page by default and never queries the user's tab", async () => {
+    const direct = session();
+    await direct.start("a goal", "Editor", { background: true }, "chat-a");
     expect(created).toEqual(["https://www.google.com"]);
-    expect(session.drivenTab).toBe(42);
+    expect(direct.drivenTab).toBe(42);
     expect(queried).toBe(0);
   });
 
-  it("opens the page it was told to", async () => {
-    const session = new DirectSession();
-    await session.start("a goal", "Claude Code", { url: "https://x.test/a", background: true });
-
-    expect(created).toEqual(["https://x.test/a"]);
-  });
-
-  it("a URL never adopts the user's tab, even with background off", async () => {
-    const session = new DirectSession();
-    await session.start("a goal", "Claude Code", { url: "https://x.test/a", background: false });
-
-    expect(created).toEqual(["https://x.test/a"]);
+  it("uses an explicit URL even when background is false", async () => {
+    const direct = session();
+    await direct.start(
+      "a goal",
+      "Editor",
+      { url: "https://example.test/", background: false },
+      "chat-a",
+    );
+    expect(created).toEqual(["https://example.test/"]);
     expect(queried).toBe(0);
   });
 
-  it("refuses a page the browser forbids extensions on, before opening anything", async () => {
-    const session = new DirectSession();
-    await expect(
-      session.start("a goal", "Claude Code", { url: "chrome://settings", background: true }),
-    ).rejects.toThrow(/cannot read this page/);
-
-    expect(created).toEqual([]);
-    expect(session.open).toBe(false);
-  });
-
-  it("closes the tab it opened when the page never loads", async () => {
-    waitForLoad.mockRejectedValue(new Error("slow"));
-    const session = new DirectSession();
-
-    await expect(session.start("a goal", "Claude Code", { background: true })).rejects.toThrow(
-      "slow",
+  it("closes a new tab that never loads and releases its run", async () => {
+    waitForLoad.mockRejectedValueOnce(new Error("slow page"));
+    const direct = session();
+    await expect(direct.start("a goal", "Editor", { background: true }, "chat-a")).rejects.toThrow(
+      "slow page",
     );
     expect(removed).toEqual([42]);
-    expect(getActiveRun()).toBeNull();
+    expect(getOwnerRun("bridge", "a")).toBeNull();
   });
 
-  it("closes the unused starter tab when switching to an existing tab", async () => {
-    const session = new DirectSession();
-    await session.start("a goal", "Claude Code", { background: true });
-    executeTool.mockResolvedValueOnce({
-      ok: true,
-      data: { id: 7, windowId: 1, title: "Inbox", url: "https://x.test/" },
-    });
-
-    await session.act("switch_tab", { tab_id: 7 });
-
+  it("closes an unused starter but resumes a page the same client acted on", async () => {
+    const direct = session();
+    await direct.start("first goal", "Editor", { background: true }, "chat-a");
+    await direct.end();
     expect(removed).toEqual([42]);
-    expect(session.drivenTab).toBe(7);
-    await session.end();
-    expect(removed).toEqual([42]);
+    await direct.start("second goal", "Editor", { background: true }, "chat-a");
+    await direct.act("navigate", { url: "https://app.test/" }, false);
+    await direct.end();
+    await direct.start("follow up", "Editor", { background: true }, "chat-a");
+    expect(created).toHaveLength(2);
+    expect(direct.drivenTab).toBe(43);
   });
 
-  it("closes the starter tab on end when the session never acted on it", async () => {
-    const session = new DirectSession();
-    await session.start("a goal", "Claude Code", { background: true });
-    await session.act("list_tabs", {});
-    await session.end();
-
-    expect(removed).toEqual([42]);
-  });
-
-  it("keeps a starter tab that was acted on and reuses it on the next session", async () => {
-    (globalThis.chrome.tabs as unknown as Record<string, unknown>).get = (id: number) =>
-      Promise.resolve({ id, windowId: 1, title: "App", url: "https://x.test/app" });
-    const session = new DirectSession();
-    await session.start("a goal", "Claude Code", { background: true });
-    await session.act("navigate", { url: "https://x.test/app" }, false);
-    await session.end();
-
-    expect(removed).toEqual([]);
-    expect(created).toEqual(["https://www.google.com"]);
-
-    await session.start("follow up", "Claude Code", { background: true });
-    expect(created).toEqual(["https://www.google.com"]);
-    expect(session.drivenTab).toBe(42);
+  it("awaits tab-switch indicators and records the newly driven tab", async () => {
+    const direct = session();
+    await direct.start("a goal", "Editor", ON_SCREEN, "chat-a");
+    const tab: TabInfo = {
+      id: 8,
+      windowId: 1,
+      title: "Next",
+      url: "https://next.test/",
+      active: false,
+    };
+    await drivers[0]?.onSwitch?.(tab);
+    expect(direct.drivenTab).toBe(8);
+    await direct.end();
+    expect(storedTabs.get("chat-a")?.[0]?.tabId).toBe(8);
   });
 });

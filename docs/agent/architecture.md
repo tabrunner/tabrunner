@@ -7,8 +7,8 @@ module's internals, not on every session.
 
 ### `agent/` — the run engine
 
-Agent loop (stream → tool calls → results → repeat), tools, system prompt, run slot +
-serial queue, run start.
+Agent loop (stream → tool calls → results → repeat), tools, system prompt, run registry,
+per-owner FIFO queue and run start.
 
 A panel run **works the conversation's own tab once one exists**; before that it works the
 tab the user is looking at (`resolveRunTab`). Adoption exists because the state the first
@@ -153,13 +153,27 @@ search results the question was about. The task message tells the model whose ta
 on (`mode.adopted`, `mode.background`), so it reads-and-plans on the user's tab and stays
 put in its own.
 
-`run-queue.ts` is the FIFO on top of the single
-slot: every submission goes through `submitRun` — free slot starts now, occupied waits and
-`releaseRun`'s listener pumps — and mirrors every transition to the `runBoardItem` storage
-record, the ambient "what is TabRunner doing" that the status widget, the panel's
-RunBoard, and the MCP `get_status` queue all read. **Runs survive the panel closing** —
-port disconnect never aborts; persistence therefore lives in the worker (one
-`TranscriptWriter` per run, same as the bridge always did), and a keepalive alarm holds
+`active-runs.ts` admits at most four tasks across panel, bridge and schedule owners. Each
+run has an `id`, `owner`, `ownerId` and `conversationId`; no owner or conversation can have
+more than one live task. All panel submissions use ownerId `panel`, so independent panel
+agents are not supported. Each MCP session and each schedule has its own owner id.
+
+`run-queue.ts` keeps submission order within an owner or conversation. `submitRun` launches
+eligible work immediately; otherwise it queues the supplied run id. `releaseRun` pumps the
+queue after cleanup, skipping blocked lanes so one client's wait cannot hold up unrelated
+work. The `runBoardItem` storage record has `running[]`, `pendingQuestions[]` and `queue[]`;
+markers name the run id, and parked questions name the conversation and retain its driven tab
+and window after the run ends. The status widget and panel RunBoard read the full board;
+MCP `get_status` sees only its client's entries.
+
+Stop only aborts. The run remains admitted while in-flight actions, bounded external
+screenshots and browser cleanup drain. `releaseBrowserOwner(run.id)` detaches only its
+sessions and clears its tab claims, then `releaseRun` frees admission. An old finalizer or
+control cannot release, steer or answer a newer run. The bridge's client/session lifecycle
+is detailed in [bridge.md](bridge.md).
+
+**Runs survive the panel closing.** Port disconnect never aborts; persistence lives in the
+worker (one `TranscriptWriter` per run), and a keepalive alarm holds
 the worker through long provider silences while no panel pings. Done/error/question fire
 OS notifications when nobody is watching — no panel connected, or a panel behind another
 app (`userIsWatching` checks window focus too: a side panel behind your editor is as
@@ -407,13 +421,15 @@ per-tab ring buffers fed by the Network/Runtime domains enabled at debugger atta
 the failing request is already in the log when the model thinks to look. Requests carry
 no bodies by design (bodies are where tokens live; evaluate can re-fetch a GET). All
 page-side injection goes through `inject.ts`'s `runInPage`, the one home of the
-transient-vs-restricted error mapping. The attach itself is lazy — the first tool that
-needs it, not the run's start — and the session is released (`detachAll`) when the run
-slot frees: done, error, stop, or parked on a question, and a direct session's `end()`
-likewise. Chrome's "started debugging this browser" infobar leaves only with the
-session, so a kept attach would pin the banner on a page nothing is driving — the
-session even outlives the MV3 worker. The next run's first action re-attaches, and the
-banner's return while the agent is actually working is honest signal.
+transient-vs-restricted error mapping. Each driver is bound to `ownerId: run.id`; each CDP
+helper names its target tab explicitly. A tab is claimed before indicators, injection or
+page work, and a second owner is refused rather than attached to the same target.
+The attach itself is lazy: the first tool that needs it, not the run's start. A run's
+final cleanup detaches its own sessions with `releaseBrowserOwner(run.id)` before releasing
+admission. Other owners keep their debugger sessions and marks. Chrome's "started debugging
+this browser" infobar can therefore remain while another task is still driving a tab.
+Separate tabs are not separate browser profiles: cookies, logins and server-side account
+state are shared, so two tasks can still change the same account through different tabs.
 
 **Three ambient signals, and only one of them is guaranteed.** The on-page pill (either
 voice) is `chrome.scripting.executeScript`, which a restricted page, a PDF viewer, a
@@ -635,11 +651,11 @@ provider. Values typed into credential-shaped fields are masked in captions
 own intro — interrupted, truncated, started documenting late, screens that could not be
 captured. A walkthrough that silently skips a step it took is the failure this module refuses.
 
-`finalize()` runs inside `start-run.ts`'s one `finally`, **before** `detachAll()`: that is the
-seam every ending funnels through, so a run that was stopped, errored, or lost its tab still
-yields the document it had earned. `recorder.ts` stays out of the module barrel — it reaches
-into the CDP driver, and the barrel is imported by the panel, the viewer page, and the
-background entrypoint WXT evaluates at build time.
+`finalize()` runs before `releaseBrowserOwner(run.id)`, so a run that was stopped, errored
+or lost its tab still yields the document it had earned. Captures use the recorder's own
+`tabId`; they never read another run's attached target. `recorder.ts` stays out of the module
+barrel because it reaches into the CDP driver, while the barrel is imported by the panel,
+viewer page and background entrypoint WXT evaluates at build time.
 
 ### `mcp/` — the outbound MCP client
 
