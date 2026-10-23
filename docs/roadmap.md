@@ -376,6 +376,17 @@ ended"; `lastRun` is stamped only when a run finishes), a panel check on boot, a
 line. Build it only if field evidence shows users waiting on dead runs — until then the composer
 works, the next send recovers the work, and the thread's bare ending is honest if quiet.
 
+### Independent panel tasks
+
+Concurrent MCP clients now share one local broker. Each client has its own chat, controls
+and tab claims; at most four tasks run across bridge, panel and schedule owners. Separate
+tabs still share cookies and account state. This is command isolation, not separate browser
+profiles.
+
+Independent panel agents remain future work. All panels currently share one panel owner and
+active conversation, so panel submissions stay serial. Let field use of concurrent MCP clients
+show whether panel task selection and separate panel agents are worth adding.
+
 ---
 
 ## Deliberately not doing
@@ -385,8 +396,7 @@ works, the next send recovers the work, and the thread's bare ending is honest i
 | Telemetry                                   | The product's promise. Feedback is the user-initiated pre-filled issue (`lib/report.ts`) — nothing collected. The text rides in the GitHub address, so GitHub has it once the page opens: the user reads, edits or drops it in TabRunner first, and the issue exists only if they press Submit there.            |
 | Cron strings                                | Unreadable in a settings list and needs a parser. The structured `Recurrence` union covers every case anyone named. Cron can later become a _parser_ that emits it — never the storage model.                                                                                                                    |
 | Sampling params                             | No temperature/topP on any provider. The only knob is `reasoningEffort`.                                                                                                                                                                                                                                         |
-| A second scheduler for "loops"              | A recurring schedule **is** a loop, and self-pacing falls out of giving the agent `schedule_task`. Two clocks on a one-slot run queue is a bug generator, not a feature.                                                                                                                                         |
-| Multi-run concurrency                       | One CDP target, one run slot. A schedule firing mid-chat queues FIFO behind you. Concurrency here means two agents fighting over your keyboard.                                                                                                                                                                  |
+| A second scheduler for "loops"              | A recurring schedule is already a loop. It uses the shared run registry and queue; a second clock would duplicate ownership and cancellation rules.                                                                                                                                                              |
 | stdio / native-messaging MCP                | An MV3 worker cannot spawn processes; stdio servers would need either a helper daemon running (a second install surface most users don't have) or a native host per platform (store-review friction). Remote Streamable HTTP covers the actual ask. Revisit only alongside a native-host story we'd ship anyway. |
 | A persistent MCP connection                 | Sessions live for one run and die with it. Between runs there is nothing listening, so server push (`notifications/tools/list_changed`) goes unseen — accepted: tools are snapshotted at run start anyway, and a permanent link costs wake-ups for a feature that works without them.                            |
 | sampling/roots on MCP sessions              | Undeclared capabilities, answered -32601. Declaring what we won't honor is how chatty servers hang us. Elicitation is the one server→client request with a human at this end, and it's wired.                                                                                                                    |

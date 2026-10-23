@@ -1,98 +1,145 @@
 # MCP bridge internals
 
-How the bridge lets an external AI client (Claude Code, Claude Desktop) drive the same
-agent loop the panel drives. Human-facing setup docs: [../mcp.md](../mcp.md). Read this
-when a task touches `src/modules/bridge/` or `daemon/`.
+The bridge lets an external MCP client use TabRunner's agent or drive its browser tools
+directly. Human-facing setup and tool examples: [../mcp.md](../mcp.md).
 
-**The extension is always the WS client** — an MV3 service worker cannot listen on a
-socket, so it can never be an MCP server itself. It dials `ws://127.0.0.1:<port>/ws`;
-`daemon/` accepts, and speaks MCP over stdio to the client. Two hops, one direction of
-dialling, no way around it.
+## One local broker, separate clients
 
-**A thin front over the existing loop, not a second tool catalog.** The client sends one
-task; `bridge.ts` hands it to the same `startAgentRun` the panel uses. Model resolution,
-conversation memory, ask_user, screenshots and done-summary semantics all come for free,
-and can never drift from the panel's.
+Each MCP client launches `daemon/src/index.ts` over stdio. That process is a small proxy:
+it discovers or starts one shared broker for `TABRUNNER_BRIDGE_PORT`, then connects to the
+broker over local Streamable HTTP. The extension is still the WebSocket client. An MV3
+worker cannot listen on a socket, so it dials `ws://127.0.0.1:<port>/ws` on the broker.
 
-- **One run, one slot — the rest queue.** `agent/active-runs.ts` holds a single
-  `ActiveRun` tagged `panel` or `bridge`; only its owner may stop or steer it. A second
-  submission goes through `submitRun`'s FIFO instead of failing: the client gets
-  `{ runId, conversationId, queued: position }`, and `get_status` lists the waiting line
-  (`BridgeStatus.queue`, fed by the `queue` compact event) and parks until it moves. When
-  a queued run claims the slot, a `started` compact event resets the daemon's mirror —
-  without it the queued run's events (and its final done) would fold into the previous
-  run's terminal state. Rejection stays only for direct sessions, which can't queue. MCP
-  `stop` cancels the client's queued runs before stopping the active one.
-- **The bridge owns its own conversation**, created lazily and reset by `newConversation` —
-  and by nothing else. Its id is stored (`bridge-conversation`), not held on the Bridge
-  instance, because the worker underneath is disposable: Chrome suspends it after ~30s idle
-  and destroys it on every reload and version update. An in-memory id meant the next `run`
-  minted a fresh thread, so the client lost the pages it had visited and the user was left
-  with an orphaned transcript.
-  It never touches the panel's active thread, but it shows up in history like any other.
-  `compact` folds it through the same summarizer as the panel's /compact — refused while a
-  bridge run is in flight, for the same mid-story reason.
-- **`health` answers the whole pre-flight**, link AND model: it asks the extension for
-  `providerInfo` (active provider, whether its credential works, key vs subscription) so a
-  missing or signed-out provider is reported before a task is sent instead of killing the
-  first model call. That lookup uses the short `QUICK_TIMEOUT_MS` and degrades to silence
-  — a slow answer must never hold a pre-flight check open, and direct `browser_*` control
-  needs no provider anyway.
-- **Compact events only.** Tokens, reasoning and usage never cross the WS;
-  `bridge/status.ts` folds the run's events into a `BridgeStatus` and forwards only
-  structural changes. The daemon runs the same reduction over that compact stream
-  (`daemon/src/protocol.ts` `applyCompact`) so `get_status(wait)` can long-poll — one MCP
-  turn per real event, not per poll.
-- **The status is mirrored, not owned, on the daemon side.** On every `hello` the daemon
-  issues `sync` and takes the extension's answer as truth. A dropped link doesn't stop the
-  run; a suspended worker does, and shows up as a run that vanished across the resync.
-- **The protocol is declared twice on purpose** — `src/modules/bridge/protocol.ts` (source
-  of truth) and `daemon/src/protocol.ts`. The daemon is a standalone bun package and must
-  not import from the extension bundle. Change them together, then `bun run bridge:check`.
-- **MV3 timing.** `BridgeSocket.start()` is synchronous: a listener registered after an
-  `await` is silently dropped by Chrome, and the reconcile alarm is the whole point of the
-  class. One `reconcile()` owns the whole decision — it arms the alarm when enabled and
-  clears it when not, so a disabled bridge costs nothing. Disabled is also the default:
-  Chromium logs a refused WebSocket from the network stack (no JS can silence it), so an
-  enabled-but-daemonless install spends a console error every reconcile and reads as broken
-  to a user who never wanted MCP. Only a WS that actually opened
-  earns the 2s fast retry; a refused connect waits for the alarm.
-- **Config and link state live in storage, not in the socket.** `bridge/config.ts` holds
-  the `bridge` item (`enabled`, `port`) plus `bridgeConnected`, a mirror the socket writes
-  on open/close/disable so UI contexts can show the link over the storage-watch channel.
-  Settings → MCP edits the same item the socket reconciles on, so a port change there
-  reconnects on its own — no messaging, no restart.
+```text
+MCP client A → stdio proxy A ─┐
+                            ├→ local HTTP broker ← WebSocket ← extension
+MCP client B → stdio proxy B ─┘                                 │
+                                                              ├→ client A's task/tabs
+                                                              └→ client B's task/tabs
+```
+
+- The fixed WebSocket bind elects the broker. Losing starters use the winner; they never
+  stop an existing listener. An unknown port owner produces an error with a port-change fix.
+- The broker publishes its random HTTP address, bearer token, version, protocol version
+  and pid under `~/.tabrunner/mcp/<port>.json`. The folder is private (0700), the file is
+  private (0600), and readers reject unsafe ownership, permissions or non-local URLs.
+- Proxy and broker package versions and protocol versions must match. A mismatch leaves
+  the running broker alone and asks the user to update all clients and reconnect.
+- Every initialized stdio connection gets a fresh opaque client id. A display name such as
+  "Claude Code" labels history; it never identifies the owner. Two clients with the same
+  name still have separate state. A fresh client launch is not a continuation of an old one.
+- HTTP requests need the local bearer token and the expected Host/Origin. The WebSocket
+  checks the configured extension Origin and hello id, plus bridge protocol v2. The default
+  extension id is `ilnohobdcigbmlikjbkdpbkhciephdle`; a custom build must configure its own id.
+  These are local access checks, not a boundary against another process running as the user.
+
+## Client context and admission
+
+`bridge.ts` routes frames to one `BridgeClient` per client id. Each controller owns its
+command chain, stored conversation id, compact status, activity and direct session. A slow
+command from one client does not serialize other clients.
+
+`bridgeThread(clientId)` stores the conversation id under a per-client key. The same client
+resumes that thread after worker suspension, reload or update. Direct and delegated tasks
+append to the same thread; `newConversation` explicitly resets it. A new MCP session gets a
+new id and therefore a new thread. None of these writes changes the panel's active thread.
+The conversation still appears in history, labelled with the client name.
+
+`active-runs.ts` admits at most four tasks across all owners. Each run has an id,
+conversation id, owner category and owner id. At most one task is live per owner and per
+conversation. All panel work shares ownerId `panel`, so panel tasks remain serial. MCP
+clients and schedules have separate owner ids and can overlap on separate tabs.
+
+Delegated work uses `submitRun` and the same `startAgentRun` as the panel. The supplied run
+id stays the queue, registry, board and protocol id. Waiting tasks preserve order within
+their client/conversation; a blocked client does not block unrelated work. Each client's
+`get_status` queue contains only its own entries and local positions. Direct sessions
+cannot queue: the client must end its own direct session before delegating, and it cannot
+start direct control while its delegated work is active or queued.
+
+Tab claims are separate from admission. A driver uses `ownerId: run.id`, claims a tab before
+page work or indicators, and refuses a tab claimed by another run. CDP calls name a target
+explicitly; there is no global "attached tab". This isolates browser commands, not accounts:
+separate tabs in the same profile still share cookies, logins and server-side state.
+
+## Controls, events and cleanup
+
+Every request, including `sync`, carries `clientId`. Task controls also carry the expected
+`runId`. The controller verifies both before stop, steer, answer, reset, compact, screenshot
+or a direct action. A stale control cannot affect later work. Stop targets one exact active
+or queued run id; closing a client cancels all of that client's queued work.
+
+Each delegated run has its own `TranscriptWriter`. `status.ts` folds its events into one
+client's `BridgeStatus`, forwarding only structural changes. Tokens, reasoning and usage
+never cross this compact stream. Events carry `clientId`, `runId` and `conversationId`;
+responses carry `clientId` and `requestId`. A queued launch sends `started` before its first
+run event, so the daemon replaces the previous run's status rather than mixing their steps.
+
+The daemon's status is a mirror. Each hello triggers per-client `sync`; a worker restart
+that lost a live run is reported as interrupted, not polled forever. The stored conversation
+survives even though the worker's run, queue and direct driver do not.
+
+Stop only aborts. It does not release admission or tab claims. The finalizer drains actions
+and bounded external reads, finishes artifacts and marks, releases that run's browser
+resources, then calls `releaseRun`. Direct end follows the same order, including when start
+fails outside the opening snapshot. A stale finalizer cannot clear a later run's activity.
+
+`screenshot` accepts only the caller's live run and its claimed, attached driven tab. It
+never falls back to another debugger target or `captureVisibleTab`. External captures,
+including tab metadata, have one 5s bound and register in the run's `pendingReads` set.
+Cleanup sets `readsClosed`, waits for those reads to settle, then releases browser resources.
+The recorder keeps its separate capture timeout.
+
+## Leases and reconnects
+
+The stdio proxy renews its broker session every 20s by default. The broker sends the live
+client ids to the extension every 20s; each extension owner has a 60s lease. A WebSocket
+disconnect starts a fresh 60s reconnect grace. Missing owners expire independently: their
+queued work is cancelled and their live work is aborted and drained. Panel and schedule
+owners are untouched.
+
+`closeClient` returns `{ ok: true }` only after that owner's cleanup finishes. If the
+extension is disconnected, the broker retains this cleanup request and retries it after
+reconnect. It never retries a run, click, type or other browser mutation. A timed-out or
+lost action may already have happened; clients must inspect status or the page before
+retrying. A retired client id cannot start work again in the same worker.
+
+Once no clients or cleanup remain, the broker exits after a 10s idle grace by default.
+A short extension link outage can preserve the same client ids. Restarting a stdio client
+creates a new identity; restarting the broker requires its clients to reconnect as new
+sessions, not silently replay earlier actions.
 
 ## Direct control
 
-`bridge/direct.ts` is the other half: a client that would rather drive than delegate calls
-`browser_start(goal, url?, background?)` and then the `browser_*` verbs.
+`direct.ts` maps the daemon's discrete `browser_*` tools to the same `executeTool` and driver
+the agent loop uses. Direct actions, start and end are ordered within their client.
 
-- **Same `executeTool`, same driver.** The MCP verbs map 1:1 onto agent tool names, so
-  there is one browser implementation and no second catalog. Discrete tools at the MCP
-  surface (the shape models know), one `browserAct` method on the wire.
-- **A session holds the run slot**, so direct driving and an agent run can never fight
-  over a tab. It expires after 5 idle minutes rather than locking the user out of their
-  own panel.
-- **Mutating actions re-snapshot.** A ref belongs to the snapshot that produced it, so
-  acting on a stale ref is a correctness bug — every mutating verb returns the fresh page
-  with its result. A client can pass `snapshot: false` (the daemon puts it on the
-  `browserAct` request, `DirectSession.act`'s third argument) and then owns the staleness.
-- **Its own tab by default.** The first snapshot goes to the client, so `browser_start`
-  follows `run`: it reuses the tab an earlier bridge session or run already drove while it
-  lives, else opens a background tab (at `url`, else the start page), and takes the user's
-  current tab only when the client sends `background: false` without a `url`. A starter tab
-  the session switches away from or closes without ever acting on is removed automatically.
-- **Hidden tabs work.** Attach turns on `Emulation.setFocusEmulationEnabled`, so a tab in
-  the background, under another window or minimized still takes the mouse press, keys and
-  wheel (a hidden page queues them otherwise). `screenshot` reads the tab the debugger
-  holds with `Page.captureScreenshot`; `captureVisibleTab` is the idle-browser path.
-- **No ask_user.** The consequential-action policy lives in the system prompt, which
-  direct control bypasses; the client carries it (tool descriptions + SKILL.md), and
-  PRIVACY.md says so plainly. The compensations are visibility: badge, tab dot, and a
-  stored transcript.
-- **The thread is the goal.** `browser_start` opens its own conversation and writes the
-  goal as its first user message, so the existing "title = first user message" rule names
-  it. `ConversationMeta.agent` carries the client name (from MCP `initialize`), which
-  history shows as a chip — a transcript the user never started must say where it came
-  from.
+- `browser_start(goal)` reuses a page this client's thread drove while it lives, otherwise
+  opens the default start page in a background tab. A URL opens its own page. Only
+  `background: false` without a URL adopts the user's current tab. The initial target is
+  claimed before indicators or its first snapshot.
+- Start returns the first snapshot plus `runId` and `conversationId`. The goal is appended
+  as a user turn in the same per-client conversation that delegated work uses.
+- Mutating actions return a fresh snapshot by default because refs belong to the page
+  snapshot that produced them. With `snapshot: false`, the caller must refresh refs itself.
+- Direct control has no TabRunner model or `ask_user` policy. The external client must get
+  permission before consequential actions. On-page marks and the stored transcript still
+  make the work visible.
+- A session expires after five idle minutes, not during an in-flight action. End aborts,
+  drains, removes an unused starter tab and releases only this session's browser resources.
+
+## Readiness and MV3 timing
+
+`health` reads the active provider's name and saved credential state through `providerInfo`.
+It does not send a test model request or prove that a saved key is valid. Direct browser
+control needs no model provider. The short provider lookup timeout cannot hold health open.
+
+`BridgeSocket.start()` stays synchronous so MV3 registers its alarm listeners in the first
+worker turn. One reconcile path arms a 30s alarm when enabled and clears it when disabled.
+The bridge ships disabled. A refused connection waits for the alarm; only a connection
+that actually opened earns the 2s fast retry. `bridgeConnected` mirrors open/close state
+through storage for UI contexts. Config remains in `bridge/config.ts`, not the socket.
+
+The protocol is declared twice on purpose: `src/modules/bridge/protocol.ts` is the source
+of truth; `daemon/src/protocol.ts` is its standalone-package copy. Change both together.
+`bun run bridge:check` checks the broker and client wiring without Chrome.

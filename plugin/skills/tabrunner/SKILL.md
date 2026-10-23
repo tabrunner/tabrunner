@@ -36,16 +36,16 @@ When in doubt, `run`. It's the reason this thing exists.
 
 ## The tools
 
-| Tool                                    | Use it for                                                                                         |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `health`                                | First call, and after any connection error. Says whether the browser is reachable and what to fix. |
-| `run(task, url?, background?, images?)` | Start a task. Returns immediately: browser work takes minutes.                                     |
-| `get_status(wait?, waitSeconds?)`       | Follow the run. **Blocks until something happens**: this is your wait, not a poll.                 |
-| `answer(text)`                          | Reply to a question the run stopped on.                                                            |
-| `steer(text)`                           | Correct or constrain a task already running, without restarting it.                                |
-| `stop()`                                | End the run. Not an error.                                                                         |
-| `screenshot()`                          | See the browser yourself. Works whether or not a task is running.                                  |
-| `new_conversation()`                    | Start a fresh thread when the next task is unrelated to the last.                                  |
+| Tool                                    | Use it for                                                                                                     |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `health`                                | First call, and after any connection error. Says whether the browser is reachable and what to fix.             |
+| `run(task, url?, background?, images?)` | Start a task. Returns immediately: browser work takes minutes.                                                 |
+| `get_status(wait?, waitSeconds?)`       | Follow the run. **Blocks until something happens**: this is your wait, not a poll.                             |
+| `answer(text)`                          | Reply to a question the run stopped on.                                                                        |
+| `steer(text)`                           | Correct or constrain a task already running, without restarting it.                                            |
+| `stop(runId?)`                          | Stop your current task, or cancel the exact queued run id you pass.                                            |
+| `screenshot()`                          | Capture your live task or direct session. It never captures another client's tab or an unrelated visible page. |
+| `new_conversation()`                    | Start a fresh thread when the next task is unrelated to the last.                                              |
 
 Driving yourself:
 
@@ -107,16 +107,20 @@ installing the extension, opening the panel, choosing a provider.
 follow-ups. Pass `url` when you know the starting address so the tab opens straight there; pass
 `background: false` only when the task is about the page the user is looking at.
 
-**One run at a time.** TabRunner drives one browser, so the panel and this bridge share a single run
-slot. If a run is already going, `run` tells you where it is. `stop()` ends your own; a run the user
-started in TabRunner's panel is theirs to stop. Ask them, or wait.
+**One task per client and conversation.** MCP clients share one local broker. Up to four tasks
+can run across MCP clients, the panel and schedules, but panel tasks remain serial. Each task
+claims separate tabs; another task cannot use a claimed tab. Extra delegated tasks queue for
+this client. End direct control before delegating from the same client. `stop()` affects only
+your current task; pass a queued run id to cancel that exact task. Separate tabs still share
+cookies, logins and account state, so do not make conflicting changes to the same account.
 
 **Steer instead of restarting.** If the goal is unchanged and you just need to correct course, use
 `steer`. It lands between tool calls. Reserve `stop` + `run` for a genuinely different task.
 
-**The thread has a memory.** Runs continue each other: TabRunner remembers the pages it visited and
-what it found. Follow-ups can say "that invoice". Call `new_conversation` only when the subject
-truly changes.
+**The thread belongs to this client session.** Direct and delegated tasks share its chat and
+remember earlier pages. Follow-ups can say "that invoice". A worker restart keeps the chat for
+the same live client; closing and reopening the MCP client starts a new one. Use
+`new_conversation` only when the subject changes.
 
 ## Reporting back
 
