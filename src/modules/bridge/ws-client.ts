@@ -39,6 +39,7 @@ export class BridgeSocket {
   constructor(
     private readonly onMessage: (msg: DaemonMessage) => void,
     private readonly onOpen: () => void,
+    private readonly onDisconnect?: () => void,
   ) {}
 
   start(): void {
@@ -106,6 +107,7 @@ export class BridgeSocket {
         this.ws = null;
         log.debug("bridge ws closed");
         void bridgeConnected.set(false);
+        if (established) this.onDisconnect?.();
         if (!established && !this.outageExplained) {
           this.outageExplained = true;
           // The caption for Chromium's red line above it. Not a warning: a

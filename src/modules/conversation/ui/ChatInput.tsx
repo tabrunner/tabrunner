@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { boardRunHere, runsHere, useConversationStore } from "./store";
+import { boardRunHere, bridgeRunHere, runsHere, useConversationStore } from "./store";
 import { pendingAskId } from "./ask-gate";
 import { toAttachment } from "./image";
 import { recallStep, sentMessages } from "./history-recall";
@@ -84,7 +84,7 @@ export function ChatInput() {
   const stop = useConversationStore((s) => s.stop);
   const queuedRun = useConversationStore((s) => s.queuedRun);
   const boardRun = useConversationStore(boardRunHere);
-  const bridgeActive = useConversationStore((s) => s.bridgeActive);
+  const bridgeActive = useConversationStore(bridgeRunHere);
   const drivingTab = useConversationStore((s) => s.drivingTab);
   const stepBusy = useConversationStore((s) => s.pendingStepId !== null);
   const areaRef = useRef<HTMLTextAreaElement>(null);

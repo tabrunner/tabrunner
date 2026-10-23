@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 
 import { applyQuestion, applyStatusEvent, emptyStatus, newRunStatus } from "../status";
-import { acquireRun, getActiveRun, releaseRun } from "@/modules/agent/active-runs";
 
 describe("bridge status", () => {
   it("accumulates the run the daemon serves to getStatus", () => {
@@ -42,35 +41,15 @@ describe("bridge status", () => {
   it("starts idle with nothing to report", () => {
     expect(emptyStatus()).toMatchObject({ state: "idle", runId: null, steps: [], question: null });
   });
-});
+  it("keeps one client's steps and questions out of another client's status", () => {
+    const first = newRunStatus("conv-a", "run-a");
+    const second = newRunStatus("conv-b", "run-b");
+    applyStatusEvent(first, { type: "step", tool: "click", summary: "Clicked Send" });
+    applyQuestion(second, "Send the invoice?");
 
-describe("run lock", () => {
-  it("admits one run at a time and names the holder to the loser", () => {
-    const first = acquireRun("conv-1", "panel");
-    expect(first.ok).toBe(true);
-
-    const second = acquireRun("conv-2", "bridge");
-    expect(second.ok).toBe(false);
-    // The conflict carries the holder so each caller can word it for its audience.
-    if (!second.ok) expect(second.active.owner).toBe("panel");
-
-    if (first.ok) releaseRun(first.run);
-    expect(getActiveRun()).toBeNull();
-
-    const retry = acquireRun("conv-2", "bridge");
-    expect(retry.ok).toBe(true);
-    if (retry.ok) releaseRun(retry.run);
-  });
-
-  it("a stale handle can't release the run that replaced it", () => {
-    const stale = acquireRun("conv-1", "panel");
-    if (!stale.ok) throw new Error("expected the slot");
-    releaseRun(stale.run);
-
-    const current = acquireRun("conv-2", "bridge");
-    releaseRun(stale.run); // the old run unwinding, long after losing the slot
-
-    expect(getActiveRun()).toBe(current.ok ? current.run : null);
-    if (current.ok) releaseRun(current.run);
+    expect(first.state).toBe("running");
+    expect(first.question).toBeNull();
+    expect(second.steps).toEqual([]);
+    expect(second.state).toBe("question");
   });
 });

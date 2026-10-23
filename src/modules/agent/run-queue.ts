@@ -1,299 +1,230 @@
-import { defineItem } from "@/lib/storage";
+import { createWriteQueue, defineItem } from "@/lib/storage";
 import { createLogger, truncate } from "@/lib/logger";
 import type { ElicitationAsk, PlanApprovalPayload } from "@/shared/protocol";
-import { getActiveRun, onRunReleased } from "./active-runs";
-import type { RunOwner } from "./active-runs";
+import { canStartRun, onRunReleased } from "./active-runs";
+import type { ActiveRun, RunOwner } from "./active-runs";
 
 const log = createLogger("runs");
 
-/**
- * The serial run queue on top of the single run slot. One run drives at a time
- * (one CDP target, one browser), everything else waits FIFO. Callers hand in a
- * `launch` closure — the exact call they would have made for an immediate start
- * — so a queued run is indistinguishable from an immediate one once it starts,
- * and ownership (who may stop or steer it) never changes hands.
- *
- * Every transition is mirrored to `runBoardItem`, the ambient "what is TabRunner
- * doing" record: the floating widget, the panel's run board, and the toolbar
- * badge read it over storage watch, the MCP bridge forwards it as compact
- * events — no new port plumbing anywhere.
- */
-
-/** One queued submission, as the UI and the bridge protocol see it. */
 export interface QueuedRun {
   id: string;
   conversationId: string;
   owner: RunOwner;
+  ownerId: string;
   task: string;
   enqueuedAt: number;
 }
 
 interface QueueEntry extends QueuedRun {
-  /** Starts the run exactly as its owner's immediate path would. */
+  /** Claims synchronously before the launch's first await. */
   launch: () => void;
 }
 
-/** The ambient run state every surface reads. */
+export interface RunningRun {
+  id: string;
+  conversationId: string;
+  task: string;
+  owner: RunOwner;
+  ownerId: string;
+  startedAt: number;
+  tabId?: number;
+  windowId?: number;
+  awaiting?: boolean;
+  approval?: PlanApprovalPayload;
+  elicitation?: ElicitationAsk;
+  recording?: boolean;
+}
+
+export interface PendingQuestion {
+  tabId?: number;
+  windowId?: number;
+  conversationId: string;
+  question: string;
+  choices?: string[];
+}
+
 export interface RunBoard {
-  running?: {
-    conversationId: string;
-    task: string;
-    owner: RunOwner;
-    /** When the run claimed the slot — a panel that reopened mid-run reads its
-     *  elapsed clock from here, its own run-state having died with the close. */
-    startedAt: number;
-    tabId?: number;
-    /** The tab's window, filled beside `tabId` — the on-page pill's click opens
-     *  the panel on the right window with zero awaits ahead of it, so the
-     *  click's user gesture can never expire on the way. */
-    windowId?: number;
-    /** Parked on the user's answer (plan approval) — alive, but not working. */
-    awaiting?: boolean;
-    /**
-     * The parked ask itself — the approval card, storage-backed. The port
-     * broadcast arms the panels that heard it; this arms every other one: a
-     * panel that was opened, switched, or left deaf after the park reads the
-     * same board every surface reads, so the question is on screen with a way
-     * to say yes even when no plan_approval event ever reached it. Cleared the
-     * moment the gate is answered, approve or reject.
-     */
-    approval?: PlanApprovalPayload;
-    /**
-     * The plan gate's twin: a remote MCP server's question, parked mid-tool-call.
-     * Same storage-backed delivery, same answer-takes-it-down lifecycle — and it
-     * needed it more, since the elicitation broadcast never had any reconnect
-     * path at all. The loop parks on one thing at a time, so at most one of
-     * `approval` / `elicitation` is set.
-     */
-    elicitation?: ElicitationAsk;
-    /** The run is documenting itself: screens of the driven tab are being kept.
-     *  Ambient, because the surfaces that must say so (toolbar title, driven-tab
-     *  badge) outlive the panel that would otherwise be the only witness. */
-    recording?: boolean;
-  };
-  /**
-   * An ask_user question the run ended on — the slot is free, but the answer is
-   * still owed. Unlike `running.awaiting` (a live parked run), there is no run
-   * to mark; this keeps the ambient "answer needed" signal up until the next run
-   * (the answer) clears it. At most one at a time — one run drives at a time.
-   */
-  pendingQuestion?: {
-    conversationId: string;
-    question: string;
-    choices?: string[];
-  };
+  running: RunningRun[];
+  pendingQuestions: PendingQuestion[];
   queue: QueuedRun[];
 }
 
-export const runBoardItem = defineItem<RunBoard>("run-board", { queue: [] });
+// Live state is disposable. A new schema must not read a previous worker's slot shape.
+export const runBoardItem = defineItem<RunBoard>("run-board-v2", {
+  running: [],
+  pendingQuestions: [],
+  queue: [],
+});
 
 const queue: QueueEntry[] = [];
-/** The board's view of the active run — set at submit, tab id filled in later. */
-let running: RunBoard["running"] | null = null;
-/** The board's view of a question awaiting an answer — outlives the run that asked it. */
-let pendingQuestion: RunBoard["pendingQuestion"];
+const running = new Map<string, RunningRun>();
+const pendingQuestions = new Map<string, PendingQuestion>();
 
-export type SubmitOutcome = { started: true } | { queued: number; id: string };
+export type SubmitOutcome = { started: true; id: string } | { queued: number; id: string };
 
-/**
- * Free slot → start now; occupied → wait FIFO. The check and the launch's slot
- * claim are one synchronous turn (launch's first await comes after acquireRun),
- * so the slot can't be taken in between.
- */
-export function submitRun(entry: Omit<QueueEntry, "id" | "enqueuedAt">): SubmitOutcome {
-  if (!getActiveRun()) {
-    running = {
-      conversationId: entry.conversationId,
-      task: entry.task,
-      owner: entry.owner,
-      startedAt: Date.now(),
-    };
-    entry.launch();
-    void writeBoard();
-    return { started: true };
-  }
-  const queued: QueueEntry = { ...entry, id: crypto.randomUUID(), enqueuedAt: Date.now() };
-  queue.push(queued);
-  log.info("run queued", {
-    position: queue.length,
+function sharesLane(a: QueueEntry, b: QueueEntry): boolean {
+  return a.conversationId === b.conversationId || (a.owner === b.owner && a.ownerId === b.ownerId);
+}
+
+function launch(entry: QueueEntry): void {
+  running.set(entry.id, {
+    id: entry.id,
+    conversationId: entry.conversationId,
     owner: entry.owner,
-    task: truncate(entry.task, 120),
+    ownerId: entry.ownerId,
+    task: entry.task,
+    startedAt: Date.now(),
   });
+  entry.launch();
+}
+
+/** FIFO within a client/conversation; unrelated work can pass a blocked lane. */
+export function submitRun(entry: Omit<QueueEntry, "enqueuedAt">): SubmitOutcome {
+  const queued: QueueEntry = { ...entry, enqueuedAt: Date.now() };
+  if (
+    !queue.some((earlier) => sharesLane(earlier, queued)) &&
+    canStartRun(entry.conversationId, entry.owner, entry.ownerId)
+  ) {
+    launch(queued);
+    void writeBoard();
+    return { started: true, id: entry.id };
+  }
+  queue.push(queued);
+  log.info("run queued", { owner: entry.owner, task: truncate(entry.task, 120) });
   void writeBoard();
   return { queued: queue.length, id: queued.id };
 }
 
-/** Take a waiting entry out of the line. False when it already left (started). */
+/** Direct sessions use the same board and lifetime, without a queued launch. */
+export function trackRunningRun(run: ActiveRun, task: string): void {
+  running.set(run.id, {
+    id: run.id,
+    conversationId: run.conversationId,
+    owner: run.owner,
+    ownerId: run.ownerId,
+    task,
+    startedAt: Date.now(),
+  });
+  void writeBoard();
+}
+
 export function cancelQueued(id: string): boolean {
-  const i = queue.findIndex((q) => q.id === id);
+  const i = queue.findIndex((entry) => entry.id === id);
   if (i < 0) return false;
   queue.splice(i, 1);
+  pumpQueue();
   void writeBoard();
   return true;
 }
 
 export function listQueue(): QueuedRun[] {
-  return queue.map((q) => ({
-    id: q.id,
-    conversationId: q.conversationId,
-    owner: q.owner,
-    task: q.task,
-    enqueuedAt: q.enqueuedAt,
-  }));
+  return queue.map(({ launch: _launch, ...entry }) => entry);
 }
 
-/** The board as it stands — same shape the storage item carries. */
 export function currentBoard(): RunBoard {
   return {
-    ...(running ? { running } : {}),
-    ...(pendingQuestion ? { pendingQuestion } : {}),
+    running: [...running.values()],
+    pendingQuestions: [...pendingQuestions.values()],
     queue: listQueue(),
   };
 }
 
-/**
- * The running entry's tab — filled in once the run has resolved its target,
- * and again whenever switch_tab re-targets it. The window rides along so the
- * pill's click never needs a tab lookup before opening the panel. No-op for a
- * run that is no longer the board's running entry (a stale unwind must not
- * move the board).
- */
-export function markRunningTab(conversationId: string, tabId: number, windowId?: number): void {
-  if (!running || running.conversationId !== conversationId) return;
-  running = { ...running, tabId, windowId };
+function updateRunning(id: string, update: Partial<RunningRun>): void {
+  const entry = running.get(id);
+  if (!entry) return;
+  running.set(id, { ...entry, ...update });
   void writeBoard();
 }
 
-/**
- * The running entry parked on the user's answer (plan approval) or got it.
- * Same stale-guard as markRunningTab — a run that already ended must not move
- * the board. Parking carries the ask, so the card is answerable from the board
- * alone; answering takes it back down, whichever way the gate went. Parking
- * one ask takes the twin down with it — the loop waits on one thing at a time,
- * so the board never carries both cards at once.
- */
+export function markRunningTab(id: string, tabId: number, windowId?: number): void {
+  updateRunning(id, { tabId, windowId });
+}
+
 export function markRunningAwaiting(
-  conversationId: string,
+  id: string,
   awaiting: boolean,
   approval?: PlanApprovalPayload,
 ): void {
-  if (!running || running.conversationId !== conversationId) return;
-  running = awaiting
-    ? { ...running, awaiting, ...(approval ? { approval } : {}), elicitation: undefined }
-    : { ...running, awaiting, approval: undefined, elicitation: undefined };
-  void writeBoard();
+  updateRunning(id, {
+    awaiting,
+    approval: awaiting ? approval : undefined,
+    elicitation: undefined,
+  });
 }
 
-/**
- * A parked elicitation — a remote MCP server's question — or its answer. The
- * ask rides the board like the plan gate's, so a panel that missed the
- * elicitation broadcast still gets the question; the flag drops with it, and
- * the plan gate's ask comes down with it for the same one-park-at-a-time rule
- * its own marker enforces. Same stale-guard as its siblings.
- */
-export function markRunningElicitation(conversationId: string, ask?: ElicitationAsk): void {
-  if (!running || running.conversationId !== conversationId) return;
-  running = { ...running, awaiting: ask !== undefined, elicitation: ask, approval: undefined };
-  void writeBoard();
+export function markRunningElicitation(id: string, ask?: ElicitationAsk): void {
+  updateRunning(id, { awaiting: ask !== undefined, elicitation: ask, approval: undefined });
 }
 
-/**
- * The running entry started documenting itself. Same stale-guard as its
- * siblings; arming happens mid-run, so this is never known at submit.
- */
-export function markRunningRecording(conversationId: string, recording: boolean): void {
-  if (!running || running.conversationId !== conversationId) return;
-  running = { ...running, recording };
-  void writeBoard();
+export function markRunningRecording(id: string, recording: boolean): void {
+  updateRunning(id, { recording });
 }
 
-/**
- * A run ended on ask_user — record the question as an ambient fact, since the
- * slot frees immediately and the widget/badge/panel would otherwise go silent
- * while the user is still owed an answer. A queue entry's question never
- * replaces the running run's: only one run can ask, and it is the one ending.
- */
+/** Questions outlive their run but belong only to the conversation that asked. */
 export function markPendingQuestion(
   conversationId: string,
   question: string,
   choices?: string[],
 ): void {
-  pendingQuestion = {
+  const task = [...running.values()].find((run) => run.conversationId === conversationId);
+  pendingQuestions.set(conversationId, {
+    ...(task?.tabId !== undefined ? { tabId: task.tabId, windowId: task.windowId } : {}),
     conversationId,
     question,
     ...(choices?.length ? { choices } : {}),
-  };
+  });
   void writeBoard();
 }
 
-/** The answer (the next run) retires the question. No-op for a different thread. */
 export function clearPendingQuestion(conversationId: string): void {
-  if (pendingQuestion?.conversationId !== conversationId) return;
-  pendingQuestion = undefined;
+  if (!pendingQuestions.delete(conversationId)) return;
   void writeBoard();
 }
 
-/**
- * Worker restart: the slot and the queue died with the old worker, but a parked
- * question is still owed an answer. The storage item carries it, the in-memory
- * copy does not — bring it back so `currentBoard()` (the widget, the badge)
- * keeps agreeing with what the panel already sees. No write: storage is right.
- */
-export function restorePendingQuestion(stored: RunBoard["pendingQuestion"]): void {
-  pendingQuestion = stored;
+export function restorePendingQuestions(stored: PendingQuestion[]): void {
+  for (const question of stored) pendingQuestions.set(question.conversationId, question);
 }
 
-/** In-worker board subscription — the bridge mirrors it into its compact stream. */
+const boardListeners = new Set<(board: RunBoard) => void>();
+
 export function onBoardChanged(cb: (board: RunBoard) => void): () => void {
   boardListeners.add(cb);
   return () => boardListeners.delete(cb);
 }
 
-const boardListeners = new Set<(board: RunBoard) => void>();
-
-/**
- * Board writes serialize on one chain — the transcript writer's own convention.
- * Every write reads `currentBoard()` at its turn in the chain, so the last
- * marker's state is what storage ends up with. Unserialized, two `set()` calls
- * can land out of order and a write that captured the board before an answer
- * would resurrect the answered ask in storage — re-arming the card in every
- * panel that reconciles from it, until the next write happened to clear it.
- * A failed write logs and lets the chain live.
- */
-let boardWrites: Promise<void> = Promise.resolve();
+const enqueueWrite = createWriteQueue();
 function writeBoard(): Promise<void> {
-  const once = async () => {
+  return enqueueWrite(async () => {
     const board = currentBoard();
     for (const cb of boardListeners) cb(board);
     await runBoardItem.set(board);
-  };
-  boardWrites = boardWrites
-    .then(once)
-    .catch((e) => log.warn("board write failed:", e instanceof Error ? e.message : String(e)));
-  return boardWrites;
+  }).catch((e) => log.warn("board write failed:", e instanceof Error ? e.message : String(e)));
 }
 
-// A freed slot starts the next waiter — every end path (done, error, stop,
-// driven-tab close) funnels through releaseRun, so they all pump. Launch first,
-// board second: the launch rewrites the bridge's status mirror, and the board
-// write then lands the queue on top of it.
-onRunReleased(() => {
-  const next = queue.shift();
-  if (!next) {
-    running = null;
-    void writeBoard();
-    return;
+function pumpQueue(): void {
+  const blockedConversations = new Set<string>();
+  const blockedOwners = new Set<string>();
+  for (let i = 0; i < queue.length;) {
+    const entry = queue[i];
+    if (!entry) break;
+    const ownerKey = `${entry.owner}:${entry.ownerId}`;
+    if (
+      blockedConversations.has(entry.conversationId) ||
+      blockedOwners.has(ownerKey) ||
+      !canStartRun(entry.conversationId, entry.owner, entry.ownerId)
+    ) {
+      blockedConversations.add(entry.conversationId);
+      blockedOwners.add(ownerKey);
+      i++;
+      continue;
+    }
+    queue.splice(i, 1);
+    launch(entry);
   }
-  running = {
-    conversationId: next.conversationId,
-    task: next.task,
-    owner: next.owner,
-    startedAt: Date.now(),
-  };
-  log.info("queued run starting", {
-    owner: next.owner,
-    task: truncate(next.task, 120),
-  });
-  next.launch();
+}
+
+onRunReleased((run) => {
+  running.delete(run.id);
+  pumpQueue();
   void writeBoard();
 });

@@ -198,6 +198,23 @@ describe("BridgeSocket", () => {
     expect(await bridgeConnected.get()).toBe(false);
   });
 
+  it("starts the owner reconnect grace only after an established link drops", async () => {
+    await bridgeItem.set({ enabled: true, port: 17_836 });
+    const disconnected = vi.fn();
+    new BridgeSocket(
+      () => {},
+      () => {},
+      disconnected,
+    ).start();
+    await settle();
+    FakeSocket.instances[0]?.refuse();
+    expect(disconnected).not.toHaveBeenCalled();
+
+    FakeSocket.instances[0]?.open();
+    FakeSocket.instances[0]?.close();
+    expect(disconnected).toHaveBeenCalledOnce();
+  });
+
   it("reports the link as down when the bridge is switched off", async () => {
     // A link was up before the user switched the bridge off; the boot reconcile
     // is what stands for the config-change watch here (the storage mock's watch

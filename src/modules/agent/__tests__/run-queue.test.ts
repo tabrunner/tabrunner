@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { acquireRun, getActiveRun, releaseRun } from "../active-runs";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { acquireRun, listActiveRuns, releaseRun } from "../active-runs";
 import type { ActiveRun, RunOwner } from "../active-runs";
 import {
   cancelQueued,
@@ -9,320 +9,312 @@ import {
   markPendingQuestion,
   markRunningAwaiting,
   markRunningElicitation,
+  markRunningRecording,
   markRunningTab,
-  restorePendingQuestion,
+  restorePendingQuestions,
   runBoardItem,
   submitRun,
+  trackRunningRun,
 } from "../run-queue";
 
-/** The mocked storage resolves in a microtask — let board writes land. */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 const launches: string[] = [];
 const claims = new Map<string, ActiveRun>();
 
-/** A launch closure that claims the slot, exactly as startAgentRun would. */
-function launchFor(task: string, owner: RunOwner): () => void {
-  return () => {
-    launches.push(task);
-    const claim = acquireRun(`c-${task}`, owner);
-    if (claim.ok) claims.set(task, claim.run);
-  };
-}
-
-function claim(task: string): ActiveRun {
-  const run = claims.get(task);
-  if (!run) throw new Error(`no claim for ${task}`);
+function claim(id: string): ActiveRun {
+  const run = claims.get(id);
+  if (!run) throw new Error(`No claim for ${id}`);
   return run;
 }
 
-function submit(task: string, owner: RunOwner) {
+function submit(
+  id: string,
+  owner: RunOwner = "bridge",
+  ownerId = id,
+  conversationId = `chat-${id}`,
+) {
   return submitRun({
-    conversationId: `c-${task}`,
+    id,
+    conversationId,
     owner,
-    task,
-    launch: launchFor(task, owner),
+    ownerId,
+    task: id,
+    launch: () => {
+      const result = acquireRun(conversationId, owner, ownerId, id);
+      if (!result.ok) throw new Error(`Rejected queued launch: ${id}`);
+      launches.push(id);
+      claims.set(id, result.run);
+    },
   });
 }
 
+async function clean(): Promise<void> {
+  for (const entry of listQueue()) cancelQueued(entry.id);
+  for (const run of listActiveRuns()) releaseRun(run);
+  for (const question of currentBoard().pendingQuestions)
+    clearPendingQuestion(question.conversationId);
+  await flush();
+}
+
 beforeEach(async () => {
-  // Drain the queue BEFORE freeing the slot, or the release pumps a leftover.
-  for (const q of listQueue()) cancelQueued(q.id);
-  const active = getActiveRun();
-  if (active) releaseRun(active);
+  await clean();
   launches.length = 0;
   claims.clear();
-  await flush();
 });
+afterEach(clean);
 
-describe("submitRun", () => {
-  it("starts immediately when the slot is free", async () => {
-    const outcome = submit("a", "panel");
-    expect(outcome).toEqual({ started: true });
-    expect(launches).toEqual(["a"]);
+describe("run queue admission", () => {
+  it("starts unrelated owners concurrently and keeps their submission IDs", async () => {
+    expect(submit("a")).toEqual({ started: true, id: "a" });
+    expect(submit("b")).toEqual({ started: true, id: "b" });
+    expect(submit("panel", "panel", "panel")).toEqual({ started: true, id: "panel" });
+    expect(launches).toEqual(["a", "b", "panel"]);
     await flush();
-    expect(currentBoard().running).toMatchObject({ task: "a", owner: "panel" });
+    expect((await runBoardItem.get()).running).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "a", ownerId: "a", conversationId: "chat-a" }),
+        expect.objectContaining({ id: "b", ownerId: "b", conversationId: "chat-b" }),
+      ]),
+    );
   });
 
-  it("queues FIFO when the slot is taken", () => {
-    const hold = acquireRun("c-hold", "panel");
-    if (!hold.ok) throw new Error("slot not free");
-
-    expect(submit("a", "panel")).toMatchObject({ queued: 1 });
-    expect(submit("b", "bridge")).toMatchObject({ queued: 2 });
-    expect(submit("c", "panel")).toMatchObject({ queued: 3 });
-    expect(launches).toEqual([]);
-    expect(listQueue().map((q) => q.task)).toEqual(["a", "b", "c"]);
-  });
-});
-
-describe("pump on release", () => {
-  it("starts the next entry in order, keeping its owner", async () => {
-    const hold = acquireRun("c-hold", "panel");
-    if (!hold.ok) throw new Error("slot not free");
-    submit("a", "bridge");
-    submit("b", "panel");
-
-    releaseRun(hold.run);
-    expect(launches).toEqual(["a"]);
-    expect(currentBoard().running).toMatchObject({ task: "a", owner: "bridge" });
-
-    releaseRun(claim("a"));
-    expect(launches).toEqual(["a", "b"]);
-    expect(currentBoard().running).toMatchObject({ task: "b", owner: "panel" });
-
+  it("queues after the fourth admitted owner and starts when capacity frees", () => {
+    for (const id of ["a", "b", "c", "d"]) submit(id);
+    expect(submit("e")).toEqual({ queued: 1, id: "e" });
+    expect(submit("f")).toEqual({ queued: 2, id: "f" });
+    expect(launches).toEqual(["a", "b", "c", "d"]);
     releaseRun(claim("b"));
-    await flush();
-    expect(launches).toEqual(["a", "b"]);
-    const board = await runBoardItem.get();
-    expect(board.running).toBeUndefined();
-    expect(board.queue).toEqual([]);
+    expect(launches).toEqual(["a", "b", "c", "d", "e"]);
+    expect(listQueue().map((entry) => entry.id)).toEqual(["f"]);
   });
 
-  it("is a no-op when the queue is empty", async () => {
-    const hold = acquireRun("c-hold", "panel");
-    if (!hold.ok) throw new Error("slot not free");
-    releaseRun(hold.run);
-    await flush();
-    expect(launches).toEqual([]);
-    expect(await runBoardItem.get()).toEqual({ queue: [] });
+  it("keeps one client's submissions FIFO while another client passes", () => {
+    submit("a1", "bridge", "a");
+    expect(submit("a2", "bridge", "a")).toMatchObject({ queued: 1 });
+    expect(submit("a3", "bridge", "a")).toMatchObject({ queued: 2 });
+    expect(submit("b1", "bridge", "b")).toMatchObject({ started: true });
+    expect(launches).toEqual(["a1", "b1"]);
+    releaseRun(claim("a1"));
+    expect(launches).toEqual(["a1", "b1", "a2"]);
+    releaseRun(claim("a2"));
+    expect(launches).toEqual(["a1", "b1", "a2", "a3"]);
+  });
+
+  it("serializes the conversation even across different clients", () => {
+    submit("a", "bridge", "a", "shared-chat");
+    expect(submit("b", "bridge", "b", "shared-chat")).toMatchObject({ queued: 1 });
+    expect(submit("c", "bridge", "c")).toMatchObject({ started: true });
+    releaseRun(claim("a"));
+    expect(launches).toEqual(["a", "c", "b"]);
+  });
+
+  it("a blocked queue lane does not block an unrelated waiter on release", () => {
+    submit("a1", "bridge", "a");
+    submit("b");
+    submit("c");
+    submit("d");
+    submit("a2", "bridge", "a");
+    submit("e");
+    releaseRun(claim("b"));
+    expect(launches).toEqual(["a1", "b", "c", "d", "e"]);
+    expect(listQueue().map((entry) => entry.id)).toEqual(["a2"]);
+  });
+
+  it("a blocked conversation also fences later work from that queued owner", () => {
+    submit("hold", "bridge", "holder", "shared-chat");
+    submit("first", "bridge", "a", "shared-chat");
+    expect(submit("second", "bridge", "a", "other-chat")).toMatchObject({ queued: 2 });
+    expect(submit("b")).toMatchObject({ started: true });
+    releaseRun(claim("hold"));
+    expect(launches).toEqual(["hold", "b", "first"]);
+    releaseRun(claim("first"));
+    expect(launches).toEqual(["hold", "b", "first", "second"]);
+  });
+
+  it("does not advance an aborted owner until final cleanup releases it", () => {
+    submit("first", "bridge", "a");
+    submit("next", "bridge", "a");
+    claim("first").controller.abort();
+    expect(launches).toEqual(["first"]);
+    releaseRun(claim("first"));
+    expect(launches).toEqual(["first", "next"]);
   });
 });
 
-describe("cancelQueued", () => {
-  it("removes a waiting entry and closes ranks", async () => {
-    const hold = acquireRun("c-hold", "panel");
-    if (!hold.ok) throw new Error("slot not free");
-    submit("a", "panel");
-    const b = submit("b", "panel");
-    submit("c", "panel");
-    if (!("queued" in b)) throw new Error("b did not queue");
-
-    expect(cancelQueued(b.id)).toBe(true);
-    expect(listQueue().map((q) => q.task)).toEqual(["a", "c"]);
+describe("queued cancellation", () => {
+  it("removes only the exact waiting ID and keeps sibling tasks ordered", async () => {
+    submit("a1", "bridge", "a");
+    submit("a2", "bridge", "a");
+    submit("a3", "bridge", "a");
+    expect(cancelQueued("a2")).toBe(true);
+    expect(cancelQueued("a1")).toBe(false);
+    expect(cancelQueued("missing")).toBe(false);
+    expect(listQueue().map((entry) => entry.id)).toEqual(["a3"]);
     await flush();
-    expect((await runBoardItem.get()).queue.map((q) => q.task)).toEqual(["a", "c"]);
-
-    releaseRun(hold.run);
-    releaseRun(claim("a"));
-    expect(launches).toEqual(["a", "c"]);
-    releaseRun(claim("c"));
+    expect((await runBoardItem.get()).queue).toEqual([
+      expect.objectContaining({ id: "a3", ownerId: "a" }),
+    ]);
+    releaseRun(claim("a1"));
+    expect(launches).toEqual(["a1", "a3"]);
   });
 
-  it("returns false for an id that is not waiting", () => {
-    expect(cancelQueued("nope")).toBe(false);
-  });
-});
-
-describe("markRunningTab", () => {
-  it("fills in the running entry's tab", async () => {
-    submit("a", "panel");
-    markRunningTab("c-a", 42);
-    await flush();
-    expect((await runBoardItem.get()).running).toMatchObject({ task: "a", tabId: 42 });
-    releaseRun(claim("a"));
-  });
-
-  it("ignores a run that is no longer the board's running entry", () => {
-    submit("a", "panel");
-    markRunningTab("c-someone-else", 99);
-    expect(currentBoard().running?.tabId).toBeUndefined();
-    releaseRun(claim("a"));
-  });
-});
-
-describe("deleteConversation", () => {
-  it("cancels the deleted conversation's queued runs — a waiter must not resurrect it", async () => {
+  it("cancels only the deleted conversation's queued tasks", async () => {
     const { deleteConversation } = await import("@/modules/conversation/conversations");
-    const hold = acquireRun("c-hold", "panel");
-    if (!hold.ok) throw new Error("slot not free");
-    submit("a", "panel");
-    submit("b", "panel");
-
-    await deleteConversation("c-a");
-    expect(listQueue().map((q) => q.task)).toEqual(["b"]);
-    // The cancellation lands on the board too — no ghost entry for the UI.
+    submit("hold", "panel", "panel");
+    submit("a", "panel", "panel", "delete-me");
+    submit("b", "panel", "panel", "keep-me");
+    await deleteConversation("delete-me");
+    expect(listQueue().map((entry) => entry.id)).toEqual(["b"]);
     await flush();
-    expect((await runBoardItem.get()).queue.map((q) => q.task)).toEqual(["b"]);
-
-    releaseRun(hold.run);
-    releaseRun(claim("b"));
+    expect((await runBoardItem.get()).queue.map((entry) => entry.id)).toEqual(["b"]);
+    releaseRun(claim("hold"));
+    expect(launches).toEqual(["hold", "b"]);
   });
 });
 
-describe("markRunningAwaiting", () => {
-  it("settles and re-raises the running entry's wait mark", async () => {
-    submit("a", "panel");
-    markRunningAwaiting("c-a", true);
-    await flush();
-    expect((await runBoardItem.get()).running).toMatchObject({ task: "a", awaiting: true });
-
-    markRunningAwaiting("c-a", false);
-    await flush();
-    expect((await runBoardItem.get()).running).toMatchObject({ task: "a", awaiting: false });
-    releaseRun(claim("a"));
-  });
-
-  it("parks the ask onto the board and takes it down with the answer", async () => {
-    submit("a", "panel");
-    const ask = { steps: ["Open the console", "Copy the key"], current: 0, reapproval: false };
-    markRunningAwaiting("c-a", true, ask);
-    await flush();
-    // The card is answerable from the board alone — a panel that missed the
-    // plan_approval broadcast still gets the question.
-    expect((await runBoardItem.get()).running?.approval).toEqual(ask);
-
-    markRunningAwaiting("c-a", false);
-    await flush();
-    const settled = (await runBoardItem.get()).running;
-    expect(settled?.awaiting).toBe(false);
-    expect(settled?.approval).toBeUndefined();
-    releaseRun(claim("a"));
-  });
-
-  it("ignores a run that is no longer the board's running entry", () => {
-    submit("a", "panel");
-    markRunningAwaiting("c-someone-else", true);
-    expect(currentBoard().running?.awaiting).toBeUndefined();
-    releaseRun(claim("a"));
-  });
-});
-
-describe("markRunningElicitation", () => {
-  it("parks a server's question on the board and takes it down with the answer", async () => {
-    submit("a", "panel");
-    const ask = { requestId: "r1", message: "Allow access?", serverName: "acme" };
-    markRunningElicitation("c-a", ask);
-    await flush();
-    const parked = (await runBoardItem.get()).running;
-    expect(parked?.awaiting).toBe(true);
-    expect(parked?.elicitation).toEqual(ask);
-
-    markRunningElicitation("c-a", undefined);
-    await flush();
-    const settled = (await runBoardItem.get()).running;
-    expect(settled?.awaiting).toBe(false);
-    expect(settled?.elicitation).toBeUndefined();
-    releaseRun(claim("a"));
-  });
-
-  it("ignores a run that is no longer the board's running entry", () => {
-    submit("a", "panel");
-    markRunningElicitation("c-someone-else", {
-      requestId: "r1",
-      message: "Allow access?",
-      serverName: "acme",
-    });
-    expect(currentBoard().running?.elicitation).toBeUndefined();
-    releaseRun(claim("a"));
-  });
-
-  it("one park at a time — parking either ask takes the twin down", async () => {
-    submit("a", "panel");
-    const gate = { steps: ["Open the console"], current: 0, reapproval: false };
-    const server = { requestId: "r1", message: "Allow access?", serverName: "acme" };
-
-    // The gate parked first, the server's question lands anyway — only one
-    // card may ride the board, and it is the newer park.
-    markRunningAwaiting("c-a", true, gate);
-    markRunningElicitation("c-a", server);
-    await flush();
-    let parked = (await runBoardItem.get()).running;
-    expect(parked?.elicitation).toEqual(server);
-    expect(parked?.approval).toBeUndefined();
-
-    // And the reverse: the gate re-parking clears the server's question.
-    markRunningAwaiting("c-a", true, gate);
-    await flush();
-    parked = (await runBoardItem.get()).running;
-    expect(parked?.approval).toEqual(gate);
-    expect(parked?.elicitation).toBeUndefined();
-    releaseRun(claim("a"));
-  });
-});
-
-describe("board writes", () => {
-  it("land in marker order — the last transition is what storage holds", async () => {
-    submit("a", "panel");
-    // Five transitions in one tick. The write chain guarantees the last
-    // marker's state wins even when the storage layer lands sets out of
-    // order — an older write capturing the board before an answer must never
-    // resurrect the answered ask on the board every panel reconciles from.
-    markRunningAwaiting("c-a", true, { steps: ["s"], current: 0, reapproval: false });
-    markRunningTab("c-a", 7, 3);
-    markRunningElicitation("c-a", { requestId: "r1", message: "q", serverName: "acme" });
-    markRunningAwaiting("c-a", false);
-    markRunningTab("c-a", 9, 3);
-    await flush();
-    const settled = (await runBoardItem.get()).running;
-    expect(settled).toMatchObject({ tabId: 9, windowId: 3, awaiting: false });
-    expect(settled?.approval).toBeUndefined();
-    expect(settled?.elicitation).toBeUndefined();
-    releaseRun(claim("a"));
-  });
-});
-
-describe("pendingQuestion", () => {
-  it("outlives the run that asked it — the board keeps the answer owed", async () => {
-    submit("a", "panel");
-    markPendingQuestion("c-a", "add to cart?", ["yes", "no"]);
-    // The slot frees but the question stays: the ambient signal must not
-    // collapse into "idle" the moment the run lets go.
-    releaseRun(claim("a"));
+describe("run board targeting", () => {
+  it("marks only the named live run and ignores stale run IDs", async () => {
+    submit("a");
+    submit("b");
+    markRunningTab("a", 42, 3);
+    markRunningRecording("a", true);
+    markRunningTab("stale", 99, 7);
+    markRunningAwaiting("stale", true);
+    markRunningElicitation("stale", { requestId: "old", message: "Old ask", serverName: "acme" });
     await flush();
     const board = await runBoardItem.get();
-    expect(board.running).toBeUndefined();
-    expect(board.pendingQuestion).toEqual({
-      conversationId: "c-a",
-      question: "add to cart?",
-      choices: ["yes", "no"],
+    expect(board.running.find((run) => run.id === "a")).toMatchObject({
+      tabId: 42,
+      windowId: 3,
+      recording: true,
     });
-    clearPendingQuestion("c-a");
+    expect(board.running.find((run) => run.id === "b")).not.toHaveProperty("tabId");
+    releaseRun(claim("a"));
+    markRunningTab("a", 100);
+    expect(currentBoard().running).toEqual([expect.objectContaining({ id: "b" })]);
   });
 
-  it("clears only its own conversation's question", async () => {
-    markPendingQuestion("c-a", "add to cart?", ["yes"]);
-    clearPendingQuestion("c-someone-else");
-    expect(currentBoard().pendingQuestion).toMatchObject({ conversationId: "c-a" });
-    clearPendingQuestion("c-a");
+  it("parks and settles an approval without changing another run", async () => {
+    submit("a");
+    submit("b");
+    const ask = { steps: ["Send"], current: 0, reapproval: false };
+    markRunningAwaiting("a", true, ask);
     await flush();
-    expect((await runBoardItem.get()).pendingQuestion).toBeUndefined();
-  });
-
-  it("drops an empty choices list rather than persist a lie", () => {
-    markPendingQuestion("c-a", "continue?", []);
-    expect(currentBoard().pendingQuestion).toMatchObject({ conversationId: "c-a" });
-    expect(currentBoard().pendingQuestion?.choices).toBeUndefined();
-    clearPendingQuestion("c-a");
-  });
-
-  it("a worker restart keeps the parked question, not the dead run", async () => {
-    markPendingQuestion("c-a", "add to cart?", ["yes", "no"]);
+    expect((await runBoardItem.get()).running.find((run) => run.id === "a")).toMatchObject({
+      awaiting: true,
+      approval: ask,
+    });
+    expect(currentBoard().running.find((run) => run.id === "b")?.awaiting).toBeUndefined();
+    markRunningAwaiting("a", false);
     await flush();
-    const stored = (await runBoardItem.get()).pendingQuestion;
-    // In-memory copy is gone with the old worker; storage carries it back.
-    restorePendingQuestion(stored);
-    expect(currentBoard().pendingQuestion).toEqual(stored);
-    clearPendingQuestion("c-a");
+    const settled = (await runBoardItem.get()).running.find((run) => run.id === "a");
+    expect(settled?.awaiting).toBe(false);
+    expect(settled?.approval).toBeUndefined();
+  });
+
+  it("keeps one parked ask per run and leaves other runs' asks intact", async () => {
+    submit("a");
+    submit("b");
+    const gate = { steps: ["Open the console"], current: 0, reapproval: false };
+    const server = { requestId: "request", message: "Allow access?", serverName: "acme" };
+    markRunningAwaiting("a", true, gate);
+    markRunningAwaiting("b", true, gate);
+    markRunningElicitation("a", server);
+    let a = currentBoard().running.find((run) => run.id === "a");
+    expect(a?.elicitation).toEqual(server);
+    expect(a?.approval).toBeUndefined();
+    expect(currentBoard().running.find((run) => run.id === "b")?.approval).toEqual(gate);
+    markRunningAwaiting("a", true, gate);
+    a = currentBoard().running.find((run) => run.id === "a");
+    expect(a?.approval).toEqual(gate);
+    expect(a?.elicitation).toBeUndefined();
+    markRunningElicitation("a");
+    expect(currentBoard().running.find((run) => run.id === "a")?.awaiting).toBe(false);
+    await flush();
+  });
+
+  it("writes each run's last transition in order", async () => {
+    submit("a");
+    submit("b");
+    markRunningAwaiting("a", true, { steps: ["Send"], current: 0, reapproval: false });
+    markRunningTab("a", 7, 3);
+    markRunningElicitation("a", { requestId: "r1", message: "Continue?", serverName: "acme" });
+    markRunningAwaiting("a", false);
+    markRunningTab("a", 9, 3);
+    markRunningTab("b", 10, 4);
+    await flush();
+    const board = await runBoardItem.get();
+    expect(board.running.find((run) => run.id === "a")).toMatchObject({
+      tabId: 9,
+      windowId: 3,
+      awaiting: false,
+    });
+    expect(board.running.find((run) => run.id === "a")?.elicitation).toBeUndefined();
+    expect(board.running.find((run) => run.id === "b")).toMatchObject({ tabId: 10, windowId: 4 });
+  });
+
+  it("registers direct sessions on the same board until release", async () => {
+    const acquired = acquireRun("direct-chat", "bridge", "client", "direct-id");
+    if (!acquired.ok) throw new Error("Direct claim rejected");
+    trackRunningRun(acquired.run, "Read the invoice");
+    markRunningTab(acquired.run.id, 7, 1);
+    expect(currentBoard().running).toEqual([
+      expect.objectContaining({ id: "direct-id", task: "Read the invoice", tabId: 7 }),
+    ]);
+    releaseRun(acquired.run);
+    await flush();
+    expect(await runBoardItem.get()).toEqual({ running: [], queue: [], pendingQuestions: [] });
+  });
+});
+
+describe("conversation questions", () => {
+  it("keeps questions after their runs end and clears only the named conversation", async () => {
+    submit("a");
+    submit("b");
+    markPendingQuestion("chat-a", "Send invoice?", ["yes", "no"]);
+    markPendingQuestion("chat-b", "Choose an account");
+    releaseRun(claim("a"));
+    releaseRun(claim("b"));
+    await flush();
+    expect((await runBoardItem.get()).running).toEqual([]);
+    expect(currentBoard().pendingQuestions).toHaveLength(2);
+    clearPendingQuestion("chat-a");
+    clearPendingQuestion("other-chat");
+    expect(currentBoard().pendingQuestions).toEqual([
+      { conversationId: "chat-b", question: "Choose an account" },
+    ]);
+  });
+
+  it("keeps each ended run's own tab and window on its pending question", async () => {
+    submit("a");
+    submit("b");
+    markRunningTab("a", 11, 1);
+    markRunningTab("b", 22, 2);
+    markPendingQuestion("chat-a", "Send invoice?");
+    markPendingQuestion("chat-b", "Choose an account");
+    releaseRun(claim("a"));
+    releaseRun(claim("b"));
+    await flush();
+    const pending = (await runBoardItem.get()).pendingQuestions;
+    expect(pending).toEqual([
+      { conversationId: "chat-a", question: "Send invoice?", tabId: 11, windowId: 1 },
+      { conversationId: "chat-b", question: "Choose an account", tabId: 22, windowId: 2 },
+    ]);
+    clearPendingQuestion("chat-a");
+    expect(currentBoard().pendingQuestions).toEqual([pending[1]]);
+  });
+
+  it("omits empty choices and restores all owed questions after worker restart", async () => {
+    markPendingQuestion("chat-a", "Continue?", []);
+    expect(currentBoard().pendingQuestions[0]?.choices).toBeUndefined();
+    restorePendingQuestions([
+      { conversationId: "chat-b", question: "Send it?", choices: ["yes", "no"] },
+    ]);
+    expect(currentBoard().pendingQuestions).toEqual([
+      { conversationId: "chat-a", question: "Continue?" },
+      { conversationId: "chat-b", question: "Send it?", choices: ["yes", "no"] },
+    ]);
+    await flush();
+    expect((await runBoardItem.get()).pendingQuestions).toHaveLength(2);
   });
 });

@@ -4,7 +4,8 @@ import { startAgentRun, MEMORY_KEEPALIVE_ALARM } from "@/modules/agent/start-run
 import { recoverInterrupted } from "@/modules/walkthrough";
 import {
   getActiveRun,
-  releaseRun,
+  getRunById,
+  getOwnerRun,
   answerPlanApproval,
   answerElicitation,
   type ActiveRun,
@@ -14,7 +15,7 @@ import {
   currentBoard,
   listQueue,
   onBoardChanged,
-  restorePendingQuestion,
+  restorePendingQuestions,
   runBoardItem,
   submitRun,
 } from "@/modules/agent/run-queue";
@@ -123,9 +124,9 @@ export default defineBackground(() => {
   // the answer is still owed across the restart, so its record is restored, not
   // reset, or the ambient "answer needed" would drop exactly when it matters.
   void runBoardItem.get().then(async (stale) => {
-    if (stale.pendingQuestion) restorePendingQuestion(stale.pendingQuestion);
-    if (!stale.running && stale.queue.length === 0) return;
-    for (const q of stale.queue) {
+    restorePendingQuestions(stale.pendingQuestions);
+    if (stale.running.length === 0 && stale.queue.length === 0) return;
+    for (const q of [...stale.running, ...stale.queue]) {
       void appendMessageTo(q.conversationId, {
         id: crypto.randomUUID(),
         role: "step",
@@ -134,10 +135,13 @@ export default defineBackground(() => {
         timestamp: Date.now(),
       });
     }
-    if (stale.running?.tabId !== undefined) void hideAgentIndicator(stale.running.tabId);
+    for (const run of stale.running) {
+      if (run.tabId !== undefined) await hideAgentIndicator(run.tabId);
+    }
     await runBoardItem.set({
+      running: [],
+      pendingQuestions: stale.pendingQuestions,
       queue: [],
-      ...(stale.pendingQuestion ? { pendingQuestion: stale.pendingQuestion } : {}),
     });
     void sweepStatusWidget();
   });
@@ -168,7 +172,7 @@ export default defineBackground(() => {
   onBoardChanged((board) => {
     paintActionBadge(board);
     repaintWidget(board);
-    if (board.running || board.queue.length > 0) {
+    if (board.running.length > 0 || board.queue.length > 0) {
       void chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 0.5 });
     } else {
       void chrome.alarms.clear(KEEPALIVE_ALARM);
@@ -183,7 +187,7 @@ export default defineBackground(() => {
   void listConversations().then(learnTitles);
   watchConversations(learnTitles);
   widgetHidden.watch((hidden) => {
-    void syncStatusWidget(hidden ? null : widgetState, currentBoard().running?.tabId);
+    void syncStatusWidget(hidden ? null : widgetState);
   });
   // Scheduled tasks: alarms outlive the worker but NOT every extension update,
   // so storage is the truth and this re-arms from it at every boot. The two
@@ -226,6 +230,7 @@ export default defineBackground(() => {
           // before the run command left — the id rides the command, so this
           // run's transcript lands exactly where its message did.
           const conversationId = msg.conversationId;
+          const runId = msg.runId;
           const launch = () => {
             // Persistence lives here, not in the panel store: the panel closes
             // itself after submit, and its writer would die with it.
@@ -234,6 +239,8 @@ export default defineBackground(() => {
             // inside startAgentRun is the same synchronous turn, so no
             // already-running branch is reachable here.
             void startAgentRun({
+              runId,
+              ownerId: "panel",
               conversationId,
               owner: "panel",
               task: msg.task,
@@ -255,7 +262,14 @@ export default defineBackground(() => {
               log.error("panel run failed to start:", e instanceof Error ? e.message : String(e));
             });
           };
-          const outcome = submitRun({ conversationId, owner: "panel", task: msg.task, launch });
+          const outcome = submitRun({
+            id: runId,
+            conversationId,
+            owner: "panel",
+            ownerId: "panel",
+            task: msg.task,
+            launch,
+          });
           if ("queued" in outcome) {
             send(port, { type: "run_queued", id: outcome.id, position: outcome.queued });
           }
@@ -284,7 +298,7 @@ export default defineBackground(() => {
 
         case "inject": {
           // Only meaningful mid-run; the panel routes idle-time input to `run`.
-          const run = getActiveRun();
+          const run = getRunById(msg.runId);
           if (run?.owner === "panel") {
             run.injectedQueue.push({ id: msg.id, text: msg.text });
             sendSteers(run);
@@ -293,7 +307,7 @@ export default defineBackground(() => {
         }
 
         case "unqueue": {
-          const run = getActiveRun();
+          const run = getRunById(msg.runId);
           if (run?.owner !== "panel") break;
           const i = run.injectedQueue.findIndex((q) => q.id === msg.id);
           if (i >= 0) run.injectedQueue.splice(i, 1);
@@ -304,16 +318,19 @@ export default defineBackground(() => {
         case "plan_approval": {
           // The user's answer to a parked plan prompt — resolves the loop's wait.
           // Owner-scoped like stop: a bridge run never parks, so this is a no-op there.
-          chrome.notifications.clear("tabrunner-plan");
-          // The gate is answered — a mid-run replan is a fresh ask and gets its
-          // own notification, so release the one-buzz-per-park hold.
+          chrome.notifications.clear(
+            `tabrunner-plan:${getRunById(msg.runId)?.conversationId ?? ""}`,
+          );
           notifiedPlanFor = null;
-          const answering = getActiveRun();
+          const answering = getRunById(msg.runId);
           // Broadcast only when the answer actually landed: a doubled click (or
           // a second window a beat late) resolves nothing, and echoing a
           // settled question would re-draw the answer in panels that already
           // settled it.
-          if (answering?.owner === "panel" && answerPlanApproval(msg.approved, msg.feedback)) {
+          if (
+            answering?.owner === "panel" &&
+            answerPlanApproval(msg.runId, msg.approved, msg.feedback)
+          ) {
             // Every panel showing the thread has the card up, so every one of
             // them has to learn it was answered — the panel that clicked
             // disarms its own, the rest would sit on a settled question.
@@ -332,9 +349,9 @@ export default defineBackground(() => {
           // can be theirs. A stale requestId (answered from another window
           // first) resolves nothing and is not echoed: the done event carries
           // the id, so panels clear only the card that was actually settled.
-          const answering = getActiveRun();
+          const answering = getRunById(msg.runId);
           if (!answering || answering.owner !== "panel") break;
-          if (answerElicitation(msg.requestId, msg.action, msg.value)) {
+          if (answerElicitation(msg.runId, msg.requestId, msg.action, msg.value)) {
             broadcast(answering.conversationId, {
               type: "elicitation_done",
               requestId: msg.requestId,
@@ -344,10 +361,10 @@ export default defineBackground(() => {
         }
 
         case "stop": {
-          const run = getActiveRun();
+          const run = getRunById(msg.runId);
           // The panel's Stop on an external run — the same mechanics as the
           // bridge's own stop, routed here so the user can reclaim the browser.
-          if (run?.owner === "bridge") getBridge()?.stopFromPanel();
+          if (run?.owner === "bridge") getBridge()?.stopFromPanel(run.id);
           else haltRun(run);
           // Flush the partial stream immediately — the loop's own done arrives
           // as it unwinds and is a harmless no-op in the panel. Every panel gets
@@ -363,7 +380,7 @@ export default defineBackground(() => {
         case "query_run": {
           // Answer fresh on connect — the broadcast may have happened while the
           // panel was closed, and stale state must never read as "browser idle".
-          send(port, { type: "run_active", active: getBridge()?.activity ?? null });
+          send(port, { type: "run_active", active: getBridge()?.activity ?? [] });
           // A panel that reopened mid-run missed the driving event the run fired
           // at start, so its live band had no tab chip and no way back to the
           // page. Re-send it from the board: the band is then whole either way,
@@ -375,12 +392,8 @@ export default defineBackground(() => {
           // but the spend and the steer queue live on the run slot, and a panel
           // that opened mid-run (the pill's click, the notification's) has seen
           // none of either.
-          const parked = getActiveRun();
-          // The asking panel names its own thread when it knows it — on a
-          // conversation switch, the one ask whose answer must be about where
-          // THIS panel just moved. At connect it does not yet (the stored id is
-          // still resolving), and the shared slot is what it is about to load.
           const showing = msg.conversationId ?? (await getActiveId());
+          const parked = showing ? getActiveRun(showing) : null;
           if (parked?.owner === "panel" && showing === parked.conversationId) {
             // What the run has spent so far. A panel that opened mid-run — the
             // pill's click, the notification's — has seen no deltas, so without
@@ -413,7 +426,10 @@ export default defineBackground(() => {
           // only knows its OWN status: a panel reopened onto a background run of
           // its own reads idle, and a summary appended under a live run lands
           // after messages that run is still writing.
-          if (getActiveRun()?.conversationId === conversationId) {
+          if (
+            getActiveRun(conversationId) ||
+            listQueue().some((entry) => entry.conversationId === conversationId)
+          ) {
             send(port, {
               type: "compact_failed",
               message: i18n.t("commands.compact.busy"),
@@ -516,18 +532,20 @@ export default defineBackground(() => {
     // the browser is the worst kind of surprise, so the record and the run in
     // progress go together.
     if (m?.type === "tabrunner-stop-run" && typeof m.conversationId === "string") {
-      const run = getActiveRun();
-      if (run?.conversationId === m.conversationId) haltRun(run);
+      const run = getActiveRun(m.conversationId);
+      if (run?.owner === "schedule") haltRun(run);
       return;
     }
     if (m?.type !== "tabrunner-mark" || m.action !== "open") return;
     // Land on the work, not on whatever conversation happens to be active —
     // including the question a run just ended on.
     const board = currentBoard();
-    const target =
-      board.running?.conversationId ??
-      board.pendingQuestion?.conversationId ??
-      board.queue[0]?.conversationId;
+    const clicked =
+      board.running.find((run) => run.tabId === sender.tab?.id) ??
+      board.pendingQuestions.find((question) => question.tabId === sender.tab?.id) ??
+      board.running[0] ??
+      board.pendingQuestions[0];
+    const target = clicked?.conversationId ?? board.queue[0]?.conversationId;
     if (target) void setActiveConversation(target);
     void (async () => {
       // Both halves of "back to the run": the panel open beside the work, and
@@ -540,10 +558,10 @@ export default defineBackground(() => {
       // on the way — an open() that lost the gesture was a pill that changed
       // the tab and opened nothing. The page pull follows; focusing a tab
       // needs no gesture.
-      const runTab = board.running?.tabId;
-      const windowId = board.running?.windowId ?? sender.tab?.windowId;
+      const runTab = clicked?.tabId;
+      const windowId = clicked?.windowId ?? sender.tab?.windowId;
       if (windowId !== undefined) await openPanelIn({ windowId });
-      if (runTab !== undefined) void focusTab(runTab, board.running?.windowId);
+      if (runTab !== undefined) void focusTab(runTab, clicked?.windowId);
     })();
   });
 
@@ -584,7 +602,6 @@ function haltRun(run: ReturnType<typeof getActiveRun>): boolean {
   stoppedByUser.add(run.conversationId);
   run.controller.abort();
   run.injectedQueue.length = 0;
-  releaseRun(run);
   return true;
 }
 
@@ -631,9 +648,9 @@ function broadcast(conversationId: string, event: Event) {
  * only speaks for the thread on screen.
  */
 async function sendDrivingTo(port: chrome.runtime.Port, showing?: string): Promise<void> {
-  const running = currentBoard().running;
+  const conversationId = showing ?? (await getActiveId());
+  const running = currentBoard().running.find((run) => run.conversationId === conversationId);
   if (!running || running.tabId === undefined) return;
-  if (running.conversationId !== (showing ?? (await getActiveId()))) return;
   try {
     const tab = await chrome.tabs.get(running.tabId);
     send(port, {
@@ -653,8 +670,7 @@ async function sendDrivingTo(port: chrome.runtime.Port, showing?: string): Promi
  *  (a rename reaches the pill through the same paint, not a special case). */
 function repaintWidget(board: RunBoard): void {
   widgetState = boardToWidget(board);
-  const exclude = board.running?.tabId;
-  void widgetHidden.get().then((hidden) => syncStatusWidget(hidden ? null : widgetState, exclude));
+  void widgetHidden.get().then((hidden) => syncStatusWidget(hidden ? null : widgetState));
 }
 
 /** The widget's content for a board — null when there is nothing to report.
@@ -663,14 +679,15 @@ function repaintWidget(board: RunBoard): void {
  *  but the answer is still owed, so the pill stays up awaiting — dispatch-and-
  *  forget must never swallow the one thing the user has to say. */
 function boardToWidget(board: RunBoard): WidgetState | null {
-  const lead = board.running ?? board.queue[0];
+  const lead = board.running[0] ?? board.queue[0];
+  const pending = board.pendingQuestions[0];
   if (!lead) {
-    if (!board.pendingQuestion) return null;
+    if (!pending) return null;
     return {
       mode: "ambient",
       // The question itself leads — it is the ask, more informative than a
       // generic "waiting" line. The "?" badge carries the blocked state.
-      task: truncate(board.pendingQuestion.question, 120),
+      task: truncate(pending.question, 120),
       queuedText: "",
       awaiting: true,
       awaitingText: "",
@@ -680,8 +697,8 @@ function boardToWidget(board: RunBoard): WidgetState | null {
       expandHint: i18n.t("widget.expandHint"),
     };
   }
-  const extra = board.running ? board.queue.length : board.queue.length - 1;
-  const parked = board.running?.awaiting === true;
+  const extra = board.running.length + board.queue.length + board.pendingQuestions.length - 1;
+  const parked = board.running[0]?.awaiting === true;
   // The headline is the conversation — the job's name — with the steering
   // message kept for the tooltip; when no title is known yet, the excerpt
   // leads as it always did.
@@ -692,7 +709,7 @@ function boardToWidget(board: RunBoard): WidgetState | null {
     mode: "ambient",
     task: headline,
     ...(title !== undefined && title !== excerpt ? { taskTip: excerpt } : {}),
-    queuedText: extra > 0 ? i18n.t("widget.queued", { count: extra }) : "",
+    queuedText: extra > 0 ? i18n.t("widget.moreTasks", { count: extra }) : "",
     awaiting: parked,
     // A parked run's headline can't say the run is blocked on you — swap the
     // text for the state (the tooltip keeps the identity).
@@ -706,14 +723,11 @@ function boardToWidget(board: RunBoard): WidgetState | null {
 
 /** The toolbar's one line: what is running, what failed, or what still needs an answer. */
 function paintActionBadge(board: RunBoard = currentBoard()): void {
-  void syncActionBadge(
-    (board.running ? 1 : 0) + board.queue.length + (board.pendingQuestion ? 1 : 0),
-    {
-      awaiting: board.running?.awaiting === true || board.pendingQuestion != null,
-      failed: unseenFailure,
-      recording: board.running?.recording === true,
-    },
-  );
+  void syncActionBadge(board.running.length + board.queue.length + board.pendingQuestions.length, {
+    awaiting: board.running.some((run) => run.awaiting) || board.pendingQuestions.length > 0,
+    failed: unseenFailure,
+    recording: board.running.some((run) => run.recording),
+  });
 }
 
 /**
@@ -755,14 +769,14 @@ async function notifyRunEnded(conversationId: string, task: string, event: Event
   // avoid. Cleared ahead of the early returns below on purpose: a silent error
   // (the driven tab closed under a parked plan) and a user stop are exactly the
   // endings that leave one behind.
-  chrome.notifications.clear("tabrunner-plan");
+  chrome.notifications.clear(`tabrunner-plan:${conversationId}`);
   notifiedPlanFor = null;
   if (event.type === "done" && event.question) return;
   if (event.type === "error" && event.silent) return;
   if (stoppedByUser.delete(conversationId)) return;
   // Read before the first await: the run releases its slot moments after this
   // event, and the board's tab id goes with it.
-  const tabId = currentBoard().running?.tabId;
+  const tabId = currentBoard().running.find((run) => run.conversationId === conversationId)?.tabId;
   const done = event.type === "done";
   const watching = await userIsWatching();
   // A failure nobody saw outlives its notification — the toolbar holds it.
@@ -816,13 +830,14 @@ async function notifyIfAway(
   conversationId?: string,
   choices?: string[],
 ): Promise<boolean> {
+  id = conversationId ? `${id}:${conversationId}` : id;
   if (await userIsWatching()) return false;
   if (conversationId) {
     // The tab this run is on, captured now: the click that answers this
     // notification has to open the panel without awaiting anything, and a
     // lookup there would be exactly the await that loses the gesture.
-    const running = currentBoard().running;
-    const tabId = running?.conversationId === conversationId ? running.tabId : undefined;
+    const running = currentBoard().running.find((run) => run.conversationId === conversationId);
+    const tabId = running?.tabId;
     notificationTargets.set(id, { conversationId, ...(tabId !== undefined ? { tabId } : {}) });
   }
   const body = choices?.length ? `${message}: ${choices.join(" · ")}` : message;
@@ -870,7 +885,7 @@ async function notifyPlanParked(conversationId: string, ask: PlanApprovalPayload
  * one. No-op unless a panel run is actually sitting at the gate.
  */
 function notifyParkedRun(): void {
-  const run = getActiveRun();
+  const run = getOwnerRun("panel", "panel");
   if (run?.owner !== "panel" || !run.planApproval) return;
   void notifyPlanParked(run.conversationId, run.planApproval.ask);
 }
@@ -891,7 +906,11 @@ function openPanelIn(where: { tabId: number } | { windowId: number }): Promise<v
 // Notification click opens the panel at the right conversation so the user can
 // answer — for a finished run, with its tab in front as well.
 chrome.notifications.onClicked.addListener((id) => {
-  if (id !== "tabrunner-question" && id !== "tabrunner-plan" && !id.startsWith("tabrunner-run-"))
+  if (
+    !id.startsWith("tabrunner-question:") &&
+    !id.startsWith("tabrunner-plan:") &&
+    !id.startsWith("tabrunner-run-")
+  )
     return;
   chrome.notifications.clear(id);
   const target = notificationTargets.get(id) ?? null;

@@ -9,9 +9,10 @@ import { createRecorder } from "@/modules/walkthrough/recorder";
 import { maybeAutoTitle } from "@/modules/conversation/title";
 import { isPanelOpen } from "@/modules/conversation/panel-ports";
 import {
+  claimTab,
   clearAgentWait,
   createDriver,
-  detachAll,
+  releaseBrowserOwner,
   hideAgentIndicator,
   isRestrictedUrl,
   settleAgentIndicator,
@@ -73,10 +74,21 @@ const log = createLogger("bg");
 
 /** Holds the worker up through the post-run memory extraction — see start-run.ts. */
 export const MEMORY_KEEPALIVE_ALARM = "tabrunner-memory-keepalive";
+let pendingBackgroundWork = 0;
+
+function keepBackgroundWorkAlive(work: Promise<unknown>): void {
+  pendingBackgroundWork++;
+  void chrome.alarms.create(MEMORY_KEEPALIVE_ALARM, { periodInMinutes: 0.5 });
+  void work.finally(() => {
+    pendingBackgroundWork--;
+    if (pendingBackgroundWork === 0) void chrome.alarms.clear(MEMORY_KEEPALIVE_ALARM);
+  });
+}
 
 export interface StartRunOptions {
-  /** The conversation this run's transcript lives in — the panel's active one,
-   *  or the bridge's dedicated MCP thread. */
+  runId: string;
+  ownerId: string;
+  /** The conversation this run's transcript lives in. */
   conversationId: string;
   owner: RunOwner;
   /** The schedule this run fired from — what `schedule_task` is allowed to
@@ -103,8 +115,8 @@ export type StartRunResult = { ok: true } | { ok: false; active: ActiveRun };
 
 /**
  * The full run-start flow, shared by the panel port and the MCP bridge: claim
- * the single run slot, resolve provider + target tab, drive the loop, distill
- * memory, persist the driven tab. A conflict is returned (never swallowed) so
+ * an owner/conversation slot, resolve provider + target tab, drive the loop,
+ * distill memory and persist the driven tab. A conflict is returned so
  * each caller can word it for its own audience.
  */
 export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResult> {
@@ -117,7 +129,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     onAskUser,
     onPlanApprovalRequest,
   } = opts;
-  const claim = acquireRun(conversationId, owner);
+  const claim = acquireRun(conversationId, owner, opts.ownerId, opts.runId);
   if (!claim.ok) return { ok: false, active: claim.active };
   const { run } = claim;
 
@@ -187,6 +199,20 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
   /** Remote MCP sessions opened mid-setup; closed in the outer finally so
    *  every ending — including the early returns below — tears them down. */
   let mcpPromise: Promise<McpRunSnapshot> | undefined;
+  let currentTabId: number | undefined;
+  let unstartedTabId: number | undefined;
+  let indicatorsSettled = false;
+  let documenting = false;
+  let reopening: Promise<void> | undefined;
+  const removeListeners: (() => void)[] = [];
+  const indicatorWork = new Set<Promise<void>>();
+  const trackIndicator = (work: Promise<void>): void => {
+    const safe = work.catch((e) =>
+      log.debug("indicator update skipped:", e instanceof Error ? e.message : String(e)),
+    );
+    indicatorWork.add(safe);
+    void safe.then(() => indicatorWork.delete(safe));
+  };
 
   try {
     // What this conversation runs on: its own pin, else the stored pick. The
@@ -197,6 +223,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       getMessages(conversationId),
     ]);
     const providerConfig = await getProviderFor(meta?.engine);
+    run.controller.signal.throwIfAborted();
     if (!providerConfig) {
       emit({ type: "error", message: i18n.t("errors.noActiveProvider") });
       return { ok: true };
@@ -229,6 +256,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         ...(resolvedProvider.reasoningEffort ? { effort: resolvedProvider.reasoningEffort } : {}),
       });
     } catch (e) {
+      if (run.controller.signal.aborted) throw e;
       const message = e instanceof Error ? e.message : String(e);
       const kind = e instanceof ProviderError ? e.kind : undefined;
       // The same split the loop draws one layer down: a classified state — an
@@ -249,7 +277,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // run's consent was given at creation — neither can answer a question,
       // and declining is the safe direction (the gate auto-approves plans;
       // handing data to a server is not ours to approve for them).
-      if (owner !== "panel") return "decline";
+      if (owner !== "panel" || run.controller.signal.aborted) return "decline";
       return new Promise<{ action: "accept" | "decline"; value?: Record<string, unknown> }>(
         (resolve) => {
           const requestId = crypto.randomUUID();
@@ -267,14 +295,14 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
           emit({ type: "elicitation", ...ask });
           // The ask rides the board like the plan gate's, so a panel that
           // missed the broadcast still gets the question.
-          markRunningElicitation(conversationId, ask);
-          void waitAgentIndicator(drivenTabId);
+          markRunningElicitation(run.id, ask);
+          trackIndicator(waitAgentIndicator(drivenTabId));
           run.elicitation = {
             requestId,
             resolve: (result) => {
               // Answered: the run works again, so the working marks return.
-              markRunningElicitation(conversationId, undefined);
-              void showAgentIndicator(drivenTabId);
+              markRunningElicitation(run.id, undefined);
+              trackIndicator(showAgentIndicator(drivenTabId));
               resolve(result);
             },
           };
@@ -292,7 +320,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     const continuation = continuesThreadTab(owner, hasPendingQuestion(transcript), opts)
       ? thread.tabs[0]
       : undefined;
-    const target = await resolveRunTab(opts, continuation, thread);
+    const target = await resolveRunTab(opts, continuation, thread, run.controller.signal);
 
     if ("error" in target) {
       emit({ type: "error", message: target.error });
@@ -303,7 +331,11 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       emit({ type: "error", message: i18n.t("errors.noActiveTab") });
       return { ok: true };
     }
-    markRunningTab(conversationId, tab.id, tab.windowId);
+    unstartedTabId = opened ? tab.id : undefined;
+    claimTab(run.id, tab.id);
+    run.controller.signal.throwIfAborted();
+    currentTabId = tab.id;
+    markRunningTab(run.id, tab.id, tab.windowId);
 
     // The conversation may have worked on other pages than this run's start
     // (one run per message, and users move between messages). Name those tabs
@@ -337,6 +369,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     // be passing through the tab they sent from) — the loop touches it into
     // being when the run lands its first action, and group_tab can mint it too.
     const runGroup = createRunGroup({
+      ownerId: run.id,
       task,
       keepName: target.resumed === true,
       ...(target.threadGroupId !== undefined ? { seedGroupId: target.threadGroupId } : {}),
@@ -344,6 +377,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     });
     const starterTab = opened === true && !opts.url && !continuation?.url;
     const driver = createDriver(tab.id, {
+      ownerId: run.id,
       openedTab: opened === true,
       // A run follows its own switches on screen only while somebody is there
       // to watch — asked live, so the moment the panel closes the run stops
@@ -351,11 +385,12 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // walking away buys, whether it was chosen at send time or mid-run.
       activateOnSwitch: isPanelOpen,
       onSwitch: (info) => {
-        if (drivenTabId !== info.id) void hideAgentIndicator(drivenTabId);
+        if (drivenTabId !== info.id) trackIndicator(hideAgentIndicator(drivenTabId));
         drivenTabId = info.id;
+        currentTabId = info.id;
         drivenTitle = info.title;
         drivenUrl = info.url;
-        markRunningTab(conversationId, info.id, info.windowId);
+        markRunningTab(run.id, info.id, info.windowId);
         emit({
           type: "driving",
           tabId: info.id,
@@ -364,7 +399,8 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
           url: info.url,
           favIconUrl: info.favIconUrl,
         });
-        void showAgentIndicator(info.id);
+        trackIndicator(showAgentIndicator(info.id));
+        if (documenting) trackIndicator(setAgentDocumenting(info.id, true));
       },
     });
     emit({
@@ -444,12 +480,13 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       const reopenTo = reopenTargetFor(owner, reopened, drivenUrl);
       if (reopenTo) {
         reopened = true;
-        void reopenDrivenTab(reopenTo);
+        reopening = reopenDrivenTab(reopenTo);
         return;
       }
       endOnLostTab(resumableUrl(drivenUrl));
     };
     chrome.tabs.onRemoved.addListener(onTabGone);
+    removeListeners.push(() => chrome.tabs.onRemoved.removeListener(onTabGone));
     // Where the driven tab IS, not where the run picked it up. A same-tab
     // navigation moves the page without firing onSwitch (which speaks for
     // re-targeting, not for going somewhere), and both things that outlive a
@@ -461,15 +498,16 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       if (tab.title) drivenTitle = tabLabel(tab);
     };
     chrome.tabs.onUpdated.addListener(onDrivenTabChanged);
+    removeListeners.push(() => chrome.tabs.onUpdated.removeListener(onDrivenTabChanged));
     // Tell the page itself it is being driven — the side panel may be scrolled
     // away or on another window.
-    await clearAgentWait();
-    chrome.notifications.clear("tabrunner-question");
-    chrome.notifications.clear("tabrunner-plan");
+    await clearAgentWait(drivenTabId);
+    chrome.notifications.clear(`tabrunner-question:${conversationId}`);
+    chrome.notifications.clear(`tabrunner-plan:${conversationId}`);
     // A fresh run is itself the answer to whatever question was parked — or the
     // user moved on, and the question is stale either way. Both retire it.
     clearPendingQuestion(conversationId);
-    void showAgentIndicator(drivenTabId);
+    trackIndicator(showAgentIndicator(drivenTabId));
 
     // What this model can hold — a ceiling an earlier run learned from a
     // refusal, the endpoint's own listing, or the 200k default. It sets both
@@ -485,16 +523,21 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     // per action — which is what lets the model turn documenting on mid-run,
     // the moment the user asks for it in prose.
     const recorder = (await walkthroughsEnabled.get())
-      ? createRecorder(conversationId, task, () => {
-          emit({ type: "recording", on: true });
-          // Ambient, not just panel state: the driven tab's badge and the
-          // toolbar title have to say REC after the panel closes.
-          markRunningRecording(conversationId, true);
-          void setAgentDocumenting(true);
-        })
+      ? createRecorder(
+          conversationId,
+          task,
+          () => {
+            documenting = true;
+            emit({ type: "recording", on: true });
+            markRunningRecording(run.id, true);
+            trackIndicator(setAgentDocumenting(drivenTabId, true));
+          },
+          { ownerId: run.id, tabId: () => drivenTabId },
+        )
       : undefined;
 
     try {
+      unstartedTabId = undefined;
       const mcp = await mcpPromise;
       // One neutral row per server that failed to open — never a red ✗ (a dead
       // remote is not a failed action) and silent on success: availability is
@@ -565,8 +608,8 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             // pulse stops. The ask rides the board, so a panel that missed the
             // broadcast still gets the card. An approve re-raises the working
             // marks; a reject (or stop) ends the run, whose unwind clears them.
-            markRunningAwaiting(conversationId, true, ask);
-            void waitAgentIndicator(drivenTabId);
+            markRunningAwaiting(run.id, true, ask);
+            trackIndicator(waitAgentIndicator(drivenTabId));
             return new Promise<PlanApprovalOutcome>((resolve) => {
               run.planApproval = {
                 ask,
@@ -578,9 +621,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
                   // one the plan_answered broadcast never reached. Approve or
                   // revise: the run works again, so the working marks return;
                   // a plain reject ends it — its unwind clears the rest.
-                  markRunningAwaiting(conversationId, false);
+                  markRunningAwaiting(run.id, false);
                   if (approved || revision) {
-                    void showAgentIndicator(drivenTabId);
+                    trackIndicator(showAgentIndicator(drivenTabId));
                   } else {
                     planRejected = true;
                   }
@@ -663,7 +706,6 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // alarm holds the worker up until both settle; background.ts clears a
       // stale one at boot.
       if (!run.controller.signal.aborted && resolvedProvider) {
-        void chrome.alarms.create(MEMORY_KEEPALIVE_ALARM, { periodInMinutes: 0.5 });
         // Where the run ended is where its lessons belong — the extraction gets
         // the driven tab's final URL as its site hint. Tab-died tolerance
         // mirrors persistDrivenTabFor; the lookup rides the chain so the
@@ -693,9 +735,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         // worker's hold out from under the slower one.
         // Webhook deliveries join the same window: a run_finished POST that
         // outlives the run still gets its worker time without a second alarm.
-        void Promise.allSettled([extraction, titling, hooksPending()]).finally(() => {
-          void chrome.alarms.clear(MEMORY_KEEPALIVE_ALARM);
-        });
+        keepBackgroundWorkAlive(Promise.allSettled([extraction, titling, hooksPending()]));
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -703,14 +743,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       runFailed = true;
       emit({ type: "error", message, unexpected: true });
     } finally {
-      chrome.tabs.onRemoved.removeListener(onTabGone);
-      chrome.tabs.onUpdated.removeListener(onDrivenTabChanged);
-      // The walkthrough closes before the session does: its last frame is the
-      // result the reader is working toward, and `detachAll()` below takes the
-      // capture path with it. Every ending funnels through this one finally —
-      // done, error, stop, a closed tab, a crashed loop — so one seam covers
-      // them all, and a recording is never lost to the way a run happened to
-      // end. Best-effort: a failed finalize must not strand the teardown.
+      for (const remove of removeListeners.splice(0)) remove();
+      await reopening;
+      // Finalize before releasing this run's capture sessions.
       if (recorder?.armed) {
         try {
           const outcome = runFailed ? "error" : run.controller.signal.aborted ? "stopped" : "done";
@@ -729,14 +764,11 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
           log.warn("walkthrough finalize failed:", e instanceof Error ? e.message : String(e));
         }
         emit({ type: "recording", on: false });
-        markRunningRecording(conversationId, false);
-        void setAgentDocumenting(false);
+        markRunningRecording(run.id, false);
+        documenting = false;
+        trackIndicator(setAgentDocumenting(drivenTabId, false));
       }
-      // The debugger leaves with the run: its session is what keeps Chrome's
-      // "debugging this browser" infobar up, and held past the run's end it
-      // would pin the banner on a page nothing is driving — it even outlives
-      // the worker. Awaited so the slot never frees with a detach in flight.
-      await detachAll();
+      await Promise.all(indicatorWork);
       // A starter tab opened on the default start page that never had a single
       // action land on it (and was not switched away from, which already closed
       // it) is scratch space the run never used — close it instead of leaving a
@@ -748,14 +780,15 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // takes it down — the user did that, and the panel already says so — and
       // a finished or failed run settles into the receipt instead of quietly
       // vanishing, which reads exactly like a crash.
-      if (endedOnQuestion) void waitAgentIndicator(drivenTabId);
+      if (endedOnQuestion) await waitAgentIndicator(drivenTabId);
       else if (run.controller.signal.aborted || planRejected || discardUnusedStarter)
-        void hideAgentIndicator(drivenTabId);
+        await hideAgentIndicator(drivenTabId);
       else {
         const outcome: SettleOutcome = runFailed ? "failed" : "done";
-        void settleAgentIndicator(drivenTabId, outcome);
+        await settleAgentIndicator(drivenTabId, outcome);
         ambientSettle = { outcome, tabId: drivenTabId };
       }
+      indicatorsSettled = true;
       // The thread's strip: the one this run minted, or the seed it was told to
       // join. A run that only read a page mints nothing, yet its tab is sitting
       // in the thread's strip all the same — recording no group there is what
@@ -797,11 +830,26 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         }
       }
     }
+  } catch (e) {
+    runFailed = true;
+    if (run.controller.signal.aborted) emit({ type: "done", stopped: true });
+    else {
+      const message = e instanceof Error ? e.message : String(e);
+      log.warn("run setup failed:", message);
+      emit({ type: "error", message });
+    }
   } finally {
-    // Remote sessions die with the run — here, in the OUTER finally, because
-    // the early provider/target returns above never reach the inner one. The
-    // DELETE is best-effort and independent of the debugger, so ordering with
-    // detachAll is free; a hung close must not strand the unwind either way.
+    for (const remove of removeListeners.splice(0)) remove();
+    await reopening;
+    await Promise.all(indicatorWork);
+    if (!indicatorsSettled && currentTabId !== undefined) {
+      await hideAgentIndicator(currentTabId);
+    }
+    if (unstartedTabId !== undefined) await discardRunTab(unstartedTabId);
+    run.readsClosed = true;
+    await Promise.allSettled(run.pendingReads);
+    await releaseBrowserOwner(run.id);
+    // Remote sessions die with the run, including early setup returns.
     try {
       await mcpPromise?.then((m) => m.handle.close());
     } catch {
@@ -823,7 +871,11 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     // receipt paints in its place.
     if (ambientSettle) {
       const board = currentBoard();
-      if (!board.running && board.queue.length === 0 && !board.pendingQuestion) {
+      if (
+        board.running.length === 0 &&
+        board.queue.length === 0 &&
+        board.pendingQuestions.length === 0
+      ) {
         void settleStatusWidgets(ambientSettle.outcome, ambientSettle.tabId);
       }
     }
@@ -986,8 +1038,11 @@ async function resolveRunTab(
   opts: StartRunOptions,
   continuation: LastTab | undefined,
   thread: ThreadTabs,
+  signal: AbortSignal,
 ): Promise<RunTab | { error: string }> {
+  signal.throwIfAborted();
   const reused = await reuseContinuationTab(continuation, thread);
+  if (reused?.tab.id !== undefined) claimTab(opts.runId, reused.tab.id);
   if (reused) {
     // Context, not a target: where the user sat when they sent this. The run
     // starts on the thread's tab; the model hears about theirs.
@@ -1006,6 +1061,7 @@ async function resolveRunTab(
   if (adopt) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id && tab.url && !isBlankPage(tab.url) && !isRestrictedUrl(tab.url)) {
+      claimTab(opts.runId, tab.id);
       try {
         if (tab.status === "loading") await waitForLoad(tab.id, 10_000);
       } catch (e) {
@@ -1022,6 +1078,7 @@ async function resolveRunTab(
 
   const start = await resolveStartUrl(opts, continuation?.url);
   if (isRestrictedUrl(start.url)) return { error: i18n.t("errors.restrictedPage") };
+  signal.throwIfAborted();
   let tab: chrome.tabs.Tab;
   try {
     tab = await chrome.tabs.create({ active: false, url: start.url });
@@ -1033,24 +1090,23 @@ async function resolveRunTab(
     };
   }
   if (!tab.id) return { error: i18n.t("errors.noActiveTab") };
+  claimTab(opts.runId, tab.id);
   try {
     await waitForLoad(tab.id);
+    signal.throwIfAborted();
+    const loaded = await chrome.tabs.get(tab.id);
+    const threadGroupId = await liveThreadGroup(thread, loaded);
+    signal.throwIfAborted();
+    return {
+      tab: loaded,
+      opened: true,
+      ...(threadGroupId !== undefined ? { threadGroupId } : {}),
+    };
   } catch (e) {
-    // A tab the run never drove is litter — close it on the way out.
-    void chrome.tabs.remove(tab.id).catch(() => {});
+    await discardRunTab(tab.id);
+    if (signal.aborted) throw e;
     return { error: e instanceof Error ? e.message : String(e) };
   }
-  // Re-read after the wait — the created record predates the navigation.
-  const loaded = await chrome.tabs.get(tab.id);
-  // A brand-new tab has no strip of its own to keep — the records and the
-  // window's contents point at the thread's. Grouping waits for the first action.
-  const threadGroupId = await liveThreadGroup(thread, loaded);
-  // Never revealed — only background runs open a tab of their own (above).
-  return {
-    tab: loaded,
-    opened: true,
-    ...(threadGroupId !== undefined ? { threadGroupId } : {}),
-  };
 }
 
 /**
@@ -1300,6 +1356,7 @@ export async function labelRunTab(
  * that's a group the user (or another chat) owns, never ours to rip.
  */
 export function createRunGroup(opts: {
+  ownerId: string;
   task: string;
   /** A continuation joins its parked strip without renaming it. */
   keepName: boolean;
@@ -1310,6 +1367,7 @@ export function createRunGroup(opts: {
   let groupId: number | undefined;
 
   const label = async (tabId: number): Promise<number | undefined> => {
+    claimTab(opts.ownerId, tabId);
     if (groupId !== undefined) {
       // The strip exists — file the tab into it. Best-effort: a tab in another
       // window can't join, and a run never fails over its strip.

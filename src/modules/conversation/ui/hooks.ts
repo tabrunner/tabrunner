@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useConversationStore, pinOf, boardRunHere } from "./store";
+import { useConversationStore, pinOf, boardRunHere, bridgeRunHere } from "./store";
 import type { ConversationState } from "./store";
 import { isRestrictedUrl } from "@/modules/browser";
 import { engineProvider } from "@/modules/providers/engine";
@@ -51,7 +51,7 @@ export function useNow(active: boolean): number {
 export function useWalkAway(): { live: boolean; parked: boolean } {
   const status = useConversationStore((s) => s.status);
   const runStartedAt = useConversationStore((s) => s.runStartedAt);
-  const bridgeActive = useConversationStore((s) => s.bridgeActive);
+  const bridgeActive = useConversationStore(bridgeRunHere);
   const parkedOnAnswer = useConversationStore(
     (s) => s.planApproval !== null || s.elicitation !== null,
   );

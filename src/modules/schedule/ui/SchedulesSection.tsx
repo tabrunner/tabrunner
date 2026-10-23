@@ -104,7 +104,7 @@ export function SchedulesSection() {
   const { t, i18n } = useTranslation();
   const schedules = useSortedSchedules();
   const board = useStoredItem(runBoardItem);
-  const busyOn = board.running?.conversationId;
+  const busyOn = new Set(board.running.map((run) => run.conversationId));
   // A fire that landed while another run held the slot is waiting, not lost.
   // Without this the row falls back to "Next 09:00" and reads as if the click
   // did nothing at all.
@@ -144,7 +144,7 @@ export function SchedulesSection() {
       ) : (
         <ul className="mt-3 space-y-1.5">
           {schedules.map((s) => {
-            const running = busyOn === s.conversationId;
+            const running = busyOn.has(s.conversationId);
             const queued = !running && queuedOn.has(s.conversationId);
             // Paused reads as off, not as a quieter live row — the whole point
             // of the state is that this thing is not going to happen.

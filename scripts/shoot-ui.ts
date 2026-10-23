@@ -243,43 +243,48 @@ async function seedParkedGate(kind: "plan" | "elicit") {
     const id = "shots-demo";
     return chrome.storage.local.set({
       "tabrunner:active-conversation": id,
-      "tabrunner:run-board": {
-        running: {
-          conversationId: id,
-          task: "Pull the latest invoice from my inbox into the expense report",
-          owner: "panel",
-          startedAt: Date.now() - 42_000,
-          awaiting: true,
-          ...(kind === "plan"
-            ? {
-                approval: {
-                  steps: [
-                    "Open the inbox",
-                    "Find the latest invoice",
-                    "Open the expense report",
-                    "Attach it and fill the fields",
-                  ],
-                  current: 0,
-                  reapproval: false,
-                },
-              }
-            : {
-                elicitation: {
-                  requestId: "shots-r1",
-                  serverName: "acme-reports",
-                  message: "Pick the workspace the invoice should be filed into.",
-                  requestedSchema: {
-                    type: "object",
-                    properties: {
-                      workspace: { type: "string", enum: ["Finance", "Ops", "Archive"] },
-                      include_attachments: { type: "boolean" },
-                      memo: { type: "string" },
-                    },
-                    required: ["workspace"],
+      "tabrunner:run-board-v2": {
+        running: [
+          {
+            id: "shots-run",
+            ownerId: "panel",
+            conversationId: id,
+            task: "Pull the latest invoice from my inbox into the expense report",
+            owner: "panel",
+            startedAt: Date.now() - 42_000,
+            awaiting: true,
+            ...(kind === "plan"
+              ? {
+                  approval: {
+                    steps: [
+                      "Open the inbox",
+                      "Find the latest invoice",
+                      "Open the expense report",
+                      "Attach it and fill the fields",
+                    ],
+                    current: 0,
+                    reapproval: false,
                   },
-                },
-              }),
-        },
+                }
+              : {
+                  elicitation: {
+                    requestId: "shots-r1",
+                    serverName: "acme-reports",
+                    message: "Pick the workspace the invoice should be filed into.",
+                    requestedSchema: {
+                      type: "object",
+                      properties: {
+                        workspace: { type: "string", enum: ["Finance", "Ops", "Archive"] },
+                        include_attachments: { type: "boolean" },
+                        memo: { type: "string" },
+                      },
+                      required: ["workspace"],
+                    },
+                  },
+                }),
+          },
+        ],
+        pendingQuestions: [],
         queue: [],
       },
     });

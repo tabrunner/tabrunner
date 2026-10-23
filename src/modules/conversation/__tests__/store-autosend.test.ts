@@ -64,6 +64,7 @@ beforeEach(async () => {
     messages: [],
     conversations: [],
     activeId: null,
+    activeRunId: null,
     status: "idle",
     streamingText: "",
     reasoningText: "",
@@ -93,24 +94,29 @@ describe("stop auto-sends the queue", () => {
     const conversationId = useConversationStore.getState().activeId;
     expect(port.fake.postMessage).toHaveBeenLastCalledWith({
       type: "run",
+      runId: expect.any(String),
       conversationId,
       task: "original task",
     });
 
+    const firstRunId = useConversationStore.getState().activeRunId;
+    expect(firstRunId).toEqual(expect.any(String));
     s.queueMessage("go back");
     s.queueMessage("then reload");
     s.stop();
-    expect(port.fake.postMessage).toHaveBeenLastCalledWith({ type: "stop" });
+    expect(port.fake.postMessage).toHaveBeenLastCalledWith({ type: "stop", runId: firstRunId });
 
     port.fireMessage({ type: "done" });
 
     await vi.waitFor(() =>
       expect(port.fake.postMessage).toHaveBeenLastCalledWith({
         type: "run",
+        runId: expect.any(String),
         conversationId,
         task: "go back\nthen reload",
       }),
     );
+    expect(useConversationStore.getState().activeRunId).not.toBe(firstRunId);
     expect(useConversationStore.getState().queued).toEqual([]);
   });
 
@@ -126,6 +132,7 @@ describe("stop auto-sends the queue", () => {
 
     expect(port.fake.postMessage).not.toHaveBeenCalledWith({
       type: "run",
+      runId: expect.any(String),
       conversationId,
       task: "go back",
     });
@@ -144,6 +151,7 @@ describe("stop auto-sends the queue", () => {
 
     expect(port.fake.postMessage).not.toHaveBeenCalledWith({
       type: "run",
+      runId: expect.any(String),
       conversationId,
       task: "go back",
     });
@@ -179,6 +187,7 @@ describe("stop auto-sends the queue", () => {
     await vi.waitFor(() =>
       expect(port.fake.postMessage).toHaveBeenLastCalledWith({
         type: "run",
+        runId: expect.any(String),
         conversationId,
         task: "go back",
       }),
