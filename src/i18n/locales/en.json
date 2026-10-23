@@ -68,7 +68,7 @@
       "portHint": "Must match the daemon's TABRUNNER_BRIDGE_PORT. Default is 17836.",
       "invalidPort": "Enter a whole number between 1024 and 65535",
       "guideTitle": "How MCP works in both directions",
-      "guideIn": "Clients dial in (the bridge): an external AI client spawns a small local daemon, TabRunner connects out to it, and that client's tasks run in this browser with your logged-in sessions. Off costs nothing.",
+      "guideIn": "External AI clients share one local daemon. Each client gets its own chat and tabs. Up to four tasks can run at once; separate tabs still share your login sessions.",
       "guideOut": "Add an https:// MCP server below to use its tools in every run. Tool names follow mcp__server__tool, and every tool requires plan approval. Auth headers stay local and are never logged.",
       "guideQuestions": "Servers can ask questions during a task. They appear as a card in the panel and are declined automatically on unattended runs. Run events can also be sent as webhooks. See Settings → Behavior.",
       "statusConnected": "Connected to the daemon",
@@ -76,7 +76,7 @@
       "setupTitle": "Connect a client",
       "setupHelp": "In Claude Code, install the plugin. It starts the daemon for you and teaches Claude when to hand a task to TabRunner:",
       "manualHelp": "Or register only the daemon, without the skill. It needs bun. With --scope user, it works in every project, not just the current folder:",
-      "removeHelp": "Use one or the other: two daemons can't share the port. To remove the one you registered by hand:",
+      "removeHelp": "Choose the plugin or the manual setup to avoid listing the same tools twice. To remove a manual setup:",
       "copy": "Copy",
       "copied": "Copied",
       "docsLink": "Full setup guide →",
@@ -394,7 +394,7 @@
       "runNow": "Run now",
       "runNowOnce": "Run now as a test. It will still run at the scheduled time.",
       "running": "Running now",
-      "queued": "Queued. Starts when the current task finishes.",
+      "queued": "Queued. Starts when a task slot is free.",
       "paused": "Paused",
       "pause": "Pause (keep the task and chat; stop the timer)",
       "resume": "Resume (recalculate the next run from now)",
@@ -966,9 +966,9 @@
     "revisingPlan": "Revising the plan…",
     "awaitingAnswer": "Waiting for your answer",
     "drivingTabTip": "Go to this page (reopens it if the tab is gone)",
-    "bridgeTask": "{{client}} is running a task in your browser",
-    "bridgeDriving": "{{client}} is driving your browser",
-    "bridgeStopTitle": "Stops the task and hands the browser back",
+    "bridgeTask": "{{client}} is running a task on this tab",
+    "bridgeDriving": "{{client}} is controlling this tab",
+    "bridgeStopTitle": "Stop only this task. Other tasks keep running.",
     "background": "In background",
     "foreground": "In foreground",
     "modeAria": "Next task runs: {{mode}}",
@@ -984,11 +984,10 @@
   },
   "queue": {
     "position": "Waiting to run · #{{position}}",
-    "queuedTitle": "Waiting for the current task to finish",
+    "queuedTitle": "Waiting for an available task slot",
     "cancel": "Cancel"
   },
   "widget": {
-    "queued": "+{{count}} queued",
     "hide": "Hide",
     "openHint": "Watch the run (opens the panel beside the page TabRunner is using)",
     "hideHint": "Collapse to a small dot. Click the dot to show the widget again.",
@@ -996,7 +995,9 @@
     "settledDone": "Task finished",
     "settledFailed": "Task failed",
     "settledHint": "Open TabRunner to see the result",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "moreTasks_one": "+{{count}} other task",
+    "moreTasks_other": "+{{count}} other tasks"
   },
   "board": {
     "title": "Tasks",
@@ -1203,6 +1204,9 @@
     "skillSaved": "Saved \"{{name}}\". Find it in /skills.",
     "saveSkillNoUrl": "No URL given. Provide a direct https URL or owner/repo for the skill.",
     "saveSkillBadUrl": "Could not reach a skill file at {{url}}. Use a direct https link to the markdown file or owner/repo[/path].",
-    "saveSkillUnnamed": "The file has no skill name, and no replacement name was given. Pass a kebab-case name: lowercase words separated by hyphens."
+    "saveSkillUnnamed": "The file has no skill name, and no replacement name was given. Pass a kebab-case name: lowercase words separated by hyphens.",
+    "tabInUse": "Another task is using tab {{tabId}}. Choose a different tab, or wait for that task to finish.",
+    "staleBridgeRun": "This task is no longer current. Check its status, then try again with the current run ID.",
+    "noBridgeScreenshot": "There is no page to capture for this task. Start a task or a browser session, then try again."
   }
 }

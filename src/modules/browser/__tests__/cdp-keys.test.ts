@@ -95,7 +95,7 @@ describe("pressKey", () => {
     sent.length = 0;
     resetPlatformModifierForTest();
     platformOs = "mac";
-    await ensureAttached(1);
+    await ensureAttached("keys", 1);
   });
 
   const keysOf = () =>
@@ -104,7 +104,7 @@ describe("pressKey", () => {
       .map((s) => s.params as unknown as KeyEvent);
 
   it("sends the character's text on a plain key press", async () => {
-    await pressKey("Escape");
+    await pressKey(1, "Escape");
     expect(keysOf()).toEqual([
       expect.objectContaining({ type: "keyDown", key: "Escape", modifiers: 0 }),
       expect.objectContaining({ type: "keyUp", key: "Escape", modifiers: 0 }),
@@ -112,14 +112,14 @@ describe("pressKey", () => {
   });
 
   it("an accelerator chord carries no text — Mod+a selects, it does not type", async () => {
-    await pressKey("a", ["Mod"]);
+    await pressKey(1, "a", ["Mod"]);
     const [down] = keysOf();
     expect(down).toMatchObject({ type: "keyDown", key: "a", code: "KeyA", modifiers: 4 });
     expect(down?.text).toBeUndefined();
   });
 
   it("Shift alone IS typing — the character uppercases and keeps its text", async () => {
-    await pressKey("a", ["Shift"]);
+    await pressKey(1, "a", ["Shift"]);
     expect(keysOf()[0]).toMatchObject({ key: "A", modifiers: 8, text: "A" });
   });
 });

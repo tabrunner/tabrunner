@@ -55,7 +55,7 @@ describe("browser module scope", () => {
       sendCommand: async () => ({}),
     };
     const { ensureAttached } = await import("../cdp-driver");
-    await ensureAttached(1);
+    await ensureAttached("module-scope", 1);
     expect(added).toEqual(["onDetach", "onEvent"]);
   });
 });

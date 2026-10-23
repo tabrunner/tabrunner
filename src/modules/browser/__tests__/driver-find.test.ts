@@ -72,7 +72,7 @@ const { createDriver } = await import("../driver");
 
 describe("driver.find", () => {
   it("returns the matching snapshot lines, trimmed, with their refs", async () => {
-    const driver = createDriver(1);
+    const driver = createDriver(1, { ownerId: "driver-find" });
     const result = await driver.find("invoice");
     expect(result).toMatchObject({ query: "invoice", total: 2 });
     expect(result.matches).toEqual([
@@ -82,7 +82,7 @@ describe("driver.find", () => {
   });
 
   it("matches case-insensitively and reports zero cleanly", async () => {
-    const driver = createDriver(1);
+    const driver = createDriver(1, { ownerId: "driver-find" });
     const result = await driver.find("DOWNLOAD");
     expect(result.total).toBe(1);
     const none = await driver.find("unicorn");
@@ -96,20 +96,20 @@ describe("driver.closeTab", () => {
   });
 
   it("refuses to close the tab it is driving", async () => {
-    const driver = createDriver(1);
+    const driver = createDriver(1, { ownerId: "driver-find" });
     await expect(driver.closeTab(1)).rejects.toThrow(/tab you are using/);
     expect(removed).toEqual([]);
   });
 
   it("closes any other tab and returns what it was — the row names what closed", async () => {
-    const driver = createDriver(1);
+    const driver = createDriver(1, { ownerId: "driver-find" });
     const closed = await driver.closeTab(2);
     expect(closed).toMatchObject({ id: 2, title: "Invoice #1042" });
     expect(removed).toEqual([2]);
   });
 
   it("surfaces a dead tab id as a thrown error, and removes nothing", async () => {
-    const driver = createDriver(1);
+    const driver = createDriver(1, { ownerId: "driver-find" });
     await expect(driver.closeTab(99)).rejects.toThrow("No tab with id: 99");
     expect(removed).toEqual([]);
   });

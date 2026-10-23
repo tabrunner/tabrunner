@@ -142,7 +142,12 @@ describe("driver tab switching", () => {
   it("switchTab follows on screen while the user watches the tab being left", async () => {
     tabs[1]!.active = true; // the user is on the run's tab
     const switches: number[] = [];
-    const driver = createDriver(1, { onSwitch: (info) => switches.push(info.id) });
+    const driver = createDriver(1, {
+      ownerId: "driver-tabs",
+      onSwitch: (info) => {
+        switches.push(info.id);
+      },
+    });
 
     await expect(driver.snapshot()).resolves.toMatchObject({ pageContent: "snap:1" });
 
@@ -158,7 +163,7 @@ describe("driver tab switching", () => {
 
   it("stops following once the user moves to a tab of their own", async () => {
     tabs[1]!.active = true;
-    const driver = createDriver(1);
+    const driver = createDriver(1, { ownerId: "driver-tabs" });
 
     await driver.switchTab(2); // followed: the user was watching tab 1
     expect(updates).toEqual([{ id: 2, props: { active: true } }]);
@@ -177,7 +182,7 @@ describe("driver tab switching", () => {
     tabs[1]!.active = true; // even a user on the run's tab is left alone
     // The panel closed mid-run: the predicate is asked at the switch, not at
     // run start, so walking away silences the follow from that moment on.
-    const driver = createDriver(1, { activateOnSwitch: () => false });
+    const driver = createDriver(1, { ownerId: "driver-tabs", activateOnSwitch: () => false });
 
     const info = await driver.switchTab(2);
     expect(info).toMatchObject({ id: 2, active: false });
@@ -187,20 +192,20 @@ describe("driver tab switching", () => {
   });
 
   it("a dead tab id throws and leaves the current target untouched", async () => {
-    const driver = createDriver(1);
+    const driver = createDriver(1, { ownerId: "driver-tabs" });
     await expect(driver.switchTab(99)).rejects.toThrow("No tab with id: 99");
     await expect(driver.snapshot()).resolves.toMatchObject({ pageContent: "snap:1" });
   });
 
   it("listTabs reports every open tab", async () => {
-    const driver = createDriver(1);
+    const driver = createDriver(1, { ownerId: "driver-tabs" });
     const listed = await driver.listTabs();
     expect(listed.map((t) => t.id)).toEqual([1, 2, 3, 4]);
     expect(listed[0]).toMatchObject({ title: "First", url: "https://a.example", active: false });
   });
 
   it("groupTab files a tab into the run's group without retargeting the driver", async () => {
-    const driver = createDriver(1);
+    const driver = createDriver(1, { ownerId: "driver-tabs" });
     const info = await driver.groupTab(2, 7);
     expect(info).toMatchObject({ id: 2, title: "Second" });
     expect(groupCalls).toEqual([{ tabIds: 2, groupId: 7 }]);
@@ -209,19 +214,19 @@ describe("driver tab switching", () => {
   });
 
   it("groupTab refuses a tab in another window — groups can't span windows", async () => {
-    const driver = createDriver(1);
+    const driver = createDriver(1, { ownerId: "driver-tabs" });
     await expect(driver.groupTab(3, 7)).rejects.toThrow("another window");
     expect(groupCalls).toEqual([]);
   });
 
   it("groupTab surfaces a dead group or tab as a thrown error", async () => {
-    const driver = createDriver(1);
+    const driver = createDriver(1, { ownerId: "driver-tabs" });
     await expect(driver.groupTab(2, 99)).rejects.toThrow("No group with id: 99");
     await expect(driver.groupTab(99, 7)).rejects.toThrow("No tab with id: 99");
   });
 
   it("closes an untouched opened starter tab when switching to an existing tab", async () => {
-    const driver = createDriver(1, { openedTab: true });
+    const driver = createDriver(1, { ownerId: "driver-tabs", openedTab: true });
     expect(driver.unactedTab).toBe(true);
 
     await driver.switchTab(2);
@@ -234,7 +239,7 @@ describe("driver tab switching", () => {
   });
 
   it("keeps the opened starter tab once an action has used it", async () => {
-    const driver = createDriver(1, { openedTab: true });
+    const driver = createDriver(1, { ownerId: "driver-tabs", openedTab: true });
     await driver.navigate("https://used.example");
     expect(driver.unactedTab).toBe(false);
 
@@ -243,7 +248,7 @@ describe("driver tab switching", () => {
   });
 
   it("openTab navigates an untouched opened starter tab in place instead of spawning a second tab", async () => {
-    const driver = createDriver(1, { openedTab: true });
+    const driver = createDriver(1, { ownerId: "driver-tabs", openedTab: true });
 
     const first = await driver.openTab("https://target.example");
     expect(first).toMatchObject({ id: 1, url: "https://target.example" });

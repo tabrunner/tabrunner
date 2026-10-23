@@ -57,21 +57,28 @@ const MARK_HOST_IDS = [WIDGET_HOST_ID];
  * group and the toolbar badge (action-badge.ts) need no injection at all.
  */
 
-/**
- * The tab whose run is blocked on the user — a plan waiting for a yes, or a
- * question it ended on. Its marks carry the still "?" until the answer comes,
- * and a repaint after a navigation must land the waiting state, not "driving".
- * One conversation drives at a time, so one wait at a time is enough (a second
- * panel's question would overwrite this tracking, not the first tab's mark).
- */
-let waitingTabId: TabId | null = null;
-/**
- * The run is documenting itself. Not per-tab: one run drives at a time, and it
- * is the run that records, not the page. The badge says "Documenting" instead
- * of "Driving" for as long as it holds — the strongest of the REC signals,
- * because it sits on the page the screenshots are being taken of.
- */
-let documenting = false;
+/** Waiting and recording belong to a tab, never to another run's marks. */
+const waitingTabs = new Set<TabId>();
+const documentingTabs = new Set<TabId>();
+/** Order paints per tab and skip queued states that a newer update replaced. */
+const markUpdates = new Map<TabId, Promise<void>>();
+
+function updateMarks(
+  tabId: TabId,
+  update: (isCurrent: () => boolean) => Promise<void>,
+): Promise<void> {
+  const previous = markUpdates.get(tabId) ?? Promise.resolve();
+  const next = previous
+    .catch(() => {})
+    .then(async () => {
+      const isCurrent = () => markUpdates.get(tabId) === next;
+      if (isCurrent()) await update(isCurrent);
+    });
+  markUpdates.set(tabId, next);
+  return next.finally(() => {
+    if (markUpdates.get(tabId) === next) markUpdates.delete(tabId);
+  });
+}
 
 /** Solid amber dot — the favicon the driven tab shows in the tab strip. */
 const FAVICON_DATA_URL =
@@ -238,11 +245,15 @@ async function inject<A extends unknown[]>(
 }
 
 /** The driven pill's content — a state sentence, never the task excerpt. */
-function drivenState(waiting: boolean): WidgetState {
+function drivenState(tabId: TabId, waiting: boolean): WidgetState {
   return {
     mode: "driven",
     task: i18n.t(
-      waiting ? "indicator.waiting" : documenting ? "indicator.documenting" : "indicator.driving",
+      waiting
+        ? "indicator.waiting"
+        : documentingTabs.has(tabId)
+          ? "indicator.documenting"
+          : "indicator.driving",
     ),
     queuedText: "",
     awaiting: waiting,
@@ -266,39 +277,38 @@ function drivenState(waiting: boolean): WidgetState {
  * Losing the marks is a degradation, not a dead end — the run's green tab group
  * and the toolbar badge (action-badge.ts) carry the signal on any page.
  */
-async function paintMarks(tabId: TabId, waiting: boolean): Promise<void> {
+async function paintMarks(tabId: TabId, isCurrent: () => boolean): Promise<void> {
+  const waiting = waitingTabs.has(tabId);
   const painted = await inject(tabId, paintFavicon, [
     FAVICON_LINK_ID,
     waiting ? FAVICON_WAITING_URL : FAVICON_DATA_URL,
     RESTORE_LINK_ID,
   ]);
-  await inject(tabId, paintWidget, [WIDGET_HOST_ID, drivenState(waiting)]);
+  if (!isCurrent()) return;
+  await inject(tabId, paintWidget, [WIDGET_HOST_ID, drivenState(tabId, waiting)]);
+  if (!isCurrent()) return;
   // A still state has nothing to beat; a refused paint would beat at nothing.
   if (painted && !waiting) startPulse(tabId);
   else stopPulse(tabId);
 }
 
-/**
- * Turn the REC label on or off, repainting every marked tab so the change lands
- * on the page the user is watching. Arming happens mid-run, so this can never
- * be folded into the initial paint. Cleared with the run.
- */
-export async function setAgentDocumenting(on: boolean): Promise<void> {
-  if (documenting === on) return;
-  documenting = on;
-  await Promise.all([...drivenTabs].map((tabId) => paintMarks(tabId, waitingTabId === tabId)));
+/** Arming mid-run changes only this tab's label. */
+export async function setAgentDocumenting(tabId: TabId, on: boolean): Promise<void> {
+  if (on) documentingTabs.add(tabId);
+  else documentingTabs.delete(tabId);
+  if (drivenTabs.has(tabId)) await updateMarks(tabId, (isCurrent) => paintMarks(tabId, isCurrent));
 }
 
 export async function showAgentIndicator(tabId: TabId): Promise<void> {
-  waitingTabId = null;
+  waitingTabs.delete(tabId);
   drivenTabs.add(tabId);
-  await paintMarks(tabId, false);
+  await updateMarks(tabId, (isCurrent) => paintMarks(tabId, isCurrent));
 }
 
 /** Repaint after a load wiped the document. No-op unless this tab is marked. */
 export async function refreshAgentIndicator(tabId: TabId): Promise<void> {
   if (!drivenTabs.has(tabId)) return;
-  await paintMarks(tabId, waitingTabId === tabId);
+  await updateMarks(tabId, (isCurrent) => paintMarks(tabId, isCurrent));
 }
 
 /** Take the driven marks off a tab — favicon back to the page, pill removed. */
@@ -308,11 +318,11 @@ async function clearMarks(tabId: TabId): Promise<void> {
 }
 
 export async function hideAgentIndicator(tabId: TabId): Promise<void> {
-  if (waitingTabId === tabId) waitingTabId = null;
-  documenting = false;
+  waitingTabs.delete(tabId);
+  documentingTabs.delete(tabId);
   drivenTabs.delete(tabId);
   stopPulse(tabId);
-  await clearMarks(tabId);
+  await updateMarks(tabId, () => clearMarks(tabId));
 }
 
 /**
@@ -327,15 +337,17 @@ export async function settleAgentIndicator(
   tabId: TabId,
   outcome: "done" | "failed",
 ): Promise<void> {
-  if (waitingTabId === tabId) waitingTabId = null;
-  documenting = false;
+  waitingTabs.delete(tabId);
+  documentingTabs.delete(tabId);
   drivenTabs.delete(tabId);
   stopPulse(tabId);
-  await clearMarks(tabId);
-  await inject(tabId, paintWidget, [WIDGET_HOST_ID, settleState(outcome, "driven")]);
-  // The page clears its own receipt; the note is the floor under that timer for
-  // a tab Chrome freezes before it can fire (see clearStaleReceipts).
-  noteReceipt(tabId);
+  await updateMarks(tabId, async (isCurrent) => {
+    await clearMarks(tabId);
+    if (!isCurrent()) return;
+    await inject(tabId, paintWidget, [WIDGET_HOST_ID, settleState(outcome, "driven")]);
+    // The worker clears a receipt if Chrome froze its page-side timer.
+    if (isCurrent()) noteReceipt(tabId);
+  });
 }
 
 /**
@@ -345,13 +357,13 @@ export async function settleAgentIndicator(
  * answer in. It holds until the next run starts or the tab is unmarked.
  */
 export async function waitAgentIndicator(tabId: TabId): Promise<void> {
-  waitingTabId = tabId;
+  waitingTabs.add(tabId);
   drivenTabs.add(tabId);
-  await paintMarks(tabId, true);
+  stopPulse(tabId);
+  await updateMarks(tabId, (isCurrent) => paintMarks(tabId, isCurrent));
 }
 
-/** Forget any pending wait — called when the next run starts anywhere. */
-export async function clearAgentWait(): Promise<void> {
-  if (waitingTabId === null) return;
-  await hideAgentIndicator(waitingTabId);
+/** Clear this tab's pending wait without changing any other run's mark. */
+export async function clearAgentWait(tabId: TabId): Promise<void> {
+  if (waitingTabs.has(tabId)) await hideAgentIndicator(tabId);
 }

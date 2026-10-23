@@ -68,7 +68,7 @@
       "portHint": "Deve ser igual ao TABRUNNER_BRIDGE_PORT do daemon. O padrão é 17836.",
       "invalidPort": "Digite uma porta inteira entre 1024 e 65535",
       "guideTitle": "Como o MCP funciona nas duas direções",
-      "guideIn": "Clientes conectam-se (a ponte): um cliente de IA externo inicia um pequeno daemon local, o TabRunner conecta-se a ele, e as tarefas desse cliente rodam neste navegador com suas sessões autenticadas. Desligado, não custa nada.",
+      "guideIn": "Clientes de IA externos compartilham um daemon local. Cada cliente tem sua conversa e suas abas. Até quatro tarefas podem rodar ao mesmo tempo. As abas continuam usando os mesmos logins.",
       "guideOut": "Adicione um servidor MCP https:// abaixo para usar as ferramentas dele em cada execução. Os nomes seguem mcp__servidor__ferramenta, e todas as ferramentas exigem aprovação do plano. Os cabeçalhos de autenticação ficam locais e nunca são registrados nos logs.",
       "guideQuestions": "Servidores podem fazer perguntas durante uma tarefa. Elas aparecem como um cartão no painel e são recusadas automaticamente em execuções sem supervisão. Eventos de execução também podem ser enviados como webhooks. Veja Configurações → Comportamento.",
       "statusConnected": "Conectado ao daemon",
@@ -76,7 +76,7 @@
       "setupTitle": "Conectar um cliente",
       "setupHelp": "No Claude Code, instale o plugin. Ele inicia o daemon sozinho e ensina ao Claude quando passar uma tarefa para o TabRunner:",
       "manualHelp": "Ou registre só o daemon, sem a habilidade. Ele precisa do bun. Com --scope user, funciona em todos os projetos, não só na pasta atual:",
-      "removeHelp": "Use um ou outro: dois daemons não dividem a mesma porta. Para remover o que você registrou à mão:",
+      "removeHelp": "Escolha o plugin ou a configuração manual para não listar as mesmas ferramentas duas vezes. Para remover uma configuração manual:",
       "copy": "Copiar",
       "copied": "Copiado",
       "docsLink": "Guia completo de configuração →",
@@ -393,7 +393,7 @@
       "lastFailed": "Última execução falhou {{when}}",
       "runNow": "Executar agora",
       "runNowOnce": "Executar agora como teste. A tarefa ainda será executada no horário agendado.",
-      "queued": "Na fila. Começa quando a tarefa atual terminar.",
+      "queued": "Na fila. Começa quando houver espaço para mais uma tarefa.",
       "paused": "Pausada",
       "pause": "Pausar (manter a tarefa e a conversa; parar o temporizador)",
       "resume": "Retomar (recalcular a próxima execução a partir de agora)",
@@ -966,9 +966,9 @@
     "revisingPlan": "Revisando o plano…",
     "awaitingAnswer": "Aguardando sua resposta",
     "drivingTabTip": "Abrir esta página (reabre se a aba não existir mais)",
-    "bridgeTask": "{{client}} está executando uma tarefa no seu navegador",
-    "bridgeDriving": "{{client}} está controlando seu navegador",
-    "bridgeStopTitle": "Interrompe a tarefa e devolve o navegador",
+    "bridgeTask": "{{client}} está executando uma tarefa nesta aba",
+    "bridgeDriving": "{{client}} está controlando esta aba",
+    "bridgeStopTitle": "Pare só esta tarefa. As outras continuam.",
     "background": "Em segundo plano",
     "foreground": "Em primeiro plano",
     "modeAria": "A próxima tarefa roda: {{mode}}",
@@ -984,11 +984,10 @@
   },
   "queue": {
     "position": "Aguardando execução · nº {{position}}",
-    "queuedTitle": "Esperando a tarefa atual terminar",
+    "queuedTitle": "Esperando espaço para mais uma tarefa",
     "cancel": "Cancelar"
   },
   "widget": {
-    "queued": "+{{count}} na fila",
     "hide": "Ocultar",
     "openHint": "Acompanhe a execução (abre o painel ao lado da página que o TabRunner está usando)",
     "hideHint": "Recolher para um ponto. Clique no ponto para expandir de novo.",
@@ -996,7 +995,9 @@
     "settledDone": "Tarefa concluída",
     "settledFailed": "A tarefa falhou",
     "settledHint": "Abrir o TabRunner para ver o resultado",
-    "dismiss": "Dispensar"
+    "dismiss": "Dispensar",
+    "moreTasks_one": "+{{count}} outra tarefa",
+    "moreTasks_other": "+{{count}} outras tarefas"
   },
   "board": {
     "title": "Tarefas",
@@ -1203,6 +1204,9 @@
     "skillSaved": "\"{{name}}\" salva. Encontre em /skills.",
     "saveSkillNoUrl": "Nenhuma URL informada. Envie um link https direto ou owner/repo para a habilidade.",
     "saveSkillBadUrl": "Não foi possível acessar um arquivo de habilidade em {{url}}. Use um link https direto ao arquivo .md ou owner/repo[/caminho].",
-    "saveSkillUnnamed": "O arquivo não tem nome para a habilidade e nenhum outro nome foi informado. Passe um nome em kebab-case: palavras minúsculas separadas por hífens."
+    "saveSkillUnnamed": "O arquivo não tem nome para a habilidade e nenhum outro nome foi informado. Passe um nome em kebab-case: palavras minúsculas separadas por hífens.",
+    "tabInUse": "Outra tarefa está usando a aba {{tabId}}. Escolha outra aba ou espere essa tarefa terminar.",
+    "staleBridgeRun": "Esta tarefa já foi encerrada ou substituída. Confira o status e tente de novo com o ID da execução atual.",
+    "noBridgeScreenshot": "Esta tarefa não tem uma página para capturar. Inicie uma tarefa ou sessão de navegador e tente de novo."
   }
 }
