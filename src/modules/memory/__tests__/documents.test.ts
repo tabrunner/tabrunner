@@ -14,6 +14,24 @@ import {
 import { buildSystemPrompt, buildToolDefs } from "@/modules/agent/prompt";
 
 describe("remember", () => {
+  it("keeps facts written by overlapping runs", async () => {
+    await Promise.all([
+      remember("The billing page opens on the current month.", "acme.com"),
+      remember("Invoices download from the billing page.", "acme.com"),
+      remember("The user prefers PDF invoices."),
+    ]);
+    const doc = await getDoc("MEMORY.md");
+    expect(doc).toContain("The billing page opens on the current month.");
+    expect(doc).toContain("Invoices download from the billing page.");
+    expect(doc).toContain("The user prefers PDF invoices.");
+  });
+
+  it("orders a removal and a new fact without losing either change", async () => {
+    await remember("An outdated fact.");
+    await Promise.all([removeMemory("An outdated fact."), remember("A new fact.")]);
+    expect(await getDoc("MEMORY.md")).toBe("- A new fact.\n");
+  });
+
   it("appends one bullet per fact", async () => {
     await remember("The user's work account is me@acme.com.");
     await remember("Invoices live at billing.acme.com.");
