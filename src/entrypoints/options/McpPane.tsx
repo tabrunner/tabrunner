@@ -143,31 +143,6 @@ export function McpPane() {
           once, so it arrives instead of materializing. */}
       {bridge.enabled && (
         <div className="arrive">
-          <div className="mt-4 max-w-40">
-            <TextField
-              label={t("settings.mcp.port")}
-              hint={
-                portError ? (
-                  <span className="arrive block text-red-600 dark:text-red-400">
-                    {t("settings.mcp.invalidPort")}
-                  </span>
-                ) : (
-                  t("settings.mcp.portHint")
-                )
-              }
-              value={portValue}
-              onChange={(e) => {
-                setPort(e.target.value);
-                if (portError) setPortError(false);
-              }}
-              onBlur={commitPort}
-              placeholder={String(bridgeItem.fallback.port)}
-              inputMode="numeric"
-              spellCheck={false}
-              aria-invalid={portError || undefined}
-            />
-          </div>
-
           <p className="mt-4 flex items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400">
             <StatusDot tone={connected ? "ok" : "waiting"} />
             {connected ? t("settings.mcp.statusConnected") : t("settings.mcp.statusWaiting")}
@@ -199,19 +174,54 @@ export function McpPane() {
             </a>
           </p>
 
-          <div className="mt-4 flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                {t("settings.mcp.extensionId")}
+          <details
+            open={bridge.port !== bridgeItem.fallback.port || portError || undefined}
+            className="mt-4 rounded-lg bg-neutral-50 px-3 py-2 dark:bg-neutral-900/50"
+          >
+            <summary className="cursor-pointer select-none text-xs font-medium text-neutral-700 hover:underline dark:text-neutral-300">
+              {t("settings.mcp.advancedTitle")}
+            </summary>
+            <div className="mt-3 flex flex-col gap-4">
+              <div className="max-w-64">
+                <TextField
+                  label={t("settings.mcp.port")}
+                  hint={
+                    portError ? (
+                      <span className="arrive block text-red-600 dark:text-red-400">
+                        {t("settings.mcp.invalidPort")}
+                      </span>
+                    ) : (
+                      t("settings.mcp.portHint")
+                    )
+                  }
+                  value={portValue}
+                  onChange={(e) => {
+                    setPort(e.target.value);
+                    if (portError) setPortError(false);
+                  }}
+                  onBlur={commitPort}
+                  placeholder={String(bridgeItem.fallback.port)}
+                  inputMode="numeric"
+                  spellCheck={false}
+                  aria-invalid={portError || undefined}
+                />
               </div>
-              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                {t("settings.mcp.extensionIdHint")}
-              </p>
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                    {t("settings.mcp.extensionId")}
+                  </div>
+                  <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                    {t("settings.mcp.extensionIdHint")}
+                  </p>
+                </div>
+                <code className="shrink-0 rounded-md bg-neutral-100 px-2 py-1 font-mono text-xs text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                  {chrome.runtime.id}
+                </code>
+              </div>
             </div>
-            <code className="shrink-0 rounded-md bg-neutral-50 px-2 py-1 font-mono text-xs text-neutral-700 dark:bg-neutral-900/50 dark:text-neutral-300">
-              {chrome.runtime.id}
-            </code>
-          </div>
+          </details>
         </div>
       )}
 
