@@ -1,9 +1,8 @@
-# tabrunner.app — Website Brief
+# tabrunner.app website contract
 
-Contract between this repo (`tabrunner`, the extension) and the site repo (tabrunner.app, the
-marketing/download site, a sibling directory `../site`). The site is static, deploys on its own
-cadence, and must **never hardcode a version number** — everything versioned comes from the
-GitHub Releases URLs below.
+Contract between apps/extension and apps/site in this repository. The static site deploys
+separately from extension releases. It must never hardcode a version number: versioned downloads
+come from the GitHub Releases URLs below.
 
 ## Download contract
 
@@ -79,9 +78,9 @@ Caveats the site must state plainly where they apply:
   remote servers TabRunner connects out to — plus lifecycle webhooks: `README.md`, `docs/mcp.md`.
 - Screenshots: `docs/screenshots/`.
 - Social image: `docs/og.png`.
-- Brand mark is generated from `src/shared/logo.ts` (`bun run icons`) — never hand-edit the PNGs.
+- Brand mark is generated from `apps/extension/src/shared/logo.ts` (`bun run icons`) — never hand-edit the PNGs.
   If the site needs other sizes, regenerate from the source, don't upscale.
-- Brand color: the `brand-*` comet-burn emerald scale in `src/lib/theme.css`, with the
+- Brand color: the `brand-*` comet-burn emerald scale in `apps/extension/src/lib/theme.css`, with the
   `telemetry` gold reserved for anything that measures. Two lights only — the retired purple and
   the brief cyan must not come back.
 

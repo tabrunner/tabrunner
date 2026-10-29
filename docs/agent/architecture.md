@@ -1,7 +1,7 @@
 # Architecture deep-dive
 
-Load-bearing details behind the AGENTS.md module map. Read this when a task touches a
-module's internals, not on every session.
+Details behind the [extension module map](../../apps/extension/AGENTS.md#architecture).
+Extension source paths below start in apps/extension/. Read this when changing a module's internals.
 
 ## Modules
 

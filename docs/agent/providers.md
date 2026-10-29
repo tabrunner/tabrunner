@@ -1,7 +1,7 @@
 # Provider wire contracts
 
 The load-bearing details of talking to each provider shape. Read this when a task touches
-`src/modules/providers/` adapters, streaming, tool results, or model lists.
+`apps/extension/src/modules/providers/` adapters, streaming, tool results, or model lists.
 
 - **Anthropic rejects consecutive same-role messages.** Tool results go back as ONE user
   message with N `tool_result` blocks; OpenAI expands to N separate `role: "tool"`

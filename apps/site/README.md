@@ -1,21 +1,18 @@
 # tabrunner.app
 
 Marketing and download site for [TabRunner](https://github.com/tabrunner/tabrunner), a Chromium
-extension that lets an LLM drive your real browser. Static site, deployed on its own cadence,
-independent of the extension repo.
-
-One page, five sections: hero with a live simulated run → feature constellation → product
-screenshots → install flight plan → the privacy data map. English, Português (Brasil) and
-Español.
+extension that lets an LLM drive your real browser. This workspace holds the home page, setup
+guide and legal pages in English, Português (Brasil) and Español. It deploys separately from
+extension releases.
 
 ## Stack
 
 Vite · React 19 · Tailwind CSS 4 · i18next · bun. No router, no backend, no analytics.
 
 ```bash
-bun install
+# Install once at the repository root, then run these from apps/site.
 bun run dev      # http://localhost:5173
-bun run build    # typecheck → client build → SSR build → prerender → dist/
+bun run build    # local legal sync, typecheck, client/SSR builds and prerender into dist/
 bun run preview  # serve the built dist/
 bun run check    # self-checks: the run console's clock, and the address/head rules
 ```
@@ -100,25 +97,20 @@ TabRunner has no Edge listing.
 ## Assets
 
 ```bash
-bun run sync           # screenshots from ../chrome → public/screenshots (webp, 2 sizes)
+bun run sync           # root docs/screenshots PNGs into public/screenshots WebP files
 bun run og             # regenerate public/og.png (1200×630 social card)
 bun run shoot [url]    # screenshot the running site, report horizontal overflow
 ```
 
-- **Screenshots** are captured in the extension repo (`chrome/docs/screenshots/`) and derived
-  here into a 1280w and a 480w webp. Derivatives are committed, so a deploy needs neither this
-  script nor the sibling repo. Requires `cwebp` (`brew install webp`).
+- Screenshots come from root docs/screenshots/ and are copied here as 1280w and 480w WebP files.
+  The copies are committed, so deployment does not need cwebp. To update them, install it with
+  `brew install webp`, then run `bun run sync`.
 - **The social card** is authored here by `scripts/gen-og.ts` from the comet-tab geometry and
   the vendored OFL fonts in `assets/fonts/`. It is no longer synced from the extension.
 - **The comet-tab mark** has one geometry, in `src/components/CometMark.tsx`, mirrored in
   `public/favicon.svg` and `scripts/gen-og.ts`. Change it in all three or in none.
 - `scripts/shoot.ts` scrolls the whole page before capturing. A `fullPage` screenshot never
   scrolls on its own, so anything gated on scroll position would otherwise photograph blank.
-
-> **Known gap:** the product screenshots are from the pre-rename build. The panel is branded
-> "Regent"/"Regentry", in the retired purple, with the old crown mark. The site labels them as
-> old-brand (`shots.note`), but they need retaking against the current build before the site is
-> promoted. See `PRODUCT.md` → Evidence on Hand.
 
 ## i18n
 
@@ -135,7 +127,7 @@ shows the other person a different page than the one you were reading).
 Detection is not gone, it is demoted: on an _unprefixed_ address only, `?lang=` → a remembered
 choice → the browser language can redirect once, before the first render. A reader who followed a
 link to `/pt` is never moved off it, and a crawler never takes the hop at all. The legal docs
-are translated in the extension repo (`TERMS.pt-BR.md`, `PRIVACY.es.md`, …) and synced beside the
+are authored at the repository root (`TERMS.pt-BR.md`, `PRIVACY.es.md`) and copied beside the
 English, so `/terms`, `/pt/terms` and `/es/terms` each render their own language.
 
 Adding a page means adding it to `src/config/publicPages.ts`. That registry is what gets rendered
@@ -143,9 +135,11 @@ to files and what the sitemap lists, so a page can't exist in one and not the ot
 
 ## Deploy
 
-Push to `main` → GitHub Actions checks, builds, deploys `dist/` to Cloudflare Pages and then
-verifies the deployment it just made against its own immutable URL, never the alias, which keeps
-serving the previous build at 200 while the new one activates (`.github/workflows/deploy.yml`).
-Needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
-repository secrets, and a Pages project whose name matches `--project-name` in the workflow.
-`tabrunner.app` attaches as the custom domain.
+A ready PR typechecks and merges, then CI starts the site's deploy when its inputs changed
+since the last successful deployment. The root .github/workflows/deploy-site.yml workflow builds
+this workspace and uploads dist/ to the existing Cloudflare Pages project tabrunner. It verifies
+that deployment's own URL, not an alias that may still serve the old build. Main pushes and manual
+merges do not deploy; run the workflow from the Actions tab when needed.
+
+The tabrunner/tabrunner repository needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID Actions
+secrets. The custom domain remains tabrunner.app.

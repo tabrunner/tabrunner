@@ -1,5 +1,5 @@
 /**
- * Download contract with the extension repo (chrome/docs/website-brief.md):
+ * Product/site download contract (docs/website-brief.md):
  * hotlink only these stable URLs — never hardcode a version number anywhere.
  */
 export const LINKS = {

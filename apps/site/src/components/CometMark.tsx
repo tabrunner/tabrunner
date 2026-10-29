@@ -2,8 +2,8 @@
  * The TabRunner brand mark — the comet-tab: a browser-tab silhouette in
  * motion, burn trail behind it. Chosen 2026-08 (mark candidate A) to replace
  * the old circle-and-bars comet, which read as a crown at small sizes —
- * neither a tab nor a runner. The extension's icons regenerate from this
- * geometry at its redesign (chrome/src/shared/logo.ts, `bun run icons`).
+ * neither a tab nor a runner. The extension keeps the same geometry in
+ * apps/extension/src/shared/logo.ts (`bun run icons`).
  */
 export function CometMark({ size = 24, className }: { size?: number; className?: string }) {
   return (

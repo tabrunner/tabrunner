@@ -5,7 +5,7 @@ directly. Human-facing setup and tool examples: [../mcp.md](../mcp.md).
 
 ## One local broker, separate clients
 
-Each MCP client launches `daemon/src/index.ts` over stdio. That process is a small proxy:
+Each MCP client launches `packages/mcp/src/index.ts` over stdio. That process is a small proxy:
 it discovers or starts one shared broker for `TABRUNNER_BRIDGE_PORT`, then connects to the
 broker over local Streamable HTTP. The extension is still the WebSocket client. An MV3
 worker cannot listen on a socket, so it dials `ws://127.0.0.1:<port>/ws` on the broker.
@@ -140,6 +140,6 @@ The bridge ships disabled. A refused connection waits for the alarm; only a conn
 that actually opened earns the 2s fast retry. `bridgeConnected` mirrors open/close state
 through storage for UI contexts. Config remains in `bridge/config.ts`, not the socket.
 
-The protocol is declared twice on purpose: `src/modules/bridge/protocol.ts` is the source
-of truth; `daemon/src/protocol.ts` is its standalone-package copy. Change both together.
+The protocol is declared twice on purpose: `apps/extension/src/modules/bridge/protocol.ts` is the source
+of truth; `packages/mcp/src/protocol.ts` is its standalone-package copy. Change both together.
 `bun run bridge:check` checks the broker and client wiring without Chrome.

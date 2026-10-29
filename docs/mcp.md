@@ -104,8 +104,9 @@ claude mcp remove --scope user tabrunner
 The file stays at `~/.tabrunner-mcp.js` until you delete it. The plugin comes out with
 `claude plugin uninstall tabrunner`.
 
-Developing on the repo instead? `.mcp.json` already points Claude Code at `daemon/src/index.ts`.
-No download needed. To run it by hand (to watch its log, say): `bun run bridge`.
+Developing on the repo instead? The root `.mcp.json` points at `packages/mcp/src/index.ts`.
+Enable that server in your client's MCP settings. No download is needed. To run it by hand and
+watch its log, use `bun run bridge` from the repository root.
 
 ### Configuration
 
@@ -313,8 +314,8 @@ bun run bridge:bundle # build the single-file daemon releases ship → dist/tabr
 
 What ships, and where from:
 
-- `daemon/` is also the npm package `tabrunner-mcp`. Each release tag publishes it (its `prepack`
-  builds the same bundle), then its MCP Registry entry, `daemon/server.json`
+- `packages/mcp/` is also the npm package `tabrunner-mcp`. Each release tag publishes it (its `prepack`
+  builds the same bundle), then its MCP Registry entry, `packages/mcp/server.json`
   (`app.tabrunner/tabrunner`).
 - `plugin/` is the plugin: both manifests (`.claude-plugin/plugin.json` for Claude, `plugin.json`
   for the Agent Plugins clients), the server config, the skill, and the logo `bun run icons`
@@ -326,6 +327,6 @@ What ships, and where from:
 `bridge:check` is the fastest way to know the wiring is intact. It exercises the hello/sync
 handshake, request correlation, the long-poll, and the ask_user round trip without needing Chrome.
 
-The wire protocol is declared twice on purpose: `src/modules/bridge/protocol.ts` (the extension's
-copy, and the source of truth) and `daemon/src/protocol.ts`. The daemon is a standalone bun package
+The wire protocol is declared twice on purpose: `apps/extension/src/modules/bridge/protocol.ts` (the extension's
+copy, and the source of truth) and `packages/mcp/src/protocol.ts`. The daemon is a standalone bun package
 and must not import from the extension bundle. Change them together.

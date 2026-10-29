@@ -1,7 +1,7 @@
 /**
  * Bridge wire protocol — the daemon's copy.
  *
- * Deliberately duplicated from `src/modules/bridge/protocol.ts`: the daemon is
+ * Deliberately duplicated from `apps/extension/src/modules/bridge/protocol.ts`: the daemon is
  * a standalone bun program with its own package.json, and importing across that
  * line would drag the extension's `@/` aliases and DOM types into a server. The
  * two copies must change together — the extension's file is the source of truth.
@@ -152,7 +152,7 @@ export interface CaptureResult {
 
 /**
  * Fold one pushed event into the local status mirror. The extension runs the
- * same reduction over its richer event stream (`src/modules/bridge/status.ts`);
+ * same reduction over its richer event stream (`apps/extension/src/modules/bridge/status.ts`);
  * this side only ever sees the compact form, so a dropped connection costs
  * nothing a `sync` can't rebuild.
  *

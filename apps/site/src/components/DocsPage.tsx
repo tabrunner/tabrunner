@@ -12,7 +12,7 @@ import { Nav } from "./Nav";
  * The page people land on when something is unclear after install: how to connect Claude Code,
  * and short answers to the questions we hear most. Read mode: one quiet column, no sky.
  *
- * The MCP commands repeat `chrome/docs/mcp.md` and the extension's Settings → MCP pane. Change
+ * The MCP commands repeat `docs/mcp.md` and the extension's Settings → MCP pane. Change
  * all three together.
  */
 

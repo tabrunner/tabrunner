@@ -44,8 +44,8 @@ Two claims a neighboring product cannot copy:
   the GitHub Releases keyed zip (loaded unpacked) is now the fallback. Both install under one ID
   (`ilnohobdcigbmlikjbkdpbkhciephdle`, pinned via manifest `key`) — Chrome refuses to run both, so
   the unpacked build must go _before_ the store install. The store description is authored in
-  plain text (`docs/store-listing.md`) — CWS renders no Markdown in it.
-- Also drivable over MCP: the daemon bridge (`daemon/`) hands tasks to the same browser and
+  plain text (`../../docs/store-listing.md`) — CWS renders no Markdown in it.
+- Also drivable over MCP: the daemon bridge (`../../packages/mcp/`) hands tasks to the same browser and
   logins; runs land in history labelled by client.
 - Chromium-only by design (Chrome, Brave, Edge, Arc, Opera, Vivaldi): Firefox/Safari have no
   `chrome.debugger` equivalent. Stated plainly, never hidden behind dead buttons.
@@ -75,16 +75,16 @@ button "Submit"`); `sanitize.ts` caps tool output and keeps passwords, one-time 
   resolution runs the newest model the endpoint lists.
 - MV3 reality: a service worker kept alive by an open Port or alarms; durable state in
   `chrome.storage`; the bridge protocol is declared twice on purpose
-  (`src/modules/bridge/protocol.ts` ↔ `daemon/src/protocol.ts`).
+  (`src/modules/bridge/protocol.ts` ↔ `../../packages/mcp/src/protocol.ts`).
 - Release mechanics: `package.json` version is the single source of truth; `bun run release`
-  gates, bumps, tags and builds one keyed `-chrome.zip` that serves the site, dev loads and the
+  from the repository root gates, bumps, tags and builds one keyed `-chrome.zip` that serves the site, dev loads and the
   Chrome Web Store alike. No CRX ships, ever.
 
 ## Brand Commitments
 
 - Name: **TabRunner** ("it runs your tabs"). Mark: the **comet-tab** — a browser-tab silhouette in
   motion with its burn trail. One geometry, generated: `src/shared/logo.ts` here,
-  `site/src/components/CometMark.tsx` and `site/public/favicon.svg` on the site, plus both OG
+  `../site/src/components/CometMark.tsx` and `../site/public/favicon.svg` on the site, plus both OG
   generators. Change all or none; never hand-edit `public/icon/*`.
 - Brand color (2026-08, user-confirmed): **comet-burn** — burn emerald (`brand-*` scale,
   `src/lib/theme.css`) is the color of action/motion; **telemetry gold** measures (elapsed,
@@ -97,15 +97,14 @@ button "Submit"`); `sanitize.ts` caps tool output and keeps passwords, one-time 
 
 ## Evidence on Hand
 
-- `docs/screenshots/`: 4 real 1280×800 product shots (side panel, finished run, providers,
+- `../../docs/screenshots/`: 4 real 1280×800 product shots (side panel, finished run, providers,
   status widget), regenerated in the comet-burn rebrand (d865dea, 2026-08-09) via `bun run shots`.
-  (The site repo's PRODUCT.md still calls them stale old-brand — that note predates the retake.)
-- `docs/og.png`: social card, regenerated with the comet mark (`bun run icons`).
-- `docs/store-listing.md`: the store copy source of truth, including permission justifications
+- `../../docs/og.png`: social card, regenerated with the comet mark (`bun run icons`).
+- `../../docs/store-listing.md`: the store copy source of truth, including permission justifications
   written for a reviewer.
-- `README.md`, `docs/mcp.md`, `docs/website-brief.md`: copy and the cross-repo contract.
-- `PRIVACY.md`, `TERMS.md`: legal text authored here; the site syncs it (`site/ bun run
-sync:legal`).
+- `../../README.md`, `../../docs/mcp.md`, `../../docs/website-brief.md`: copy and the product/site contract.
+- `../../PRIVACY.md`, `../../TERMS.md`: canonical legal text at the repository root. Site builds
+  copy it locally with sync:legal.
 - No testimonials, customer logos, usage numbers, or pricing exist — never fabricate them.
 
 ## Product Principles

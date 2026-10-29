@@ -296,12 +296,10 @@ feel, and the comet-ice palette (it replaced the retired royal purple).
 - Constraints: never hardcode a version (latest-alias URLs only, see `src/lib/links.ts`); state
   the permission and provider caveats and the Chromium-only limit plainly; link the store
   listing, never a CRX (there is no publisher proof: CRX_REQUIRED_PROOF_MISSING) and never the
-  store's blob URL; no invented proof; screenshots come from `../chrome` through `bun run sync`.
+  store's blob URL; no invented proof; screenshots come from root docs/screenshots/ through `bun run sync`.
 
 The other ideas behind this page were not written down; only the pick was.
 
-Open: the product screenshots predate the rename ("Regent"/"Regentry", old purple, crown mark)
-and need retaking against the current build. Until then the site labels them as the old brand.
-The extension redesign will take this palette and the comet-tab mark (geometry in
-`src/components/CometMark.tsx`). The Cloudflare Pages project name in
-`.github/workflows/deploy.yml` may need to match the real dashboard project.
+The extension and site keep the same comet-tab geometry. Update the extension's source mark,
+this workspace's CometMark and favicon together. The root .github/workflows/deploy-site.yml
+workflow deploys to the existing Cloudflare Pages project tabrunner.

@@ -4,7 +4,7 @@ import type { BridgeStatus, CompactRunEvent } from "./protocol";
 /**
  * The compact run state served by getStatus and rebuilt on daemon reconnect.
  * Both the extension and the daemon keep one of these; the daemon's copy is a
- * mirror kept by the same reduction (see daemon/src/status.ts).
+ * mirror kept by the same reduction (see packages/mcp/src/status.ts).
  */
 
 export function emptyStatus(): BridgeStatus {

@@ -30,7 +30,7 @@ Two claims a neighboring product cannot copy:
    Kimi appear twice: subscription sign-in and API key), plus any OpenAI/Anthropic-compatible
    endpoint. No TabRunner server, no relay, no account, no telemetry. Your key goes straight
    from the extension to your provider. Source of truth:
-   `chrome/src/modules/providers/presets.ts` — the site's chip list is the 12 vendor names.
+   `apps/extension/src/modules/providers/presets.ts` — the site's chip list is the 12 vendor names.
    **Prose naming the subscriptions names the products instead — Claude, ChatGPT, Kimi** — which
    is what the extension's own subscription rows say, and what people recognize as the thing
    they pay for. The chip list stays vendors because it counts providers, not rows, so the copy
@@ -45,7 +45,7 @@ Two claims a neighboring product cannot copy:
   no CRX ships at all. The zip and the store install share one ID, since the extension pins its
   manifest key to the store item's — Chrome refuses to run both, so the unpacked build must be
   removed _before_ the store install. The store description is plain text (CWS renders no
-  Markdown in it — `chrome/docs/store-listing.md` learned this the hard way at approval). The
+  Markdown in it — `docs/store-listing.md` learned this the hard way at approval). The
   site must **never hardcode a version number** — only `releases/latest` aliases.
 - Also drivable over MCP from Claude Code/Desktop or any MCP client (local daemon bridge).
 - Chromium-only by design: Chrome, Brave, Edge, Arc, Opera, Vivaldi. Firefox/Safari have no
@@ -55,7 +55,7 @@ Two claims a neighboring product cannot copy:
 ## Capabilities and Constraints
 
 - Site stack: Vite + React 19 + Tailwind CSS 4 + bun, static, deployed on its own cadence.
-- Hard requirements from `chrome/docs/website-brief.md`: hotlink only the stable release URLs
+- Hard requirements from `docs/website-brief.md`: hotlink only the stable release URLs
   (`tabrunner-latest-chrome.zip`, `releases/latest`) — never a CRX, which no longer ships and
   could not be installed from a link anyway; state the sideload caveats plainly (developer-mode
   warning, folder must stay put, no auto-update); link the privacy doc
@@ -65,7 +65,7 @@ Two claims a neighboring product cannot copy:
 ## Brand Commitments
 
 - Name: **TabRunner** ("it runs your tabs"). Mark: the **comet-tab** — a browser-tab silhouette
-  in motion with its burn trail; generated from `src/shared/logo.ts`, never hand-edited.
+  in motion with its burn trail; generated from `apps/extension/src/shared/logo.ts`, never hand-edited.
 - Brand color (2026-08, user-confirmed): **comet-burn** — deep-space indigo ground, emerald comet
   trails (the green a comet burns on entry; the runner's "go"), warm amber for live telemetry.
   This replaced the original royal purple (`#8b5cf6` family) after a brief cyan pass
@@ -76,15 +76,15 @@ Two claims a neighboring product cannot copy:
 
 ## Evidence on Hand
 
-- `chrome/docs/screenshots/`: 4 real 1280×800 product shots (side panel, chat/run, providers,
+- `docs/screenshots/`: 4 real 1280×800 product shots (side panel, chat/run, providers,
   status widget) — retaken in the comet-burn brand (chrome d865dea, 2026-08-09) and synced here as
   webp the same day; `shots.note` tells visitors they're the current build.
-- `site/public/og.png`: 1200×630 social card, regenerated 2026-08-09 in comet-burn with the
-  current tagline — authored by `site/scripts/gen-og.ts`, no longer synced from the extension.
-- `chrome/public/icon/`: comet-tab tiles on the deep-field ground (16–128), regenerated from
-  `chrome/src/shared/logo.ts` — the retired purple/crown lives only in git history.
-- `chrome/README.md`, `chrome/docs/mcp.md`, `chrome/docs/store-listing.md`: copy source.
-- `chrome/PRIVACY.md`: privacy policy (linked on GitHub).
+- `apps/site/public/og.png`: 1200×630 social card, regenerated 2026-08-09 in comet-burn with the
+  current tagline — authored by `apps/site/scripts/gen-og.ts`, no longer synced from the extension.
+- `apps/extension/public/icon/`: comet-tab tiles on the deep-field ground (16–128), regenerated from
+  `apps/extension/src/shared/logo.ts` — the retired purple/crown lives only in git history.
+- `README.md`, `docs/mcp.md`, `docs/store-listing.md`: copy source.
+- `PRIVACY.md`: privacy policy (linked on GitHub).
 - No testimonials, customer logos, usage numbers, or pricing exist — never fabricate them.
 
 ## Product Principles

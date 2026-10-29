@@ -7,7 +7,7 @@ import { LINKS } from "../lib/links";
  * so the three stages cover what's actually left: add it, open the panel, point
  * it at a provider. The ZIP stays as the developer-mode path (same extension
  * ID, so it can't sit alongside the store build); no version numbers anywhere,
- * per the download contract in chrome/docs/website-brief.md.
+ * per the download contract in docs/website-brief.md.
  */
 export function Install() {
   const { t } = useTranslation();
