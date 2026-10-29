@@ -1,0 +1,96 @@
+name: CI
+
+# Ready PRs typecheck, merge and dispatch the site deploy. Main pushes do nothing.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  check:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Cache Bun's package store
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bunx turbo typecheck typecheck:tooling --filter='...[origin/main]'
+
+      - name: Merge and deploy
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          pr=$(gh api "repos/$REPO/pulls/$PR")
+          if [ "$(jq -r .draft <<<"$pr")" = true ]; then echo "PR #$PR is a draft now; not merging."; exit 0; fi
+          if [ "$(jq -r 'any(.labels[]; .name == "hold")' <<<"$pr")" = true ]; then echo "PR #$PR has the 'hold' label; not merging."; exit 0; fi
+
+          # A moved head is never merged unchecked. Retry a race with another merge.
+          for try in 1 2 3 4 5 6; do
+            gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA" && break
+            now=$(gh api "repos/$REPO/pulls/$PR" --jq '"\(.state) \(.merged) \(.head.sha)"' 2>/dev/null || echo "no answer")
+            case "$now" in
+              "closed true $HEAD_SHA") break ;;
+              "open false $HEAD_SHA" | "no answer") ;;
+              *) echo "PR #$PR is '$now' now; not merging."; exit 0 ;;
+            esac
+            if [ "$try" = 6 ]; then echo "::error::PR #$PR was not merged after 6 tries. GitHub's refusals are above."; exit 1; fi
+            wait_s=$((try * 10 + RANDOM % 10))
+            echo "Merge refused (try $try of 6); trying again in ${wait_s}s."
+            sleep "$wait_s"
+          done
+
+          # GITHUB_TOKEN merges trigger no push workflows. Compare with the last
+          # successful deploy so a failed deployment's changes are not forgotten.
+          # changed WORKFLOW IGNORE [ALWAYS]. With no baseline, deploy.
+          changed() {
+            local base files
+            base=$(gh run list --repo "$REPO" --workflow "$1" --branch main --status success --limit 1 --json headSha --jq '.[0].headSha // empty' || true)
+            if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then return 0; fi
+            files=$(git diff --name-only "$base" HEAD)
+            # Here-strings avoid grep -q closing a pipe under pipefail.
+            [ -n "$files" ] && { grep -qE "^\.github/workflows/${1%.yml}\.yml\$${3:+|$3}" <<<"$files" || grep -qvE "$2" <<<"$files"; }
+          }
+
+          # Legal source files override the root-Markdown exclusion: site builds
+          # copy them locally. Unknown paths deploy rather than silently skip.
+          if changed deploy-site.yml '^(apps/extension/|packages/mcp/|plugin/|\.claude/|\.agents/|\.claude-plugin/|\.mcp\.json$|\.github/|[^/]+\.md$)' '^(PRIVACY|TERMS)(\.(pt-BR|es))?\.md$'; then
+            if gh workflow run deploy-site.yml --repo "$REPO" --ref main; then
+              echo "deploy-site.yml: started."
+            else
+              echo "::error::PR #$PR merged, but the site deploy did not start. Run deploy-site.yml from the Actions tab."
+              exit 1
+            fi
+          else
+            echo "deploy-site.yml: nothing it ships changed since its last deploy."
+          fi

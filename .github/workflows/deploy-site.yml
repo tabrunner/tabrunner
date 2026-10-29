@@ -1,0 +1,214 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/site
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Check deployment settings
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Cloudflare credentials are missing. Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to this repository's Actions secrets, then run this workflow again."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        working-directory: .
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: .
+        run: bunx turbo typecheck typecheck:tooling --filter=tabrunner-site
+
+      - name: Build
+        working-directory: .
+        run: bunx turbo build --filter=tabrunner-site
+
+      - name: Deploy dist/ to Cloudflare Pages
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # Project name in the CF dashboard → Pages; tabrunner.app attaches as its custom domain.
+        #
+        # The per-deployment URL is read out of wrangler's own output because it is immutable and
+        # serves exactly ONE build — see the verification below for why the alias cannot answer that
+        # question. Failing when it can't be parsed is deliberate: falling back to the alias would
+        # restore the ambiguity the gate exists to remove.
+        run: |
+          set -euo pipefail
+          log=$(bunx wrangler@4.105.0 pages deploy dist --project-name=tabrunner --branch=main 2>&1 | tee /dev/stderr)
+          # Any *.pages.dev, not `<project>.pages.dev`: a project whose name was taken gets a
+          # suffixed alias, and hardcoding the subdomain failed a sibling repo's deploy AFTER a
+          # successful upload — the worst place to be strict about a cosmetic detail.
+          url_re='https://[0-9a-f]+\.[a-z0-9-]+\.pages\.dev'
+          if [[ "$log" =~ $url_re ]]; then origin="${BASH_REMATCH[0]}"; else origin=""; fi
+          if [ -z "$origin" ]; then
+            echo "::error::could not read the deployment URL from wrangler's output. Refusing to verify the alias instead, which may be serving the previous deployment"
+            exit 1
+          fi
+          echo "deployed: $origin"
+          echo "origin=$origin" >> "$GITHUB_OUTPUT"
+
+      # What a build-time gate cannot see. `assertRendered` proves the bytes were WRITTEN; nothing
+      # until here proves they are being SERVED as themselves.
+      #
+      # Against THIS DEPLOYMENT's own immutable URL, never tabrunner.pages.dev: the alias keeps
+      # serving the PREVIOUS deployment until Pages finishes activating the new one, and it answers
+      # 200 the whole time — so a health loop against it breaks on its first try and every assertion
+      # below reads the old build. That is a false pass on the only day this gate matters.
+      - name: Verify the deployed site
+        env:
+          ORIGIN: ${{ steps.deploy.outputs.origin }}
+        run: |
+          set -euo pipefail
+          echo "verifying $ORIGIN"
+          # TWO consecutive 200s, because a just-created deployment propagates per edge PoP: a
+          # single probe can be answered by a PoP that already has the build while the very next
+          # request lands on one that does not — a 404 on a deploy that is completely fine.
+          streak=0
+          for _ in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$ORIGIN/")
+            if [ "$code" = "200" ]; then
+              streak=$((streak + 1))
+              [ "$streak" -ge 2 ] && break
+            else
+              [ "$streak" -gt 0 ] && echo "$ORIGIN flapped back to $code. Still spreading"
+              streak=0
+              echo "waiting for $ORIGIN (got $code)…"
+            fi
+            sleep 3
+          done
+          if [ "$streak" -lt 2 ]; then
+            echo "::error::$ORIGIN never answered twice in a row. This deployment did not come up"
+            exit 1
+          fi
+
+          # A new deployment lights up address by address, edge by edge: `/` answering says nothing
+          # about the next page. So every probe below goes through `probe`, which retries any answer
+          # other than the one it expects until one shared minute runs out, and only then reports.
+          # A real fault still fails, just up to a minute later.
+          deadline=$((SECONDS + 60))
+          head=$(mktemp); body=$(mktemp)
+          probe() {  # probe <url> <expected status>: prints the status; headers in $head, body in $body
+            local code
+            while :; do
+              code=$(curl -s -D "$head" -o "$body" -w '%{http_code}' "$1" || true)
+              if [ "$code" = "$2" ] || [ "$SECONDS" -ge "$deadline" ]; then echo "$code"; return 0; fi
+              sleep 3
+            done
+          }
+
+          # Every address in the sitemap must exist, carry its OWN title and language, and arrive
+          # with the page already in it. An empty root under a perfect head is invisible in a
+          # browser and is all a crawler ever saw of this site.
+          #
+          # Matched with bash rather than piped into `grep -q`, which exits on its FIRST match and
+          # closes the pipe — curl then dies writing to it (exit 23) and `pipefail` reports CURL's
+          # failure for a page that was perfectly correct. It is a size race against the 64 KiB pipe
+          # buffer, so it fires on a page that GREW, and passing today proves nothing.
+          title_re='<title>[^<]*</title>'
+          lang_re='<html lang="[^"]*"'
+          root_re='<div id="root" data-prerendered-route="[^"]*"><'
+          seen_titles=""
+          # The list is read before the loop, never `for loc in $(curl … | grep …)`: when that fetch
+          # fails the list is empty, the loop runs zero times, and every page "passes" unchecked.
+          code=$(probe "$ORIGIN/sitemap.xml" 200)
+          [ "$code" = "200" ] || { echo "::error::/sitemap.xml answered $code. Without it there is no list of pages to check"; exit 1; }
+          locs=$(grep -oE '<loc>[^<]+</loc>' "$body" | sed -E 's|</?loc>||g' || true)
+          [ -n "$locs" ] || { echo "::error::/sitemap.xml names no pages. Every check below would pass by running none"; exit 1; }
+          for loc in $locs; do
+            route=$(echo "$loc" | sed -E 's|https?://[^/]+||')
+            [ -n "$route" ] || route=/
+            # A sitemap address must BE the page, not a 308 to it. Pages answers `/privacy` with a
+            # redirect when the file is `privacy/index.html`, which is how a whole site can publish
+            # canonicals that point at redirects.
+            code=$(probe "$ORIGIN$route" 200)
+            [ "$code" = "200" ] || { echo "::error::$route answered $code. A sitemap address must be the page, not a redirect to it"; exit 1; }
+            page=$(cat "$body")
+            if [[ "$page" =~ $title_re ]]; then title="${BASH_REMATCH[0]}"; else title=""; fi
+            if [[ "$page" =~ $lang_re ]]; then lang="${BASH_REMATCH[0]}"; else lang=""; fi
+            echo "$route -> $lang $title"
+            [ -n "$title" ] || { echo "::error::$route has no title"; exit 1; }
+            if ! [[ "$page" =~ $root_re ]]; then
+              echo "::error::$route ships an empty root. Nothing rendered into it"
+              exit 1
+            fi
+            # Three addresses serving one language is exactly the failure the language prefixes
+            # undo, and it is invisible in a browser that happens to be set to that language.
+            case "$seen_titles" in
+              *"[$title]"*) echo "::error::$route ships a title another address already shipped. They are the same language"; exit 1 ;;
+            esac
+            seen_titles="${seen_titles}[$title]"
+          done
+
+          # An unknown path must be a REAL 404 now that `/* /index.html 200` is gone. A soft 404 is
+          # a page a search engine indexes as if it were content — here, a full copy of the home
+          # page at every typo on the domain.
+          for missing in /nao-existe-esta-pagina /pt/nao-existe /es/no-existe; do
+            code=$(probe "$ORIGIN$missing" 404)
+            if [ "$code" != "404" ]; then
+              echo "::error::$missing answered $code. A catch-all rewrite crept back in"
+              exit 1
+            fi
+          done
+
+          # The two files a crawler reads before anything else have to be the FILES. With the
+          # catch-all gone they cannot be answered by the shell any more — which is exactly why it
+          # is worth asserting: a rewrite added back by a future hand would serve HTML here and
+          # nothing else in this job would notice.
+          for file in /robots.txt /sitemap.xml /llms.txt /llms-full.txt /.well-known/mcp.json; do
+            probe "$ORIGIN$file" 200 > /dev/null
+            type=$(grep -i '^content-type:' "$head" || true)
+            type=${type%$'\r'}
+            echo "$file -> $type"
+            if [[ "$type" == *text/html* ]]; then
+              echo "::error::$file serves text/html. It did not deploy, or a catch-all is answering for it"
+              exit 1
+            fi
+          done
+
+          # The MCP manifest has to be JSON that says stdio, and has to carry no address: TabRunner has
+          # no public MCP endpoint, and a server URL here would send clients to a place that is not there.
+          probe "$ORIGIN/.well-known/mcp.json" 200 > /dev/null
+          manifest=$(cat "$body")
+          if [[ "$manifest" != *'"transport": "stdio"'* || "$manifest" == *'"url"'* ]]; then
+            echo "::error::/.well-known/mcp.json is not the local stdio manifest"
+            exit 1
+          fi
+
+          probe "$ORIGIN/robots.txt" 200 > /dev/null
+          robots=$(cat "$body")
+          if [[ "$robots" != *[Ss]itemap:* ]]; then
+            echo "::error::robots.txt does not point at a sitemap"
+            exit 1
+          fi
