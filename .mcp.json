@@ -2,7 +2,7 @@
   "mcpServers": {
     "tabrunner": {
       "command": "bun",
-      "args": ["daemon/src/index.ts"]
+      "args": ["packages/mcp/src/index.ts"]
     }
   }
 }

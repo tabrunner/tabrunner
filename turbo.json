@@ -1,0 +1,35 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "globalDependencies": [
+    "eslint.config.js",
+    "tsconfig.base.json",
+    "tsconfig.react.json",
+    "tsconfig.scripts.json",
+    "knip.json",
+    "prettier.config.mjs",
+    "patches/**",
+    "PRIVACY*.md",
+    "TERMS*.md",
+    "docs/screenshots/**"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "env": ["VITE_*"],
+      "outputs": ["dist/**", "dist-ssr/**", ".wxt/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "//#typecheck:tooling"]
+    },
+    "//#typecheck:tooling": {},
+    "lint": {
+      "dependsOn": ["//#lint:tooling"]
+    },
+    "//#lint:tooling": {},
+    "test": {},
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

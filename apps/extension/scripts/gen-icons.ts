@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 // Generate the extension icon set and the social OG card from the brand mark
-// in src/shared/logo.ts (same pattern as olhary/featury gen-icons).
+// in src/shared/logo.ts.
 //
 //   bun run icons          # or: bun run scripts/gen-icons.ts
 //
 // resvg rasterizes the SVGs; everything else is Bun-native. Chrome extensions
-// want plain PNGs (no .ico), so the olhary png-to-ico step doesn't apply here.
+// want plain PNGs, not .ico files.
 //
 // The OG card is the same comet-ice composition as the site's
 // (site/scripts/gen-og.ts) — deep-field ground, star field, comet-tab mark,
@@ -103,9 +103,9 @@ for (const size of [16, 32, 48, 96, 128]) {
     renderPng(size === 16 ? tileIconSvg("small") : TILE, size),
   );
 }
-await write("docs/og.png", renderPng(ogSvg(), 1200, true));
+await write("../../docs/og.png", renderPng(ogSvg(), 1200, true));
 // The plugin's listing icon: the stores show a large PNG, and read the SVG where they can.
-await write("plugin/assets/logo.svg", TILE + "\n");
-await write("plugin/assets/logo.png", renderPng(TILE, 512));
+await write("../../plugin/assets/logo.svg", TILE + "\n");
+await write("../../plugin/assets/logo.png", renderPng(TILE, 512));
 
 console.log(`\ndone — ${count} files, ${(bytes / 1024).toFixed(1)} KB.`);

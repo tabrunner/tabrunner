@@ -9,7 +9,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tabrunner/tabrunner.git",
-    "directory": "daemon"
+    "directory": "packages/mcp"
   },
   "bugs": "https://github.com/tabrunner/tabrunner/issues",
   "keywords": [
@@ -28,13 +28,15 @@
   ],
   "scripts": {
     "start": "bun src/index.ts",
-    "compile": "tsc --noEmit",
-    "prepack": "bun build --target=bun src/index.ts --outfile dist/tabrunner-mcp.js"
+    "prepack": "bun run build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src smoke.ts",
+    "build": "bun build --target=bun src/index.ts --outfile dist/tabrunner-mcp.js"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.22.0",
-    "@types/bun": "^1.3.0",
-    "typescript": "^5.9.3",
-    "zod": "^4.4.3"
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:",
+    "zod": "catalog:"
   }
 }

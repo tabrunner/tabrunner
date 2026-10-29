@@ -14,7 +14,7 @@
  *   bun run shots   (after `bun run build`)
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
@@ -22,7 +22,7 @@ import { findChrome } from "./find-chrome";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const extPath = join(root, "dist", "chrome-mv3");
-const outDir = join(root, "docs", "screenshots");
+const outDir = join(root, "..", "..", "docs", "screenshots");
 mkdirSync(outDir, { recursive: true });
 
 const executablePath = findChrome();
@@ -207,7 +207,9 @@ for (let i = 0; i < 50 && !extId; i++) {
   else await new Promise((r) => setTimeout(r, 100));
 }
 if (!extId)
-  throw new Error("extension service worker never appeared — run `bun run build` in ../chrome");
+  throw new Error(
+    "Extension worker did not start. Run `bun run build` in apps/extension, then retry.",
+  );
 console.log(`extension id: ${extId}`);
 
 async function seed(active: string | null) {
@@ -420,11 +422,8 @@ await composite(
 );
 
 await browser.close();
-console.log("done — 4 shots in docs/screenshots/");
+console.log("Saved 4 screenshots in docs/screenshots/.");
 
-// The site serves webp derivatives of these — refresh them too when the
-// sibling repo is checked out next to this one (`bun run sync` there).
+// Refresh the site's committed WebP derivatives from the same screenshots.
 const siteRoot = join(root, "..", "site");
-if (existsSync(join(siteRoot, "scripts", "sync-assets.ts"))) {
-  execFileSync("bun", ["run", "sync"], { cwd: siteRoot, stdio: "inherit" });
-}
+execFileSync("bun", ["run", "sync"], { cwd: siteRoot, stdio: "inherit" });

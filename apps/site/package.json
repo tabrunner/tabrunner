@@ -1,0 +1,44 @@
+{
+  "name": "tabrunner-site",
+  "description": "tabrunner.app: marketing/download site for the TabRunner browser agent extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:client": "vite build",
+    "build:server": "vite build --ssr src/entry-server.tsx --outDir dist-ssr",
+    "build": "bun run sync:legal && tsc --noEmit && bun run build:client && bun run build:server && bun scripts/prerender.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run scripts/check-run-phase.ts && bun run scripts/check-prerender.ts",
+    "preview": "vite preview",
+    "sync": "bun run scripts/sync-assets.ts",
+    "sync:legal": "bun run scripts/sync-legal.ts",
+    "og": "bun run scripts/gen-og.ts",
+    "shoot": "bun run scripts/shoot.ts",
+    "lint": "eslint src vite.config.ts"
+  },
+  "dependencies": {
+    "i18next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-i18next": "catalog:",
+    "react-markdown": "catalog:",
+    "remark-gfm": "catalog:"
+  },
+  "devDependencies": {
+    "@fontsource-variable/figtree": "catalog:",
+    "@fontsource-variable/jetbrains-mono": "catalog:",
+    "@fontsource-variable/unbounded": "catalog:",
+    "@gusnips/vite": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "puppeteer-core": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "@resvg/resvg-js": "catalog:"
+  }
+}

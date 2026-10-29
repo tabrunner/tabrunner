@@ -1,0 +1,29 @@
+# No catch-all. Every published address is a real file, so a miss must be a real 404 — the
+# `/* /index.html 200` this replaces answered every typo on the domain with the home page, which a
+# search engine indexes as content (a soft 404) and a reader mistakes for the page they asked for.
+#
+# Pages serves the root 404.html for a miss on its own; these two rules only pick the shell that
+# matches the language tree the address was under, so a wrong link under /pt-br explains itself in
+# Portuguese. Status 404 (not 200), which is also why naming an .html destination is safe here:
+# Pages normalizes extensionless destinations on 200 rewrites only.
+# Portuguese moved from /pt-br to /pt on Sep 6 2026 — the hreflang TAG still says pt-BR, only the
+# address changed. A 301 rather than nothing: those addresses were published, and dropping them
+# turns each into a 404. Permanent, so a crawler moves the credit across instead of keeping two
+# spellings of one page. These come first, because Pages takes the FIRST match.
+/pt-br     /pt          301
+/pt-br/*   /pt/:splat   301
+
+# The legal pages under the word a reader types in their own language, 301 to the address the
+# sitemap lists. Above the 404 rules, which `/pt/termos` and `/es/terminos` would otherwise match
+# first. `/terms` and `/privacy` need no alias: they ARE the English pages.
+/termos           /pt/terms     301
+/privacidade      /pt/privacy   301
+/terminos         /es/terms     301
+/privacidad       /es/privacy   301
+/pt/termos        /pt/terms     301
+/pt/privacidade   /pt/privacy   301
+/es/terminos      /es/terms     301
+/es/privacidad    /es/privacy   301
+
+/pt/*      /pt/404.html      404
+/es/*      /es/404.html      404
