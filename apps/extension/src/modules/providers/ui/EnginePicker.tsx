@@ -253,9 +253,6 @@ function ModelList({
           <p role={error ? "alert" : "status"}>
             {t(error ? "enginePicker.listFailed" : "enginePicker.listEmpty")}
           </p>
-          {!error && provider.model && (
-            <p>{t("enginePicker.unavailableModel", { model: provider.model })}</p>
-          )}
           <Button variant="outline" size="sm" className="self-start" onClick={onRetry}>
             {t("enginePicker.refreshModels")}
           </Button>

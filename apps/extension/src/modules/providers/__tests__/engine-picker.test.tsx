@@ -110,7 +110,8 @@ describe("account model picker", () => {
 
   it("distinguishes an authoritative empty list from failure and offers refresh", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ models: [] })));
-    await render(provider("picker-empty"));
+    await render({ ...provider("picker-empty"), model: "saved-unverified" });
+    expect(container.textContent).not.toContain("Choose a model from this list");
     expect(container.querySelector('[role="status"]')?.textContent).toContain("no usable models");
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(button("Refresh models")).toBeDefined();
