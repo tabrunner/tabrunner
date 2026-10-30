@@ -170,10 +170,18 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
         `expected extension: ${link.expectedExtensionId}`,
       ];
       if (provider) lines.push(`provider: ${describeProvider(provider)}`);
+      else if (link.connected) lines.push("provider: not confirmed");
 
       if (link.problem) lines.push("", link.problem);
       else if (!link.connected) lines.push("", NOT_CONNECTED);
-      else if (provider && !provider.ready) lines.push("", providerProblem(provider));
+      else if (!provider)
+        lines.push(
+          "",
+          "TabRunner is connected, but the provider check did not finish.\n" +
+            "Cause: the extension did not return the provider details for this client.\n" +
+            "Fix: call health again. If it keeps failing, open TabRunner's side panel to wake the worker, then retry health before starting a task.",
+        );
+      else if (!provider.ready) lines.push("", providerProblem(provider));
       else lines.push("", "Ready. Start a browser task with run.");
       return text(lines.join("\n"));
     },
@@ -291,11 +299,12 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
       },
     },
     async ({ wait, waitSeconds }) => {
+      await link.resync();
       const shouldWait = wait ?? true;
       // Park while there is something to wait FOR: a run in flight, or one of
       // this client's runs queued — its `started` event wakes the wait.
       const queuedOurs = link.status.queue.length > 0;
-      if (shouldWait && (link.status.state === "running" || queuedOurs)) {
+      if (shouldWait && !link.problem && (link.status.state === "running" || queuedOurs)) {
         const seconds = Math.min(
           Math.max(waitSeconds ?? DEFAULT_WAIT_SECONDS, 1),
           MAX_WAIT_SECONDS,
@@ -305,11 +314,10 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
       const body = formatStatus(link.status);
       // A disconnect mid-run is not the run dying — the extension keeps working
       // and re-syncs on reconnect. Say that, so nobody restarts a live task.
-      return text(
-        link.connected
-          ? body
-          : `${body}\n\n(the extension is not connected right now: ${NOT_CONNECTED})`,
-      );
+      if (!link.connected)
+        return text(`${body}\n\n(the extension is not connected right now: ${NOT_CONNECTED})`);
+      if (link.problem) return text(`${link.problem}\n\nLast known status:\n${body}`);
+      return text(body);
     },
   );
 

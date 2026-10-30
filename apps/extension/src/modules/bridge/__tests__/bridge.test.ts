@@ -467,6 +467,62 @@ describe("Bridge broker leases", () => {
     expect(listActiveRuns().every((run) => !run.controller.signal.aborted)).toBe(true);
   });
 
+  it("recovers the same client after its owner lease expires without replaying work", async () => {
+    const bridge = new Bridge();
+    bridge.start();
+    const a = await begin("a");
+    const b = await begin("b");
+    const queued = await begin("a", "a-before-outage");
+    socket.onDisconnect?.();
+    await vi.advanceTimersByTimeAsync(40_000);
+    socket.onMessage?.({ type: "ping", clientIds: ["b"] });
+    await vi.advanceTimersByTimeAsync(20_001);
+    expect(getOwnerRun("bridge", "a")?.controller.signal.aborted).toBe(true);
+    expect(getOwnerRun("bridge", "b")?.controller.signal.aborted).toBe(false);
+    expect(listQueue().some((entry) => entry.id === queued.runId)).toBe(false);
+    await finish(a.runId);
+    socket.onOpen?.();
+    socket.onMessage?.({ type: "ping", clientIds: ["a", "b"] });
+    request("a", "a-after-expiry", "sync");
+    expect(await response("a-after-expiry")).toMatchObject({
+      ok: true,
+      result: { runId: null, conversationId: a.conversationId, queue: [] },
+    });
+    expect(getOwnerRun("bridge", "a")).toBeNull();
+    const resumed = await begin("a", "a-new-task");
+    expect(resumed.conversationId).toBe(a.conversationId);
+    expect(resumed.runId).not.toBe(a.runId);
+    expect(runs.has(queued.runId)).toBe(false);
+    request("a", "a-old-control", "stop", {}, a.runId);
+    expect((await response("a-old-control")).error?.code).toBe("stale-run");
+    expect(getOwnerRun("bridge", "a")?.id).toBe(resumed.runId);
+    expect(getOwnerRun("bridge", "b")?.id).toBe(b.runId);
+    expect(getOwnerRun("bridge", "b")?.controller.signal.aborted).toBe(false);
+  });
+
+  it("rejects new work while an expired owner is still draining", async () => {
+    const bridge = new Bridge();
+    bridge.start();
+    const a = await begin("a");
+    socket.onDisconnect?.();
+    await vi.advanceTimersByTimeAsync(60_001);
+    socket.onOpen?.();
+    socket.onMessage?.({ type: "ping", clientIds: ["a"] });
+    for (const method of ["sync", "providerInfo", "run", "browserStart"]) {
+      request("a", `during-drain-${method}`, method, { task: "not yet", goal: "not yet" });
+      expect((await response(`during-drain-${method}`)).error?.code).toBe("client-recovering");
+    }
+    expect(getOwnerRun("bridge", "a")?.id).toBe(a.runId);
+    expect(runs.size).toBe(1);
+    await finish(a.runId);
+    request("a", "drained-sync", "sync");
+    expect((await response("drained-sync")).ok).toBe(true);
+    request("a", "drained-direct", "browserStart", { goal: "inspect after cleanup" });
+    expect((await response("drained-direct")).ok).toBe(true);
+    request("a", "close-recovered", "closeClient");
+    expect((await response("close-recovered")).ok).toBe(true);
+  });
+
   it("expires only missing bridge owners and sends close receipt after their drain", async () => {
     const bridge = new Bridge();
     bridge.start();
@@ -491,6 +547,10 @@ describe("Bridge broker leases", () => {
     ).toBe(false);
     await finish(a.runId);
     expect((await response("close-a")).result).toEqual({ ok: true });
+    socket.onOpen?.();
+    socket.onMessage?.({ type: "ping", clientIds: ["a", "b"] });
+    request("a", "retired-sync", "sync");
+    expect((await response("retired-sync")).error?.code).toBe("client-closing");
     request("a", "late-run", "run", { task: "must not restart" });
     expect((await response("late-run")).error?.code).toBe("client-closing");
     expect(getOwnerRun("bridge", "a")).toBeNull();

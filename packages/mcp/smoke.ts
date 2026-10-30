@@ -11,6 +11,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import {
   BRIDGE_PROTOCOL_VERSION,
   emptyStatus,
+  type BridgeProviderInfo,
   type BridgeRequest,
   type CompactRunEvent,
   type DaemonMessage,
@@ -91,6 +92,14 @@ const closedClients: string[] = [];
 let delayCleanup = false;
 const deferredCleanup: BridgeRequest[] = [];
 const statuses = new Map<string, ReturnType<typeof emptyStatus>>();
+const observedRequests: BridgeRequest[] = [];
+const syncRequests: BridgeRequest[] = [];
+const syncBehavior = new Map<string, "fail" | "hold">();
+const providerBehavior = new Map<string, "ready" | "fail" | "hold">();
+const providerRequests: BridgeRequest[] = [];
+let holdNextSync = false;
+let helloCount = 0;
+let heartbeatClients: string[] = [];
 
 function check(label: string, ok: unknown): void {
   assert(ok, label);
@@ -120,6 +129,18 @@ function reply(request: BridgeRequest, result: unknown): void {
       requestId: request.requestId,
       ok: true,
       result,
+    } satisfies ExtensionMessage),
+  );
+}
+
+function rejectRequest(request: BridgeRequest): void {
+  socket?.send(
+    JSON.stringify({
+      type: "response",
+      clientId: request.clientId,
+      requestId: request.requestId,
+      ok: false,
+      error: { code: "request-failed", message: "Test-only private failure detail" },
     } satisfies ExtensionMessage),
   );
 }
@@ -199,10 +220,23 @@ async function connectExtension(protocolVersion = BRIDGE_PROTOCOL_VERSION): Prom
   ws.onmessage = (event) => {
     const msg = JSON.parse(String(event.data)) as DaemonMessage;
     if (msg.type === "ping") {
+      heartbeatClients = msg.clientIds;
       ws.send(JSON.stringify({ type: "pong" } satisfies ExtensionMessage));
       return;
     }
+    observedRequests.push(msg);
     if (msg.method === "sync") {
+      syncRequests.push(msg);
+      if (holdNextSync) {
+        holdNextSync = false;
+        syncBehavior.set(msg.clientId, "hold");
+      }
+      const behavior = syncBehavior.get(msg.clientId);
+      if (behavior === "hold") return;
+      if (behavior === "fail") {
+        rejectRequest(msg);
+        return;
+      }
       ws.send(
         JSON.stringify({
           type: "response",
@@ -215,7 +249,18 @@ async function connectExtension(protocolVersion = BRIDGE_PROTOCOL_VERSION): Prom
       return;
     }
     if (msg.method === "providerInfo") {
-      reply(msg, { name: null, ready: false, auth: null, model: null });
+      providerRequests.push(msg);
+      const behavior = providerBehavior.get(msg.clientId);
+      if (behavior === "hold") return;
+      if (behavior === "fail") {
+        rejectRequest(msg);
+        return;
+      }
+      const provider: BridgeProviderInfo =
+        behavior === "ready"
+          ? { name: "Test provider", ready: true, auth: "key", model: null }
+          : { name: null, ready: false, auth: null, model: null };
+      reply(msg, provider);
       return;
     }
     if (msg.method === "closeClient") {
@@ -226,6 +271,7 @@ async function connectExtension(protocolVersion = BRIDGE_PROTOCOL_VERSION): Prom
     }
     requests.push(msg);
   };
+  helloCount++;
   ws.send(JSON.stringify({ type: "hello", extensionId, version: "0.14.2", protocolVersion }));
   return ws;
 }
@@ -519,13 +565,207 @@ try {
     (await call(second.client, "get_status", { wait: false })).includes("state: running"),
   );
 
+  const syncCount = (clientId: string) =>
+    syncRequests.filter((r) => r.clientId === clientId).length;
+  const mutationsBeforeRecovery = observedRequests.filter((r) =>
+    ["run", "browserStart", "browserAct"].includes(r.method),
+  ).length;
+  providerBehavior.set(currentBId, "ready");
+  syncBehavior.set(currentBId, "fail");
+  let beforeSync = syncCount(currentBId);
+  socket.close();
+  socket = await connectExtension();
+  await until(
+    () => (syncCount(currentBId) > beforeSync ? true : undefined),
+    "failed reconnect sync",
+  );
+  const failedSyncHealth = await call(second.client, "health");
+  beforeSync = syncCount(currentBId);
+  const recoveryHello = helloCount;
+  statuses.set(currentBId, {
+    ...statuses.get(currentBId)!,
+    steps: [{ tool: "read", summary: "Recovered after failed sync" }],
+  });
+  syncBehavior.delete(currentBId);
+  await until(
+    () => (syncCount(currentBId) > beforeSync ? true : undefined),
+    "heartbeat retries the failed sync without another hello",
+  );
+  const recoveredSyncStatus = await call(second.client, "get_status", { wait: false });
+  check(
+    "the same initialized client recovers after a failed sync without another hello",
+    helloCount === recoveryHello &&
+      recoveredSyncStatus.includes("Recovered after failed sync") &&
+      !recoveredSyncStatus.includes("Last known status"),
+  );
+  check(
+    "health cannot say Ready while this client's sync is failing",
+    !failedSyncHealth.includes("Ready.") &&
+      failedSyncHealth.includes("status") &&
+      failedSyncHealth.includes("Fix:") &&
+      !failedSyncHealth.includes("private failure detail"),
+  );
+
+  providerBehavior.set(currentBId, "fail");
+  const failedProviderHealth = await call(second.client, "health");
+  check(
+    "a failed provider read is not Ready or an unconfigured provider",
+    !failedProviderHealth.includes("Ready.") &&
+      !failedProviderHealth.includes("none configured") &&
+      failedProviderHealth.includes("provider") &&
+      failedProviderHealth.includes("Fix:") &&
+      !failedProviderHealth.includes("private failure detail"),
+  );
+  providerBehavior.set(currentBId, "hold");
+  const timedOutProviderHealth = await call(second.client, "health");
+  const delayedProvider = providerRequests.findLast((r) => r.clientId === currentBId);
+  assert(delayedProvider);
+  reply(delayedProvider, { name: "Late provider", ready: true, auth: "key", model: null });
+  check("a timed-out provider lookup is not Ready", !timedOutProviderHealth.includes("Ready."));
+  providerBehavior.delete(currentBId);
+  check(
+    "an unconfigured provider still gives its own setup instructions",
+    (await call(second.client, "health")).includes("no provider is configured"),
+  );
+  providerBehavior.set(currentBId, "ready");
+  check(
+    "a successful provider lookup clears the earlier failure",
+    (await call(second.client, "health")).includes("Ready."),
+  );
+
+  syncBehavior.set(currentBId, "hold");
+  beforeSync = syncCount(currentBId);
+  socket.close();
+  socket = await connectExtension();
+  await until(() => (syncCount(currentBId) > beforeSync ? true : undefined), "held reconnect sync");
+  const timedOutSync = syncRequests.findLast((r) => r.clientId === currentBId);
+  assert(timedOutSync);
+  const timeoutHello = helloCount;
+  let readsFinished = false;
+  const statusReads = Promise.all([
+    call(second.client, "get_status", { wait: false }),
+    call(second.client, "get_status", { wait: false }),
+  ]).then((result) => {
+    readsFinished = true;
+    return result;
+  });
+  await Bun.sleep(500);
+  check(
+    "heartbeats and concurrent status reads share one pending sync",
+    syncCount(currentBId) === beforeSync + 1 && !readsFinished,
+  );
+  await until(
+    () => (syncCount(currentBId) === beforeSync + 2 ? true : undefined),
+    "heartbeat retries a timed-out sync",
+  );
+  const retriedSync = syncRequests.findLast((r) => r.clientId === currentBId);
+  assert(retriedSync);
+  statuses.set(currentBId, {
+    ...statuses.get(currentBId)!,
+    steps: [{ tool: "read", summary: "Recovered after timed-out sync" }],
+  });
+  syncBehavior.delete(currentBId);
+  reply(retriedSync, statuses.get(currentBId));
+  const timeoutRecoveryStatus = await call(second.client, "get_status", { wait: false });
+  check(
+    "a sync timeout recovers on the same socket without replaying browser work",
+    helloCount === timeoutHello &&
+      (await statusReads).every((body) => body.includes("Last known status")) &&
+      timeoutRecoveryStatus.includes("Recovered after timed-out sync") &&
+      !timeoutRecoveryStatus.includes("Last known status") &&
+      observedRequests.filter((r) => ["run", "browserStart", "browserAct"].includes(r.method))
+        .length === mutationsBeforeRecovery,
+  );
+  reply(timedOutSync, { ...emptyStatus(), state: "done", summary: "stale timed-out sync" });
+  const healthySyncCount = syncCount(currentBId);
+  await Bun.sleep(400);
+  await call(second.client, "get_status", { wait: false });
+  check(
+    "a synchronized client gets no recurring status requests or late timeout overwrite",
+    syncCount(currentBId) === healthySyncCount &&
+      !(await call(second.client, "get_status", { wait: false })).includes("stale timed-out sync"),
+  );
+
+  syncBehavior.set(currentBId, "hold");
+  beforeSync = syncCount(currentBId);
+  socket.close();
+  socket = await connectExtension();
+  await until(() => (syncCount(currentBId) > beforeSync ? true : undefined), "event race sync");
+  const staleSync = syncRequests.findLast((r) => r.clientId === currentBId);
+  assert(staleSync);
+  emit(currentBId, "bd", "cb", { type: "step", tool: "read", summary: "Newer live progress" });
+  reply(staleSync, statuses.get(currentBId));
+  const racedStatus = await call(second.client, "get_status", { wait: false });
+  check(
+    "a delayed sync cannot erase newer events from the same run",
+    racedStatus.includes("Newer live progress") && racedStatus.includes("Last known status"),
+  );
+  statuses.set(currentBId, {
+    ...statuses.get(currentBId)!,
+    steps: [{ tool: "read", summary: "Newer live progress" }],
+  });
+
+  // The retry is still pending when the socket is replaced again.
+  await until(
+    () => (syncCount(currentBId) > beforeSync + 1 ? true : undefined),
+    "event race retry remains pending",
+  );
+  const oldSocketSync = syncRequests.findLast((r) => r.clientId === currentBId);
+  assert(oldSocketSync);
+  beforeSync = syncCount(currentBId);
+  socket.close();
+  socket = await connectExtension();
+  await until(
+    () => (syncCount(currentBId) > beforeSync ? true : undefined),
+    "replacement socket sync",
+  );
+  const newSocketSync = syncRequests.findLast((r) => r.clientId === currentBId);
+  assert(newSocketSync);
+  reply(oldSocketSync, { ...emptyStatus(), state: "done", summary: "stale socket sync" });
+  syncBehavior.delete(currentBId);
+  reply(newSocketSync, statuses.get(currentBId));
+  check(
+    "reconnect during sync ignores the old socket's result",
+    (await call(second.client, "get_status", { wait: false })).includes("Newer live progress"),
+  );
+
+  holdNextSync = true;
+  const pendingClose = startClient("close during sync");
+  await pendingClose.connected;
+  const closingSync = await until(
+    () => syncRequests.find((r) => syncBehavior.get(r.clientId) === "hold"),
+    "new client pending sync",
+  );
+  const closingSyncCount = syncCount(closingSync.clientId);
+  await pendingClose.client.close();
+  await until(
+    () => (closedClients.includes(closingSync.clientId) ? true : undefined),
+    "close during pending sync",
+  );
+  reply(closingSync, { ...emptyStatus(), state: "running", runId: "closed-run" });
+  socket.close();
+  socket = await connectExtension();
+  await Bun.sleep(400);
+  check(
+    "closing a client during sync is terminal across heartbeats and reconnects",
+    syncCount(closingSync.clientId) === closingSyncCount &&
+      !heartbeatClients.includes(closingSync.clientId),
+  );
+  providerBehavior.delete(currentBId);
+
   statuses.set(bRequest.clientId, { ...emptyStatus(), conversationId: "cb" });
   socket.close();
   socket = await connectExtension();
   await Bun.sleep(100);
+  const interruptedStatus = await call(second.client, "get_status", { wait: false });
   check(
-    "a restarted worker reports the interrupted run",
-    (await call(second.client, "get_status", { wait: false })).includes("state: error"),
+    "a reconnect reports an interrupted task without assuming the worker restarted",
+    interruptedStatus.includes("state: error") &&
+      interruptedStatus.includes("could not resume the previous task after reconnecting") &&
+      interruptedStatus.includes(
+        "Do not repeat an action until you know whether it already happened",
+      ) &&
+      !interruptedStatus.includes("Chrome restarted"),
   );
   const reset = call(second.client, "new_conversation");
   const resetRequest = await request("newConversation");

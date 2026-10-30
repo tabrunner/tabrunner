@@ -4,7 +4,7 @@
     "tabrunner": {
       "type": "stdio",
       "command": "bunx",
-      "args": ["tabrunner-mcp@0.16.0"]
+      "args": ["tabrunner-mcp@0.16.1"]
     }
   }
 }

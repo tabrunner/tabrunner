@@ -1,3 +1,4 @@
+import { i18n } from "@/i18n";
 import { createLogger } from "@/lib/logger";
 import { onBoardChanged } from "@/modules/agent/run-queue";
 import { getActiveProvider } from "@/modules/providers";
@@ -83,7 +84,8 @@ export class Bridge {
         );
       }
       if (method === "closeClient") {
-        await this.closeClient(clientId);
+        this.retired.add(clientId);
+        await this.drainClient(clientId);
         this.respond(request, { ok: true });
         return;
       }
@@ -92,6 +94,9 @@ export class Bridge {
           "client-closing",
           "This MCP session is closing. Start a new MCP session, then try again.",
         );
+      }
+      if (this.closing.has(clientId)) {
+        throw new BridgeError("client-recovering", i18n.t("errors.bridgeClientRecovering"));
       }
       this.renew(clientId);
       const client = this.client(clientId);
@@ -137,15 +142,15 @@ export class Bridge {
       clientId,
       setTimeout(() => {
         this.leases.delete(clientId);
-        void this.closeClient(clientId).catch((error: unknown) =>
+        void this.drainClient(clientId).catch((error: unknown) =>
           log.warn("client cleanup failed", String(error)),
         );
       }, LEASE_MS),
     );
   }
 
-  private closeClient(clientId: string): Promise<void> {
-    this.retired.add(clientId);
+  /** Expiry drains the owner without retiring a still-live broker identity. */
+  private drainClient(clientId: string): Promise<void> {
     const pending = this.closing.get(clientId);
     if (pending) return pending;
     const lease = this.leases.get(clientId);
