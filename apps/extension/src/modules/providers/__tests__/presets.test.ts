@@ -42,11 +42,14 @@ describe("provider names", () => {
     expect(PRESETS[0]?.sessionHeader).toBeUndefined();
   });
 
-  it("keeps Zen's account and key paths beside its free shelf", () => {
+  it("keeps Zen's integration behind a disabled flag at the bottom", () => {
     const zen = PRESETS.find((p) => p.id === "opencode");
     expect(zen?.signIn).toBe("account");
     expect(zen?.auth).toBeUndefined();
-    expect(zen && presetSection(zen)).toBe("free");
+    expect(zen?.free).toBe(true);
+    expect(zen?.disabled).toBe(true);
+    expect(zen && presetSection(zen)).toBe("unavailable");
+    expect(PRESETS.at(-1)).toBe(zen);
   });
 
   it("leads Zen's cold-start list with models its free tier serves", () => {
@@ -93,9 +96,9 @@ describe("provider names", () => {
     // the ChatGPT backend keys its prompt cache on `session-id`.
     const flagged = PRESETS.filter((p) => p.sessionHeader).map((p) => [p.id, p.sessionHeader]);
     expect(flagged).toEqual([
-      ["opencode", "x-opencode-session"],
       ["chatgpt", "session-id"],
       ["opencode-go", "x-opencode-session"],
+      ["opencode", "x-opencode-session"],
     ]);
   });
 

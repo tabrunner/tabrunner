@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { getProviders, saveProvider } from "../storage";
+import {
+  getActiveProvider,
+  getProvider,
+  getProviders,
+  saveProvider,
+  setActiveProvider,
+} from "../storage";
 import type { ProviderConfig } from "../types";
 
 // Storage stand-in comes from src/test-setup.ts (vitest setupFiles).
@@ -14,6 +20,23 @@ const shimRow: ProviderConfig = {
 };
 
 describe("provider row migration", () => {
+  it("keeps disabled credentials saved without choosing them as the active chat provider", async () => {
+    const zen: ProviderConfig = {
+      ...shimRow,
+      id: "opencode",
+      name: "OpenCode Zen",
+      baseUrl: "https://opencode.ai/zen/v1",
+      apiKey: "oc_saved",
+    };
+    await saveProvider(zen);
+    await setActiveProvider(zen.id);
+    expect(await getActiveProvider()).toBeUndefined();
+    await saveProvider({ ...shimRow, id: "custom-1" });
+    expect((await getActiveProvider())?.id).toBe("custom-1");
+    expect(await getProvider(zen.id)).toEqual(zen);
+    expect(await getProviders()).toHaveLength(2);
+  });
+
   it("re-points a stored Gemini shim row at the native endpoint on read", async () => {
     await saveProvider(shimRow);
     const found = (await getProviders()).find((p) => p.id === "gemini");

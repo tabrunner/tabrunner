@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { byCredentialStatus, canSignIn, credentialStatus, isOAuthProvider } from "../status";
+import {
+  assertChatProviderSupported,
+  byCredentialStatus,
+  canSignIn,
+  credentialStatus,
+  isChatProviderSupported,
+  isOAuthProvider,
+} from "../status";
+import { PRESETS } from "../presets";
+import { ProviderError } from "../types";
 import type { ProviderConfig } from "../types";
 
 function config(over: Partial<ProviderConfig> & Pick<ProviderConfig, "id">): ProviderConfig {
@@ -34,18 +43,85 @@ describe("credentialStatus", () => {
   });
 
   it("counts a sign-in on a keyed row, which holds no key, as connected", () => {
-    // OpenCode Zen and OpenRouter take a key OR a sign-in. A signed-in one has
-    // `auth` and an empty apiKey, and the key check alone called it missing.
-    expect(credentialStatus(config({ id: "opencode", auth }))).toBe("connected");
-    expect(credentialStatus(config({ id: "opencode", apiKey: "oc_sk_1" }))).toBe("connected");
-    expect(credentialStatus(config({ id: "opencode" }))).toBe("connected");
-    expect(credentialStatus(config({ id: "opencode", apiKey: "public" }))).toBe("connected");
+    expect(credentialStatus(config({ id: "openrouter", auth }))).toBe("connected");
+    expect(credentialStatus(config({ id: "openrouter", apiKey: "sk-or-1" }))).toBe("connected");
+    expect(credentialStatus(config({ id: "openrouter" }))).toBe("missing");
     expect(credentialStatus(config({ id: "opencode-go" }))).toBe("missing");
+  });
+
+  it("never marks disabled Zen chat access connected, without changing its credentials", () => {
+    for (const apiKey of ["", "public", "oc_sk_1"]) {
+      const saved = config({ id: "opencode", apiKey, auth });
+      expect(credentialStatus(saved)).toBe("missing");
+      expect(credentialStatus(config({ id: "opencode", apiKey }))).toBe("missing");
+      expect(saved).toMatchObject({ apiKey, auth });
+    }
   });
 
   it("stays connected on a stale token — the next run refreshes it silently", () => {
     const stale = { ...auth, expiresAt: Date.now() - 60_000 };
     expect(credentialStatus(config({ id: "kimi-plan", auth: stale }))).toBe("connected");
+  });
+});
+
+describe("isChatProviderSupported", () => {
+  it("disables only flagged presets, not Go or custom endpoints", () => {
+    expect(isChatProviderSupported({ id: "opencode" })).toBe(false);
+    expect(isChatProviderSupported({ id: "opencode-go" })).toBe(true);
+    expect(isChatProviderSupported({ id: "custom-opencode" })).toBe(true);
+    const router = PRESETS.find((preset) => preset.id === "openrouter");
+    if (!router) throw new Error("Missing OpenRouter preset");
+    router.disabled = true;
+    try {
+      expect(isChatProviderSupported(router)).toBe(false);
+      expect(canSignIn(router.id)).toBe(false);
+    } finally {
+      delete router.disabled;
+    }
+  });
+
+  it("preserves Zen's free and signed-in behavior when the flag is removed", () => {
+    const zen = PRESETS.find((preset) => preset.id === "opencode");
+    if (!zen) throw new Error("Missing Zen preset");
+    delete zen.disabled;
+    try {
+      expect(isChatProviderSupported(zen)).toBe(true);
+      expect(canSignIn(zen.id)).toBe(true);
+      expect(credentialStatus(config({ id: zen.id }))).toBe("connected");
+      expect(credentialStatus(config({ id: zen.id, apiKey: "public" }))).toBe("connected");
+      expect(credentialStatus(config({ id: zen.id, auth }))).toBe("connected");
+      expect(credentialStatus(config({ id: zen.id, apiKey: "oc_sk_1" }))).toBe("connected");
+    } finally {
+      zen.disabled = true;
+    }
+  });
+
+  it("keeps onboarding eligible when saved rows support no chat provider", () => {
+    const saved = [config({ id: "opencode", auth })];
+    expect(saved.some(isChatProviderSupported)).toBe(false);
+    expect([...saved, config({ id: "openrouter" })].some(isChatProviderSupported)).toBe(true);
+    expect([].some(isChatProviderSupported)).toBe(false);
+  });
+});
+
+describe("assertChatProviderSupported", () => {
+  it("fails with an actionable non-retryable error without changing credentials", () => {
+    const saved = config({ id: "opencode", name: "OpenCode Zen", apiKey: "saved", auth });
+    let failure: unknown;
+    try {
+      assertChatProviderSupported(saved);
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(ProviderError);
+    expect(failure).toMatchObject({
+      status: 410,
+      kind: "model",
+      message: "OpenCode Zen is unavailable for chats in TabRunner. Choose another provider.",
+    });
+    expect(saved).toMatchObject({ apiKey: "saved", auth });
+    expect(() => assertChatProviderSupported(config({ id: "opencode-go" }))).not.toThrow();
+    expect(() => assertChatProviderSupported(config({ id: "custom-opencode" }))).not.toThrow();
   });
 });
 
@@ -61,12 +137,12 @@ describe("canSignIn", () => {
   it("is true for subscriptions and for keyed rows that also take a sign-in", () => {
     expect(canSignIn("claude")).toBe(true);
     expect(canSignIn("antigravity")).toBe(true);
-    expect(canSignIn("opencode")).toBe(true);
     expect(canSignIn("openrouter")).toBe(true);
   });
 
   it("is false for rows that only take a key, and for custom endpoints", () => {
     expect(canSignIn("deepseek")).toBe(false);
+    expect(canSignIn("opencode")).toBe(false);
     expect(canSignIn("opencode-go")).toBe(false);
     expect(canSignIn("custom-123")).toBe(false);
   });
@@ -75,6 +151,7 @@ describe("canSignIn", () => {
 describe("byCredentialStatus", () => {
   it("puts usable providers first and keeps original order within a group", () => {
     const list = [
+      config({ id: "opencode", auth }), // disabled
       config({ id: "openai" }), // missing
       config({ id: "anthropic", apiKey: "sk-a" }), // connected
       config({ id: "kimi-plan" }), // missing
@@ -85,6 +162,7 @@ describe("byCredentialStatus", () => {
       "kimi",
       "openai",
       "kimi-plan",
+      "opencode",
     ]);
   });
 });

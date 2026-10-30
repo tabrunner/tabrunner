@@ -7,6 +7,7 @@ import { OAuthSignIn, SIGN_IN_DONE_MS } from "./OAuthSignIn";
 import { PRESETS, presetSection, providerName, type PresetSection } from "../presets";
 import { checkCredential, modelsTarget, writeModelsCache } from "../models";
 import { splitErrorDetail } from "@/modules/conversation/error-detail";
+import { isChatProviderSupported } from "../status";
 import type { ProviderConfig, ProviderShape } from "../types";
 import { OPENCODE_PUBLIC_API_KEY } from "@providerkit/core";
 import type { Credential } from "@providerkit/core/auth";
@@ -56,23 +57,24 @@ export function ProviderForm({
   const { t } = useTranslation();
   const add = useProvidersStore((s) => s.add);
   const providers = useProvidersStore((s) => s.providers);
-  const initialPreset = initialProvider
-    ? PRESETS.find((p) => p.id === initialProvider.id)
-    : undefined;
+  const unavailable =
+    initialProvider && !isChatProviderSupported(initialProvider) ? initialProvider : undefined;
+  const editable = unavailable ? undefined : initialProvider;
+  const initialPreset = editable ? PRESETS.find((p) => p.id === editable.id) : undefined;
   const [presetId, setPresetId] = useState(
-    initialProvider ? (initialPreset?.id ?? CUSTOM) : PRESETS[0]!.id,
+    editable
+      ? (initialPreset?.id ?? CUSTOM)
+      : (PRESETS.find(isChatProviderSupported)?.id ?? CUSTOM),
   );
-  const [name, setName] = useState(initialProvider && !initialPreset ? initialProvider.name : "");
-  const [shape, setShape] = useState<ProviderShape>(initialProvider?.shape ?? "openai");
-  const [baseUrl, setBaseUrl] = useState(
-    initialProvider && !initialPreset ? initialProvider.baseUrl : "",
-  );
+  const [name, setName] = useState(editable && !initialPreset ? editable.name : "");
+  const [shape, setShape] = useState<ProviderShape>(editable?.shape ?? "openai");
+  const [baseUrl, setBaseUrl] = useState(editable && !initialPreset ? editable.baseUrl : "");
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"checking" | "saving" | null>(null);
 
   const preset = presetId === CUSTOM ? undefined : PRESETS.find((p) => p.id === presetId);
-  const existing = providers.find((p) => p.id === (preset ? preset.id : initialProvider?.id));
+  const existing = providers.find((p) => p.id === (preset ? preset.id : editable?.id));
   const isOAuth = preset?.auth === "oauth";
   const auth = existing?.auth;
   const freeAccess =
@@ -192,6 +194,7 @@ export function ProviderForm({
     free: t("providerForm.groupFree"),
     subscription: t("providerForm.groupSubscription"),
     key: t("providerForm.groupApiKey"),
+    unavailable: t("providerForm.groupUnavailable"),
   };
 
   const keyHint = isLocalUrl(preset ? preset.baseUrl : baseUrl.trim()) ? (
@@ -228,6 +231,11 @@ export function ProviderForm({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3">
+      {unavailable && (
+        <p role="status" className="attention rounded-lg p-3 text-sm">
+          {t("errors.providerDisabled", { name: providerName(unavailable) })}
+        </p>
+      )}
       <div className="flex flex-col gap-1 text-sm">
         {/* Sections explain access and billing without changing provider transport. */}
         <Select
@@ -235,21 +243,28 @@ export function ProviderForm({
           value={presetId}
           onChange={setPresetId}
           options={[
-            ...PRESETS.map((p) => ({
-              value: p.id,
-              label: providers.some((cp) => cp.id === p.id)
-                ? t("providerForm.configured", { name: p.name })
-                : p.name,
-              icon: <ProviderIcon icon={p.icon} size={20} />,
-              hint: p.id === "antigravity" ? t("providerForm.freeQuota") : undefined,
-              group: sectionLabels[presetSection(p)],
-            })),
+            ...PRESETS.map((p) => {
+              let hint: string | undefined;
+              if (p.disabled) hint = t("providerList.statusUnavailable");
+              else if (p.id === "antigravity") hint = t("providerForm.freeQuota");
+              return {
+                value: p.id,
+                label: providers.some((cp) => cp.id === p.id)
+                  ? t("providerForm.configured", { name: p.name })
+                  : p.name,
+                icon: <ProviderIcon icon={p.icon} size={20} />,
+                hint,
+                group: sectionLabels[presetSection(p)],
+                disabled: p.disabled ?? false,
+              };
+            }),
             {
               value: CUSTOM,
               label: t("providerForm.customEndpoint"),
               group: t("providerForm.groupApiKey"),
+              disabled: false,
             },
-          ]}
+          ].sort((a, b) => Number(a.disabled) - Number(b.disabled))}
         />
         {/* The endpoint is worth showing where the user is about to hand over a
             key — it says where that key goes. A sign-in reveals its own

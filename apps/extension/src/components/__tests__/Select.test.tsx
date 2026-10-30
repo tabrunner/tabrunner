@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 // The model picker lists two rows with the identical model name — the auto
 // choice and that same model pinned by hand — so the "Auto" chip is the only
@@ -51,6 +51,44 @@ function readingOrder(el: Element): string {
   }
   return parts.join(" ");
 }
+
+describe("Select disabled options", () => {
+  it("keeps an unavailable option visible without allowing a click or Enter to select it", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const onChange = vi.fn();
+    const view = { container, root };
+    try {
+      await act(async () =>
+        root.render(
+          <Select
+            value="available"
+            onChange={onChange}
+            options={[
+              { value: "available", label: "Available" },
+              { value: "disabled", label: "Unavailable", disabled: true },
+            ]}
+          />,
+        ),
+      );
+      await act(async () => container.querySelector("button")!.click());
+      const option = Array.from(document.querySelectorAll('[role="option"]')).find(
+        (item) => item.textContent === "Unavailable",
+      );
+      if (!(option instanceof HTMLElement)) throw new Error("Missing disabled option");
+      expect(option.getAttribute("aria-disabled")).toBe("true");
+      await act(async () => {
+        option.click();
+        option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      });
+      expect(onChange).not.toHaveBeenCalled();
+      expect(container.querySelector("button")?.textContent).toContain("Available");
+    } finally {
+      await unmount(view);
+    }
+  });
+});
 
 describe("Select hint placement", () => {
   it("leads the trigger label with the chip", async () => {

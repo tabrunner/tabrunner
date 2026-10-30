@@ -14,6 +14,7 @@ import {
   boardRunHere,
 } from "@/modules/conversation/ui";
 import { Onboarding, useProvidersStore } from "@/modules/providers/ui";
+import { isChatProviderSupported } from "@/modules/providers/status";
 import { SkillDraftDialog, SkillsManageDialog } from "@/modules/skills/ui";
 import { SettingsMenu } from "./SettingsMenu";
 import { mark } from "./boot";
@@ -153,7 +154,7 @@ export default function App() {
     refreshTip();
   }, [runEndedAt]);
 
-  const needsProvider = loaded && providers.length === 0;
+  const needsProvider = loaded && !providers.some(isChatProviderSupported);
 
   return (
     <div className="flex h-screen flex-col bg-white dark:bg-neutral-950">

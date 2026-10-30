@@ -15,6 +15,7 @@ import { listChatGPTModels } from "@providerkit/core/auth";
 import { usesZenFreeAccess } from "./zen";
 import { anthropicHeaders, anthropicOAuthHeaders, networkError, providerHeaders } from "./http";
 import { ensureProviderCredential } from "./credential";
+import { assertChatProviderSupported } from "./status";
 import { i18n } from "@/i18n";
 
 /** What a model listing is keyed on — the connection, never the per-task choices. */
@@ -45,6 +46,7 @@ export async function listStoredModels(
   p: ProviderConfig,
   signal?: AbortSignal,
 ): Promise<ModelInfo[]> {
+  assertChatProviderSupported(p);
   const target = modelsTarget(await ensureProviderCredential(p));
   const models = await listModels(target, signal);
   writeModelsCache(target, models);
@@ -91,6 +93,12 @@ export async function listModels(
   config: Pick<ProviderConfig, "shape" | "baseUrl" | "apiKey" | "auth"> & { id?: string },
   signal?: AbortSignal,
 ): Promise<ModelInfo[]> {
+  if (config.id) {
+    assertChatProviderSupported({
+      id: config.id,
+      name: PRESETS.find((preset) => preset.id === config.id)?.name ?? config.id,
+    });
+  }
   if (config.id === "chatgpt") {
     try {
       return await listChatGPTModels(
@@ -267,6 +275,7 @@ export function pickLatestModel(models: ModelInfo[]): ModelInfo | undefined {
 export async function resolveProviderModel(
   config: ProviderConfig,
 ): Promise<ResolvedProviderConfig> {
+  assertChatProviderSupported(config);
   // Image support is a property of the family, not the model — no endpoint
   // ships per-model vision flags, so the preset is the single source.
   const preset = PRESETS.find((p) => p.id === config.id);

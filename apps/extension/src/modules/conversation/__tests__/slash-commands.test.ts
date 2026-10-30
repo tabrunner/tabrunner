@@ -176,6 +176,37 @@ describe("executeSlash", () => {
     expect(lastNote()).toContain("→ OpenAI");
   });
 
+  it("omits disabled providers from choices and rejects a typed disabled id", () => {
+    const zen: ProviderConfig = { ...PROVIDER, id: "opencode", name: "OpenCode Zen" };
+    const go: ProviderConfig = { ...PROVIDER, id: "opencode-go", name: "OpenCode Go" };
+    const providers = [zen, PROVIDER, go];
+    useProvidersStore.setState({ providers });
+    expect(slashItems("/provider")?.items.map((item) => item.key)).toEqual(["p1", "opencode-go"]);
+    executeSlash("/provider opencode");
+    expect(lastNote()).toContain("OpenCode Zen is unavailable for chats");
+    expect(useConversationStore.getState().draftEngine).toBeNull();
+    expect(useProvidersStore.getState().providers).toEqual(providers);
+    executeSlash("/provider opencode-go", true);
+    expect(useConversationStore.getState().draftEngine?.providerId).toBe(go.id);
+  });
+
+  it("keeps a disabled pin untouched until another provider is chosen", () => {
+    const zen: ProviderConfig = { ...PROVIDER, id: "opencode", name: "OpenCode Zen" };
+    const pin = { providerId: zen.id, model: "big-pickle", effort: "high" as const };
+    useProvidersStore.setState({ providers: [zen, PROVIDER] });
+    useConversationStore.setState({ draftEngine: pin });
+    expect(slashItems("/model")?.items).toEqual([]);
+    expect(slashItems("/effort")?.items).toEqual([]);
+    executeSlash("/model different-model", true);
+    expect(lastNote()).toContain("is unavailable for chats");
+    executeSlash("/effort low", true);
+    expect(lastNote()).toContain("is unavailable for chats");
+    expect(useConversationStore.getState().draftEngine).toEqual(pin);
+    executeSlash("/provider p1", true);
+    expect(useConversationStore.getState().draftEngine?.providerId).toBe(PROVIDER.id);
+    expect(useProvidersStore.getState().providers[0]).toEqual(zen);
+  });
+
   it("answers /usage on an API-key provider without fetching", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);

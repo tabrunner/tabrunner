@@ -1,10 +1,15 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useProvidersStore } from "./store";
+import { activeProviderOf, useProvidersStore } from "./store";
 import { ProviderMark } from "./ProviderIcon";
 import { AddProviderDialog } from "./AddProviderDialog";
 import { PRESETS, providerDisplayName } from "../presets";
-import { byCredentialStatus, canSignIn, credentialStatus } from "../status";
+import {
+  byCredentialStatus,
+  canSignIn,
+  credentialStatus,
+  isChatProviderSupported,
+} from "../status";
 import { Button } from "@/components/Button";
 import { CometPose } from "@/components/CometPose";
 import { DotIcon } from "@/components/Icon";
@@ -38,7 +43,8 @@ function StatusDot({ connected }: { connected: boolean }) {
 
 export function ProviderList() {
   const { t } = useTranslation();
-  const { providers, activeId, loaded, load, remove, activate, signOut } = useProvidersStore();
+  const { providers, loaded, load, remove, activate, signOut } = useProvidersStore();
+  const active = useProvidersStore(activeProviderOf);
 
   useEffect(() => {
     void load(); // idempotent — the store dedupes concurrent mounts
@@ -86,14 +92,22 @@ export function ProviderList() {
       {ordered.map((p) => {
         const preset = PRESETS.find((pr) => pr.id === p.id);
         const name = providerDisplayName(p);
-        const isActive = p.id === activeId;
+        const supported = isChatProviderSupported(p);
+        const isActive = p.id === active?.id;
         const host = preset ? null : hostOf(p.baseUrl);
         const connected = credentialStatus(p) === "connected";
         const signsIn = canSignIn(p.id);
+        let status = t("providerList.statusNoKey");
+        if (!supported) status = t("providerList.statusUnavailable");
+        else if (connected) status = p.auth?.account ?? t("providerList.statusConnected");
+        else if (signsIn) status = t("providerList.statusNoSignIn");
+        let removeDescription = t("providerList.removeBody");
+        if (!supported) removeDescription = t("providerList.removeUnsupportedBody");
+        else if (isActive) removeDescription = t("providerList.removeActiveBody");
         return (
           <li
             key={p.id}
-            className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+            className={`flex items-center justify-between rounded-lg border px-3 py-2 ${!supported ? "flex-wrap gap-y-2" : ""} ${
               isActive
                 ? "border-brand-500 bg-brand-50 dark:bg-brand-950"
                 : "border-neutral-200 dark:border-neutral-700"
@@ -115,12 +129,7 @@ export function ProviderList() {
                   <span className="truncate">
                     {/* A signed-in row names its account — that's what makes it
                         self-evidently the user's own. */}
-                    {connected
-                      ? (p.auth?.account ?? t("providerList.statusConnected"))
-                      : signsIn
-                        ? t("providerList.statusNoSignIn")
-                        : t("providerList.statusNoKey")}{" "}
-                    · {p.model ?? t("providerList.auto")}
+                    {status} · {p.model ?? t("providerList.auto")}
                     {/* Wire shape and host are facts about an endpoint the user
                         typed in themselves; on a preset they're trivia. */}
                     {host ? ` · ${p.shape} · ${host}` : ""}
@@ -131,10 +140,15 @@ export function ProviderList() {
                 </div>
               </div>
             </div>
-            <div className="ml-3 flex shrink-0 gap-2">
+            <div className="ml-auto flex max-w-full shrink-0 flex-wrap justify-end gap-2 pl-3">
+              {!supported && (
+                <AddProviderDialog
+                  trigger={<Button size="sm">{t("providerList.chooseAnother")}</Button>}
+                />
+              )}
               {/* Never dead-end an unusable row: the one thing that fixes it is
                   right here, opening the same form that would add it. */}
-              {!connected && (
+              {supported && !connected && (
                 <AddProviderDialog
                   initialProvider={p}
                   trigger={
@@ -168,9 +182,7 @@ export function ProviderList() {
                   </Button>
                 }
                 title={t("providerList.removeTitle", { name })}
-                description={
-                  isActive ? t("providerList.removeActiveBody") : t("providerList.removeBody")
-                }
+                description={removeDescription}
                 onConfirm={() => void remove(p.id)}
               />
             </div>

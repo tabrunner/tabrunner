@@ -1,6 +1,8 @@
 import type { ProviderConfig } from "./types";
-import { PRESETS } from "./presets";
+import { ProviderError } from "./types";
+import { PRESETS, providerName } from "./presets";
 import { usesZenFreeAccess } from "./zen";
+import { i18n } from "@/i18n";
 
 /**
  * Whether a provider can actually run a task. The list sorts and labels on
@@ -25,6 +27,21 @@ function needsNoCredential(baseUrl: string): boolean {
   }
 }
 
+/** Disabled chat presets can retain credentials for other uses, such as Jev. */
+export function isChatProviderSupported(provider: Pick<ProviderConfig, "id">): boolean {
+  return !PRESETS.find((preset) => preset.id === provider.id)?.disabled;
+}
+
+export function assertChatProviderSupported(provider: Pick<ProviderConfig, "id" | "name">): void {
+  if (!isChatProviderSupported(provider)) {
+    throw new ProviderError(
+      i18n.t("errors.providerDisabled", { name: providerName(provider) }),
+      410,
+      "model",
+    );
+  }
+}
+
 /** Whether this provider is a subscription: signed into, with no key to paste. */
 export function isOAuthProvider(id: string): boolean {
   return PRESETS.find((p) => p.id === id)?.auth === "oauth";
@@ -34,13 +51,15 @@ export function isOAuthProvider(id: string): boolean {
  * Whether the form offers a sign-in for this provider. A subscription always
  * does; a keyed row that can also be signed into (OpenRouter, OpenCode Zen)
  * does too, and its missing state should say "sign in" like a subscription's.
+ * Disabled presets offer neither path until they are available again.
  */
 export function canSignIn(id: string): boolean {
   const preset = PRESETS.find((p) => p.id === id);
-  return preset?.auth === "oauth" || preset?.signIn !== undefined;
+  return !preset?.disabled && (preset?.auth === "oauth" || preset?.signIn !== undefined);
 }
 
 export function credentialStatus(provider: ProviderConfig): CredentialStatus {
+  if (!isChatProviderSupported(provider)) return "missing";
   // A signed-in row is connected whatever kind of preset it is. A keyed row that
   // can also be signed into holds `auth` and an empty key, which the key check
   // below would call missing.
@@ -49,8 +68,11 @@ export function credentialStatus(provider: ProviderConfig): CredentialStatus {
   return provider.apiKey || needsNoCredential(provider.baseUrl) ? "connected" : "missing";
 }
 
-/** Connected first, unconfigured last; original order kept within each group. */
+/** Connected first, then missing credentials, then disabled; stable within each group. */
 export function byCredentialStatus(a: ProviderConfig, b: ProviderConfig): number {
-  const rank = (p: ProviderConfig) => (credentialStatus(p) === "connected" ? 0 : 1);
+  function rank(provider: ProviderConfig): number {
+    if (!isChatProviderSupported(provider)) return 2;
+    return credentialStatus(provider) === "connected" ? 0 : 1;
+  }
   return rank(a) - rank(b);
 }

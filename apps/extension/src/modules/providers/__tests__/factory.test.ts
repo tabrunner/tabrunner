@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProvider } from "../factory";
+import { ProviderError } from "../types";
 import type { ResolvedProviderConfig } from "../types";
 
 function makeConfig(id = "go", baseUrl = "https://opencode.ai/zen/go/v1"): ResolvedProviderConfig {
@@ -44,6 +45,14 @@ function heldSseResponse(): { response: Response; finish: () => void } {
 describe("createProvider concurrency gate", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("blocks disabled chat providers before constructing a stream", () => {
+    const fetch = vi.spyOn(globalThis, "fetch");
+    expect(() => createProvider({ ...makeConfig("opencode"), name: "OpenCode Zen" })).toThrow(
+      ProviderError,
+    );
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("caps concurrent streams at 4 across createProvider instances for the same provider and releases on completion, break or abort", async () => {

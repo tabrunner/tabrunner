@@ -17,6 +17,7 @@ import {
   readModelsCache,
 } from "../models";
 import { PRESETS, providerDisplayName } from "../presets";
+import { isChatProviderSupported } from "../status";
 import { usesZenFreeAccess } from "../zen";
 import { supportsUsage } from "../usage";
 import { EFFORT_LABEL_KEYS, isEffort } from "../types";
@@ -206,7 +207,7 @@ function ProviderTabs({
             }`}
           >
             <ProviderMark provider={p} size={16} />
-            {active && <span className="min-w-0 truncate">{name}</span>}
+            {(active || providers.length === 1) && <span className="min-w-0 truncate">{name}</span>}
           </button>
         );
       })}
@@ -320,8 +321,8 @@ function ModelList({
 
       {/* The rows scroll inside their own band — about ten rows — so the
           effort row, usage section, and add-provider footer below stay on
-          screen without scrolling, no matter how long the catalog is (Zen
-          serves 70+, OpenRouter 300+). The popover's own max-h stays as the
+          screen without scrolling, no matter how long the catalog is
+          (OpenRouter serves 300+). The popover's own max-h stays as the
           outer guard for small viewports. */}
       <div className="-mx-1 max-h-64 overflow-y-auto px-1">
         {/* Auto leads and shows what it will actually run, tagged so it stays
@@ -402,28 +403,37 @@ export function EnginePicker({
    */
   const alt = useRef(false);
   const [addOpen, setAddOpen] = useState(false);
-  const listing = useModels(active ?? null);
+  const supported = active ? isChatProviderSupported(active) : false;
+  const selectable = providers.filter(isChatProviderSupported);
+  const listing = useModels(supported && active ? active : null);
 
   // With zero providers the side panel shows Onboarding instead.
   if (!active) return null;
 
   // The trigger reads the cached/preset list synchronously — the warm fetch
   // must never be the price of painting the composer.
-  const known = knownModels(active);
+  const known = supported ? knownModels(active) : [];
   const autoTarget = pickLatestModel(known);
   // Only the levels this model takes. A stored level it does not take reads as
   // Default here, because that is what the run sends (resolveProviderModel).
   const modelId = active.model ?? autoTarget?.id;
-  const efforts = effortLevels(active, modelId);
-  const effort = effectiveEffort(active, modelId);
+  const efforts = supported ? effortLevels(active, modelId) : [];
+  const effort = supported ? effectiveEffort(active, modelId) : undefined;
+  let modelName = autoTarget?.name ?? autoTarget?.id;
+  if (!supported) {
+    modelName = `${providerDisplayName(active)} · ${t("providerList.statusUnavailable")}`;
+  } else if (active.model) {
+    modelName = known.find((m) => m.id === active.model)?.name ?? active.model;
+  }
   const label = engineLabel({
-    auto: active.model === undefined,
-    modelName: active.model
-      ? (known.find((m) => m.id === active.model)?.name ?? active.model)
-      : (autoTarget?.name ?? autoTarget?.id),
+    auto: supported && active.model === undefined,
+    modelName,
     autoText: t("modelPicker.auto"),
     ...(effort ? { effortLabel: t(EFFORT_LABEL_KEYS[effort]) } : {}),
   });
+  const triggerTitle = supported
+    ? t("enginePicker.triggerTitle", { label: label.full })
+    : t("errors.providerDisabled", { name: providerDisplayName(active) });
 
   // Picking a model is the commit-and-close; everything else leaves the popover
   // open, because a tile click is normally the first half of a model change.
@@ -451,8 +461,8 @@ export function EnginePicker({
           <Button
             variant="ghost"
             size="sm"
-            aria-label={t("enginePicker.triggerTitle", { label: label.full })}
-            title={t("enginePicker.triggerTitle", { label: label.full })}
+            aria-label={triggerTitle}
+            title={triggerTitle}
             className="flex min-w-0 shrink items-center gap-1.5 hover:text-neutral-900 dark:hover:text-neutral-100"
           >
             <ProviderMark provider={active} size={14} />
@@ -472,9 +482,9 @@ export function EnginePicker({
           onPointerDownCapture={(e) => (alt.current = e.altKey)}
           onKeyDownCapture={(e) => (alt.current = e.altKey)}
         >
-          {providers.length > 1 && (
+          {(selectable.length > 1 || (!supported && selectable.length > 0)) && (
             <ProviderTabs
-              providers={providers}
+              providers={selectable}
               activeId={active.id}
               onSelect={(p) => onPick({ providerId: p.id }, alt.current)}
             />
@@ -482,40 +492,48 @@ export function EnginePicker({
 
           {/* Keyed on the provider so a switch resets the filter with the list. */}
           <div className="flex flex-col gap-0.5">
-            <ModelList
-              key={active.id}
-              provider={active}
-              {...listing}
-              onPick={pick}
-              onRetry={listing.retry}
-            />
-          </div>
-
-          <div className="mt-2 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
-            <span className="shrink-0 text-xs font-medium text-neutral-500 dark:text-neutral-400">
-              {t("modelPicker.reasoningEffort")}
-            </span>
-            {efforts.length > 0 ? (
-              <Select
-                size="sm"
-                variant="quiet"
-                className="min-w-0"
-                ariaLabel={t("modelPicker.reasoningEffort")}
-                title={t("modelPicker.effortHint")}
-                value={effort ?? "default"}
-                onChange={(v) => onPick({ effort: isEffort(v) ? v : undefined }, alt.current)}
-                options={effortOptions}
+            {supported ? (
+              <ModelList
+                key={active.id}
+                provider={active}
+                {...listing}
+                onPick={pick}
+                onRetry={listing.retry}
               />
             ) : (
-              // A Select with only Default in it is a control that does nothing.
-              // Saying so keeps the row, so the setting does not seem to vanish.
-              <span className="min-w-0 px-2 py-1 text-right text-xs text-neutral-500 dark:text-neutral-400">
-                {t("modelPicker.effortUnavailable")}
-              </span>
+              <p role="status" className="px-2 py-1 text-xs text-neutral-600 dark:text-neutral-300">
+                {t("errors.providerDisabled", { name: providerDisplayName(active) })}
+              </p>
             )}
           </div>
 
-          {supportsUsage(active.id) && (
+          {supported && (
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
+              <span className="shrink-0 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                {t("modelPicker.reasoningEffort")}
+              </span>
+              {efforts.length > 0 ? (
+                <Select
+                  size="sm"
+                  variant="quiet"
+                  className="min-w-0"
+                  ariaLabel={t("modelPicker.reasoningEffort")}
+                  title={t("modelPicker.effortHint")}
+                  value={effort ?? "default"}
+                  onChange={(v) => onPick({ effort: isEffort(v) ? v : undefined }, alt.current)}
+                  options={effortOptions}
+                />
+              ) : (
+                // A Select with only Default in it is a control that does nothing.
+                // Saying so keeps the row, so the setting does not seem to vanish.
+                <span className="min-w-0 px-2 py-1 text-right text-xs text-neutral-500 dark:text-neutral-400">
+                  {t("modelPicker.effortUnavailable")}
+                </span>
+              )}
+            </div>
+          )}
+
+          {supported && supportsUsage(active.id) && (
             <div className="mt-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
               {/* Keyed: the section's snapshot is fetched per provider, and a key
                 change is the only correct remount when active moves under us. */}

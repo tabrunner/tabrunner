@@ -1,9 +1,10 @@
+import { isChatProviderSupported } from "./status";
 import type { ConversationEngine, ProviderConfig } from "./types";
 
 /**
  * Which provider a conversation runs on, and with what.
  *
- * One rule, four words: **pin, else the stored pick, else the first configured.**
+ * The pin wins, else the supported stored pick, else the first supported row.
  * Everything that answers "what will this run on" goes through here — the
  * composer chip, the slash pickers, the context gauge's denominator, the error
  * bubble's key dialog, and the run itself. They must agree, and a surface that
@@ -24,8 +25,15 @@ export function engineProvider(
   pin?: ConversationEngine,
 ): ProviderConfig | undefined {
   const pinned = pin ? providers.find((p) => p.id === pin.providerId) : undefined;
-  if (!pinned || !pin) return providers.find((p) => p.id === activeId) ?? providers[0];
+  if (!pinned || !pin) {
+    return (
+      providers.find((p) => p.id === activeId && isChatProviderSupported(p)) ??
+      providers.find(isChatProviderSupported)
+    );
+  }
 
+  // Keep a real pin to a disabled provider. The run must explain its unavailability,
+  // never silently move an old chat or schedule to a different paid provider.
   const next = { ...pinned };
   if (pin.model) next.model = pin.model;
   else delete next.model;

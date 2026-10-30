@@ -7,6 +7,7 @@ import {
   pickLatestModel,
 } from "@/modules/providers/models";
 import { providerDisplayName } from "@/modules/providers/presets";
+import { isChatProviderSupported } from "@/modules/providers/status";
 import { formatResetRelative } from "@/modules/providers/rate-limit";
 import { EFFORT_LABEL_KEYS, isEffort, REASONING_EFFORTS } from "@/modules/providers/types";
 import type { ConversationEngine, ProviderConfig } from "@/modules/providers/types";
@@ -234,6 +235,7 @@ const BUILTIN_COMMANDS: readonly (SlashCommand & { name: BuiltinCommandName })[]
     takesArg: true,
     candidates: () => {
       const provider = activeProvider();
+      if (provider && !isChatProviderSupported(provider)) return [];
       const levels = provider ? effortContext(provider).levels : REASONING_EFFORTS;
       return [
         { value: "default", label: i18n.t("modelPicker.effort.default") },
@@ -250,6 +252,10 @@ const BUILTIN_COMMANDS: readonly (SlashCommand & { name: BuiltinCommandName })[]
       // no provider exists — but a note-less crash is worse than a guard.
       if (!provider) return;
       const name = providerDisplayName(provider);
+      if (!isChatProviderSupported(provider)) {
+        note(i18n.t("errors.providerDisabled", { name }));
+        return;
+      }
       const { levels, effort, modelName } = effortContext(provider);
       const level = arg?.toLowerCase();
       // A model with no levels: "default" is the only thing to set, so any
@@ -287,7 +293,7 @@ const BUILTIN_COMMANDS: readonly (SlashCommand & { name: BuiltinCommandName })[]
     // one landed, else the preset's — with "auto" naming what it resolves to.
     candidates: () => {
       const provider = activeProvider();
-      if (!provider) return [];
+      if (!provider || !isChatProviderSupported(provider)) return [];
       const listed = knownModels(provider);
       const autoTarget = pickLatestModel(listed) ?? listed[0];
       return [
@@ -304,6 +310,10 @@ const BUILTIN_COMMANDS: readonly (SlashCommand & { name: BuiltinCommandName })[]
       const provider = activeProvider();
       if (!provider) return;
       const name = providerDisplayName(provider);
+      if (!isChatProviderSupported(provider)) {
+        note(i18n.t("errors.providerDisabled", { name }));
+        return;
+      }
       if (!arg) {
         note(
           i18n.t("commands.model.current", {
@@ -339,13 +349,19 @@ const BUILTIN_COMMANDS: readonly (SlashCommand & { name: BuiltinCommandName })[]
     candidates: () =>
       useProvidersStore
         .getState()
-        .providers.map((p) => ({ value: p.id, label: providerDisplayName(p) })),
+        .providers.filter(isChatProviderSupported)
+        .map((p) => ({ value: p.id, label: providerDisplayName(p) })),
     current: () => activeProvider()?.id,
     run: (arg, thisChatOnly = false) => {
-      const { providers } = useProvidersStore.getState();
+      const configured = useProvidersStore.getState().providers;
+      const providers = configured.filter(isChatProviderSupported);
       const current = activeProvider();
       if (!current) return;
       if (!arg) {
+        if (!isChatProviderSupported(current)) {
+          note(i18n.t("errors.providerDisabled", { name: providerDisplayName(current) }));
+          return;
+        }
         const others = providers
           .filter((p) => p.id !== current.id)
           .map((p) => providerDisplayName(p));
@@ -359,10 +375,19 @@ const BUILTIN_COMMANDS: readonly (SlashCommand & { name: BuiltinCommandName })[]
         );
         return;
       }
-      const q = arg.toLowerCase();
+      const q = searchText(arg);
+      const disabled = configured.find(
+        (p) =>
+          !isChatProviderSupported(p) &&
+          (searchText(p.id) === q || searchText(providerDisplayName(p)) === q),
+      );
+      if (disabled) {
+        note(i18n.t("errors.providerDisabled", { name: providerDisplayName(disabled) }));
+        return;
+      }
       const pick = uniquePick(providers, q, (p) => [
-        p.id.toLowerCase(),
-        providerDisplayName(p).toLowerCase(),
+        searchText(p.id),
+        searchText(providerDisplayName(p)),
       ]);
       if (!pick) {
         note(
@@ -412,6 +437,10 @@ const BUILTIN_COMMANDS: readonly (SlashCommand & { name: BuiltinCommandName })[]
     run: () => {
       const provider = activeProvider();
       if (!provider) return;
+      if (!isChatProviderSupported(provider)) {
+        note(i18n.t("errors.providerDisabled", { name: providerDisplayName(provider) }));
+        return;
+      }
       if (!supportsUsage(provider.id)) {
         note(i18n.t("commands.usage.unsupported", { provider: providerDisplayName(provider) }));
         return;
@@ -771,6 +800,9 @@ export function resolveSlashArg(
   skills: readonly Skill[] = [],
 ): string | undefined {
   if (raw === undefined || raw === "") return undefined;
+  // This command matches its own configured rows, including disabled exact ids.
+  // Resolving against only its candidates could turn a disabled id into another provider's prefix.
+  if (command.name === "provider") return raw;
   const candidates = command.candidates?.(skills) ?? [];
   const q = searchText(raw);
   const pick =

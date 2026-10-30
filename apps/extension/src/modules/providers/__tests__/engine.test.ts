@@ -28,6 +28,27 @@ describe("engineProvider", () => {
     expect(engineProvider([], "openai")).toBeUndefined();
   });
 
+  it("skips retired chat providers in the stored pick and first-provider fallback", () => {
+    const retired = provider("opencode");
+    const providers = [retired, ...ALL];
+    expect(engineProvider(providers, "opencode")).toBe(ANTHROPIC);
+    expect(engineProvider(providers, null)).toBe(ANTHROPIC);
+    expect(engineProvider([retired], "opencode")).toBeUndefined();
+    expect(engineProvider(providers, "opencode", { providerId: "deleted" })).toBe(ANTHROPIC);
+  });
+
+  it("keeps a saved Zen pin so a scheduled chat cannot switch to another paid provider", () => {
+    const retired = provider("opencode", { model: "saved-default" });
+    const resolved = engineProvider([retired, ...ALL], "openai", {
+      providerId: retired.id,
+      model: "big-pickle",
+      effort: "low",
+    });
+    expect(resolved).toMatchObject({ id: retired.id, model: "big-pickle", reasoningEffort: "low" });
+    expect(retired.model).toBe("saved-default");
+    expect(engineProvider([retired], null, { providerId: retired.id })?.id).toBe(retired.id);
+  });
+
   it("lets the pin outrank the stored pick", () => {
     const resolved = engineProvider(ALL, "openai", { providerId: "anthropic" });
     expect(resolved?.id).toBe("anthropic");

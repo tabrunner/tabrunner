@@ -5,6 +5,7 @@ import { createAnthropicProvider } from "./anthropic";
 import { createResponsesProvider } from "./responses";
 import { createGeminiProvider } from "./gemini";
 import { offerZenRead } from "./zen";
+import { assertChatProviderSupported } from "./status";
 
 const MAX_CONCURRENT_PER_PROVIDER = 4;
 
@@ -40,6 +41,7 @@ function buildProvider(config: ResolvedProviderConfig): ChatProvider {
 
 /** Factory: picks adapter by shape and gates concurrent streams per provider. */
 export function createProvider(config: ResolvedProviderConfig): ChatProvider {
+  assertChatProviderSupported(config);
   const inner = buildProvider(config);
   const gate = gateFor(config);
   return {

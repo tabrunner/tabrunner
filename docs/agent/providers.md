@@ -181,10 +181,17 @@ The load-bearing details of talking to each provider shape. Read this when a tas
   Human labels stay in `ModelInfo.name`; ids stay on the wire and in tooltips.
   Reported context windows feed `context-window.ts`, below ceilings learned from real
   rejections and above the 200k default.
-- **Zen free access does not require an account.** Like OpenCode, an empty key uses the
-  literal public credential. That path lists only free chat models, not paid models or
-  Jev's decision models. A real key or sign-in keeps its own account. The existing
-  session headers and read-tool compatibility remain. `FreeUsageLimitError` is a
-  non-retryable free-usage limit, not a request to top up an account; the translated
-  error states the reset time only when Zen supplies one. A model-list response does
-  not prove that generation quota is available.
+- **Zen chat stays behind a disabled preset flag.** `ProviderPreset.disabled` makes an
+  option unavailable for new selection and sends it to the bottom of the list. The shared
+  support predicate drives setup, pickers, onboarding and default selection. Model listing,
+  resolution and provider construction reject disabled presets before network calls.
+  Saved credentials are not deleted. An existing chat pin stays intact and gets a clear
+  choose-another-provider error, rather than silently moving a scheduled chat to another
+  provider. OpenCode Go and Jev's separate decision endpoint are unchanged.
+  Zen's public credential, model routing, session headers and read-tool compatibility code
+  remain for a future repair. Native OpenCode succeeded in controlled checks, but requests
+  with TabRunner's own instructions still returned `FreeUsageLimitError`, including checks
+  against the current upstream inference endpoint and model-identity card. This does not
+  prove a new account exhausted quota or that OpenCode rejects every custom prompt.
+  Re-enable the preset only after an app-compatible request is verified without replacing
+  browser safety rules. A model-list response alone does not prove generation works.

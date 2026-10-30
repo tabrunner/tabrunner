@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import {
   checkCredential,
   effectiveEffort,
@@ -45,7 +45,17 @@ function stubFetch(status: number, body: unknown) {
   return mock;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+function enableZenForTest(): void {
+  const preset = PRESETS.find((entry) => entry.id === "opencode");
+  if (!preset) throw new Error("Missing disabled Zen integration");
+  delete preset.disabled;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  const preset = PRESETS.find((entry) => entry.id === "opencode");
+  if (preset) preset.disabled = true;
+});
 
 describe("listModels", () => {
   it("hits /v1/models with dual auth on anthropic shape and normalizes created_at", async () => {
@@ -352,6 +362,8 @@ describe("copilot listing filter", () => {
 });
 
 describe("gateway model routing", () => {
+  beforeEach(enableZenForTest);
+
   const zen: ProviderConfig = {
     id: "opencode",
     name: "OpenCode Zen",
@@ -472,6 +484,8 @@ describe("effort levels per model", () => {
 });
 
 describe("account and free model discovery", () => {
+  beforeEach(enableZenForTest);
+
   const chatgpt: ProviderConfig = {
     ...openaiConfig,
     id: "chatgpt",
@@ -588,6 +602,23 @@ describe("account and free model discovery", () => {
     await expect(resolveProviderModel({ ...zen, model: "paid-newest" })).rejects.toMatchObject({
       kind: "model",
     });
+  });
+});
+
+describe("disabled chat providers", () => {
+  it("rejects resolution and listing before refreshing credentials or fetching", async () => {
+    const fetch = stubFetch(200, { data: [{ id: "big-pickle" }] });
+    const zen: ProviderConfig = {
+      ...openaiConfig,
+      id: "opencode",
+      name: "OpenCode Zen",
+      baseUrl: "https://opencode.ai/zen/v1",
+      apiKey: "public",
+    };
+    await expect(resolveProviderModel(zen)).rejects.toMatchObject({ status: 410, kind: "model" });
+    await expect(listStoredModels(zen)).rejects.toMatchObject({ status: 410, kind: "model" });
+    await expect(listModels(zen)).rejects.toMatchObject({ status: 410, kind: "model" });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

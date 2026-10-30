@@ -8,6 +8,8 @@ import { i18n } from "@/i18n";
 export interface ProviderPreset {
   id: string;
   name: string;
+  /** Unavailable for chat selection or requests; saved credentials remain intact. */
+  disabled?: true;
   shape: ProviderShape;
   baseUrl: string;
   models: string[];
@@ -46,9 +48,8 @@ export interface ProviderPreset {
    */
   free?: true;
   /**
-   * The backend has no model-list route, so `models` IS the list. The Cloud Code
-   * Assist backend behind Antigravity is one; the ChatGPT backend is another and
-   * is told apart by its shape.
+   * The backend has no model-list route, so `models` is the list. Cloud Code
+   * Assist behind Antigravity is one; ChatGPT instead lists its account catalog.
    */
   staticModels?: true;
   /**
@@ -224,6 +225,8 @@ export const PRESETS: ProviderPreset[] = [
     // answered a streamed call that offered a tool.
     id: "opencode",
     name: "OpenCode Zen",
+    // Keep the integration for a future repair; current free requests are rejected.
+    disabled: true,
     shape: "openai",
     baseUrl: "https://opencode.ai/zen/v1",
     models: [
@@ -559,7 +562,10 @@ export const PRESETS: ProviderPreset[] = [
   },
 ];
 
-export type PresetSection = "free" | "subscription" | "key";
+// Stable sorting keeps disabled options last without changing enabled sections.
+PRESETS.sort((a, b) => Number(a.disabled ?? false) - Number(b.disabled ?? false));
+
+export type PresetSection = "free" | "subscription" | "key" | "unavailable";
 
 /**
  * Which picker section a preset sits under. The picker chunks PRESETS by
@@ -567,6 +573,7 @@ export type PresetSection = "free" | "subscription" | "key";
  * out of place would open a second heading of the same name.
  */
 export function presetSection(preset: ProviderPreset): PresetSection {
+  if (preset.disabled) return "unavailable";
   // Antigravity's free quota is a display fact, not Zen's transport behavior.
   if (preset.id === "antigravity" || preset.free) return "free";
   return preset.auth === "oauth" ? "subscription" : "key";

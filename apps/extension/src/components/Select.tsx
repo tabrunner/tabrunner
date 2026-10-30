@@ -8,6 +8,7 @@ import { overlayMotion } from "./chrome";
 export interface SelectOption {
   value: string;
   label: string;
+  disabled?: boolean;
   /** Short qualifier pinned beside the label — never shrinks, so it survives
    *  truncation of a long label (e.g. a model id tagged "Auto"). */
   hint?: string;
@@ -122,7 +123,8 @@ export function Select({
         )}
         <BaseSelect.Item
           value={o.value}
-          className={`flex cursor-default items-center gap-1.5 text-neutral-900 data-[highlighted]:bg-brand-50 data-[highlighted]:text-brand-900 dark:text-neutral-100 dark:data-[highlighted]:bg-brand-950 dark:data-[highlighted]:text-brand-100 ${s.item}`}
+          disabled={o.disabled}
+          className={`flex cursor-default items-center gap-1.5 text-neutral-900 data-[disabled]:opacity-50 data-[highlighted]:bg-brand-50 data-[highlighted]:text-brand-900 dark:text-neutral-100 dark:data-[highlighted]:bg-brand-950 dark:data-[highlighted]:text-brand-100 ${s.item}`}
         >
           {o.icon}
           {o.hintLeading && hint}

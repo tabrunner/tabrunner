@@ -56,9 +56,7 @@ export async function getActiveProviderId(): Promise<string | null> {
 }
 
 export async function getActiveProvider(): Promise<ProviderConfig | undefined> {
-  const id = await activeIdItem.get();
-  if (!id) return undefined;
-  return getProvider(id);
+  return getProviderFor(undefined);
 }
 
 /**

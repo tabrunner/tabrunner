@@ -27,10 +27,10 @@ Two claims a neighboring product cannot copy:
 
 1. **It runs in your browser, not a sandbox** — it acts on the sites you're already logged into,
    with genuine trusted input events (CDP), not synthetic JS dispatches sites can ignore.
-2. **Provider-agnostic by construction** — 15 presets across 12 vendors (Anthropic, OpenAI and
-   Kimi appear twice: subscription sign-in and API key), plus any OpenAI/Anthropic-compatible
-   endpoint. No TabRunner server, no relay, no account, no telemetry. Your key goes straight from
-   the extension to your provider. Source of truth: `src/modules/providers/presets.ts`.
+2. **Provider choice**: sign in to an AI provider, paste an API key or use a local model.
+   Custom OpenAI- and Anthropic-compatible providers also work. Requests go directly to the
+   provider; TabRunner has no account or relay server. Availability lives in
+   `src/modules/providers/presets.ts`. Disabled presets stay visible but cannot run chat tasks.
 
 ## Operating Context
 
@@ -71,8 +71,8 @@ button "Submit"`); `sanitize.ts` caps tool output and keeps passwords, one-time 
   `schedule_task` and `cancel_schedule`, which is also how it paces itself; a scheduled run may
   only re-time its own schedule, never create new ones, and 20 records / 20 self-reschedules bound
   the unattended spend.
-- Reasoning effort (`none` → `max`) is the only model knob — no sampling params ever. Auto model
-  resolution runs the newest model the endpoint lists.
+- Reasoning effort (`none` to `max`) is the only model setting; sampling parameters are not sent.
+  Auto uses live model lists. ChatGPT follows the account catalog's order and supported effort.
 - MV3 reality: a service worker kept alive by an open Port or alarms; durable state in
   `chrome.storage`; the bridge protocol is declared twice on purpose
   (`src/modules/bridge/protocol.ts` ↔ `../../packages/mcp/src/protocol.ts`).

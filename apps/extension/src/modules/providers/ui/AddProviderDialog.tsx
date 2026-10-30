@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { TitledDialog } from "@/components/TitledDialog";
 import { ProviderForm } from "./ProviderForm";
 import { providerName } from "../presets";
+import { isChatProviderSupported } from "../status";
 import type { ProviderConfig } from "../types";
 
 /**
@@ -31,15 +32,17 @@ export function AddProviderDialog({
   const open = openProp ?? openState;
   const setOpen = onOpenChange ?? setOpenState;
   const { t } = useTranslation();
+  let title = t("addProvider.title");
+  if (initialProvider) {
+    title = isChatProviderSupported(initialProvider)
+      ? t("providerForm.update", { name: providerName(initialProvider) })
+      : t("providerList.chooseAnother");
+  }
   return (
     <TitledDialog
       open={open}
       onOpenChange={setOpen}
-      title={
-        initialProvider
-          ? t("providerForm.update", { name: providerName(initialProvider) })
-          : t("addProvider.title")
-      }
+      title={title}
       description={t("addProvider.description")}
       {...(trigger ? { trigger } : {})}
     >
