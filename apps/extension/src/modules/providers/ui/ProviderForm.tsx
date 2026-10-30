@@ -94,9 +94,6 @@ export function ProviderForm({
       model: existing?.model,
       reasoningEffort: existing?.reasoningEffort,
     });
-    setApiKey("");
-    setName("");
-    setBaseUrl("");
   };
 
   /**
@@ -210,10 +207,7 @@ export function ProviderForm({
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1 text-sm">
-        {/* Sections carry the payment method, so the rows drop the qualifier and
-            read as bare products — and the headers get to say the one thing the
-            picker never did: that there are two ways in, and what each costs.
-            PRESETS keeps its OAuth rows contiguous, so this tags without sorting. */}
+        {/* Sections explain access and billing without changing provider transport. */}
         <Select
           label={t("providerForm.provider")}
           value={presetId}
@@ -225,6 +219,7 @@ export function ProviderForm({
                 ? t("providerForm.configured", { name: p.name })
                 : p.name,
               icon: <ProviderIcon icon={p.icon} size={20} />,
+              hint: p.id === "antigravity" ? t("providerForm.freeQuota") : undefined,
               group: sectionLabels[presetSection(p)],
             })),
             {
@@ -268,8 +263,37 @@ export function ProviderForm({
         </>
       )}
 
+      {preset?.id === "antigravity" && (
+        <div role="note" className="attention flex flex-col gap-2 rounded-lg p-3 text-xs">
+          <p>{t("providerForm.antigravityWarning")}</p>
+          <a
+            className="self-start underline underline-offset-2"
+            href="https://antigravity.google/docs/faq/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t("providerForm.antigravityRules")}
+          </a>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-start"
+            onClick={() => setPresetId("gemini")}
+          >
+            {t("providerForm.useGeminiKey")}
+          </Button>
+        </div>
+      )}
+
       {isOAuth ? (
-        <OAuthSignIn preset={preset} signedIn={auth} onSignedIn={finishSignIn} />
+        <OAuthSignIn
+          key={preset.id}
+          preset={preset}
+          signedIn={auth}
+          hint={preset.id === "antigravity" ? t("providerForm.antigravityHint") : undefined}
+          onSignedIn={finishSignIn}
+        />
       ) : (
         <>
           {/* A keyed row whose vendor can also mint the key for you. Both
@@ -279,6 +303,7 @@ export function ProviderForm({
           {preset?.signIn && (
             <>
               <OAuthSignIn
+                key={preset.id}
                 preset={preset}
                 signedIn={auth}
                 hint={

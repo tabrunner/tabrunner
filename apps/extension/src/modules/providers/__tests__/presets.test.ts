@@ -34,12 +34,19 @@ describe("provider names", () => {
     expect(new Set(runs).size).toBe(runs.length);
   });
 
-  it("opens the form on OpenCode Zen, whose free shelf needs no plan", () => {
-    expect(PRESETS[0]?.id).toBe("opencode");
+  it("opens on Antigravity without giving it Zen's transport flags", () => {
+    expect(PRESETS[0]?.id).toBe("antigravity");
     expect(presetSection(PRESETS[0]!)).toBe("free");
-    // It offers the account sign-in AND a pasted key, so it is not a subscription row.
-    expect(PRESETS[0]?.signIn).toBe("account");
-    expect(PRESETS[0]?.auth).toBeUndefined();
+    expect(PRESETS[0]?.auth).toBe("oauth");
+    expect(PRESETS[0]?.free).toBeUndefined();
+    expect(PRESETS[0]?.sessionHeader).toBeUndefined();
+  });
+
+  it("keeps Zen's account and key paths beside its free shelf", () => {
+    const zen = PRESETS.find((p) => p.id === "opencode");
+    expect(zen?.signIn).toBe("account");
+    expect(zen?.auth).toBeUndefined();
+    expect(zen && presetSection(zen)).toBe("free");
   });
 
   it("leads Zen's cold-start list with models its free tier serves", () => {

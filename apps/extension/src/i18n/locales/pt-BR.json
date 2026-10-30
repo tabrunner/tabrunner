@@ -12,7 +12,7 @@
   "onboarding": {
     "title": "Bem-vindo ao TabRunner",
     "tagline": "Um agente de IA que usa as abas, sessões e logins do seu navegador para concluir tarefas.",
-    "connectPrompt": "Para começar, conecte um provedor. Entre com uma assinatura que você já paga ou cole uma chave de API. Seus dados de acesso ficam neste dispositivo e vão direto para o provedor. Não existe servidor do TabRunner.",
+    "connectPrompt": "Para começar, conecte um provedor. Entre com sua conta ou cole uma chave de API. Seu login ou sua chave ficam neste dispositivo e vão só para o provedor. O TabRunner não tem servidor na nuvem.",
     "addProvider": "Adicionar provedor",
     "presetsNote": "{{count}} presets, como Claude, ChatGPT, Kimi, Z.ai e Ollama, ou qualquer endpoint compatível."
   },
@@ -475,7 +475,12 @@
   },
   "providerForm": {
     "provider": "Provedor",
-    "groupFree": "Modelos grátis incluídos",
+    "groupFree": "Com uso grátis",
+    "freeQuota": "Cota grátis",
+    "antigravityHint": "Sua conta Google pode ter uma cota grátis por semana. O Google define quem tem acesso e os limites.",
+    "antigravityWarning": "O Google não permite usar o login do Antigravity em outros apps. Se você usar aqui, o Google pode suspender ou encerrar sua conta.",
+    "antigravityRules": "Ver as regras do Google",
+    "useGeminiKey": "Usar o Gemini com chave de API",
     "groupSubscription": "Assinatura (um plano que você já paga)",
     "groupApiKey": "Chave de API (cole uma chave; pague por uso)",
     "configured": "{{name}} · configurado",
@@ -497,7 +502,7 @@
     "keyHintKeep": "Deixe vazio para manter a chave salva.",
     "keyHintGet": "Obter uma chave de API →",
     "keyRejected": "{{name}} não aceitou esta chave. Confira se você copiou a chave inteira e se ela é deste provedor, depois tente de novo.",
-    "modelNote": "Escolha o modelo e o esforço de raciocínio de cada tarefa no painel lateral. O modelo mais recente é o padrão.",
+    "modelNote": "Escolha o modelo e o esforço de raciocínio de cada tarefa no painel lateral.",
     "checkingKey": "Verificando a chave…",
     "saving": "Salvando…",
     "add": "Adicionar provedor",

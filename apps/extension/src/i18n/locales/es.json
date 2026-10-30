@@ -12,7 +12,7 @@
   "onboarding": {
     "title": "Bienvenido a TabRunner",
     "tagline": "Un agente de IA que usa las pestañas, sesiones e inicios de sesión de tu navegador para completar tareas.",
-    "connectPrompt": "Para empezar, conecta un proveedor. Inicia sesión con una suscripción que ya pagas o pega una clave de API. Tus credenciales se guardan en este dispositivo y van directamente al proveedor. No hay ningún servidor de TabRunner.",
+    "connectPrompt": "Para empezar, conecta un proveedor. Inicia sesión o pega una clave de API. Tu sesión o tu clave se guardan en este dispositivo y se envían solo al proveedor. TabRunner no tiene servidor en la nube.",
     "addProvider": "Añadir un proveedor",
     "presetsNote": "{{count}} opciones preconfiguradas, como Claude, ChatGPT, Kimi, Z.ai y Ollama, o cualquier endpoint compatible."
   },
@@ -475,7 +475,12 @@
   },
   "providerForm": {
     "provider": "Proveedor",
-    "groupFree": "Modelos gratis incluidos",
+    "groupFree": "Con uso gratis",
+    "freeQuota": "Uso gratis",
+    "antigravityHint": "Tu cuenta de Google puede incluir uso gratis cada semana. Google decide el acceso y los límites.",
+    "antigravityWarning": "Google no permite usar el inicio de sesión de Antigravity en otras aplicaciones. Si lo usas aquí, Google puede suspender o cerrar tu cuenta.",
+    "antigravityRules": "Ver las reglas de Google",
+    "useGeminiKey": "Usar Gemini con una clave de API",
     "groupSubscription": "Suscripción (un plan que ya pagas)",
     "groupApiKey": "Clave de API (pega una clave; paga por uso)",
     "configured": "{{name}} · configurado",
@@ -497,7 +502,7 @@
     "keyHintKeep": "Deja vacío para conservar la clave guardada.",
     "keyHintGet": "Obtener una clave de API →",
     "keyRejected": "{{name}} no aceptó esta clave. Comprueba que copiaste la clave entera y que es de este proveedor, y vuelve a intentarlo.",
-    "modelNote": "Elige el modelo y el esfuerzo de razonamiento para cada tarea en el panel lateral. Se usa el modelo más reciente por defecto.",
+    "modelNote": "Elige el modelo y el esfuerzo de razonamiento para cada tarea en el panel lateral.",
     "checkingKey": "Comprobando la clave…",
     "saving": "Guardando…",
     "add": "Añadir proveedor",

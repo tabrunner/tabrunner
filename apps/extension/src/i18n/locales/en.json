@@ -12,7 +12,7 @@
   "onboarding": {
     "title": "Welcome to TabRunner",
     "tagline": "An AI agent that uses your browser tabs, sessions and logins to get tasks done.",
-    "connectPrompt": "To start, connect a provider. Sign in with a subscription you already pay for, or paste an API key. Your credentials stay on this device and go straight to the provider. There is no TabRunner server.",
+    "connectPrompt": "To start, connect a provider. Sign in or paste an API key. Your sign-in or key stays on this device and goes only to the provider. TabRunner has no cloud server.",
     "addProvider": "Add a provider",
     "presetsNote": "{{count}} presets, including Claude, ChatGPT, Kimi, Z.ai and Ollama, or any compatible endpoint."
   },
@@ -475,7 +475,12 @@
   },
   "providerForm": {
     "provider": "Provider",
-    "groupFree": "Free models included",
+    "groupFree": "Free usage available",
+    "freeQuota": "Free quota",
+    "antigravityHint": "Your Google account may include free weekly usage. Google decides access and limits.",
+    "antigravityWarning": "Google does not allow Antigravity sign-in in other apps. Using it here can get your Google account suspended or closed.",
+    "antigravityRules": "Read Google's rules",
+    "useGeminiKey": "Use Gemini with an API key",
     "groupSubscription": "Subscription (a plan you already pay for)",
     "groupApiKey": "API key (paste a key; pay per use)",
     "configured": "{{name}} · configured",
@@ -497,7 +502,7 @@
     "keyHintKeep": "Leave empty to keep the saved key.",
     "keyHintGet": "Get an API key →",
     "keyRejected": "{{name}} didn't accept this key. Check you copied the whole key and that it belongs to this provider, then try again.",
-    "modelNote": "Pick the model and reasoning effort for each task in the side panel. The newest model is the default.",
+    "modelNote": "Choose the model and reasoning effort for each task in the side panel.",
     "checkingKey": "Checking the key…",
     "saving": "Saving…",
     "add": "Add provider",

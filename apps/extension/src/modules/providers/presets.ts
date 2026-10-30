@@ -169,12 +169,9 @@ export type IconKey =
  * Built-in presets. Users can also add custom OpenAI-compatible endpoints.
  *
  * Order is the picker's order, and the first entry is what the add form opens
- * on: OpenCode Zen leads, because its free shelf needs no plan and no key, then
- * the subscriptions, because a plan someone already pays for is the shortest
- * path to a working provider — an API key means a console, a credit card, and a
- * billing decision before the first task ever runs. Each section being
- * contiguous (see `presetSection`) is what lets the picker chunk this list into
- * its sections without sorting it.
+ * on. Antigravity leads with its free quota and an account-risk warning, then
+ * Zen's free shelf, subscription sign-ins and keyed providers. Each section
+ * stays contiguous so the picker can group it without sorting.
  *
  * A subscription row is named for the product people actually buy (Claude,
  * ChatGPT) and a keyed row for the company whose console issues the key
@@ -189,9 +186,31 @@ export type IconKey =
  */
 export const PRESETS: ProviderPreset[] = [
   {
-    // OpenCode Zen leads the picker. It is a gateway, like OpenRouter (one
-    // account, many vendors' models), and the only endpoint here with a standing
-    // shelf of $0 models, so it is the shortest path to a first working run.
+    // Google sign-in supplies the project id used by Cloud Code Assist.
+    // The setup form explains the free quota and third-party account risks.
+    id: "antigravity",
+    name: "Google Antigravity",
+    shape: "gemini",
+    baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+    path: "/v1internal:streamGenerateContent?alt=sse",
+    models: [
+      "gemini-4-argon",
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+      "gemini-3.1-pro",
+      "claude-opus-5-5",
+      "claude-sonnet-5-5",
+      "claude-sonnet-4-6",
+      "claude-opus-4-6-thinking",
+    ],
+    auth: "oauth",
+    staticModels: true,
+    color: "#1E88E5",
+    icon: "gemini",
+  },
+  {
+    // Zen is a gateway with both free models and paid account access.
+    // Keep its request compatibility separate from the setup display group.
     //
     // Two ways in: sign in with the OpenCode account (the Console's device flow,
     // the first thing the form shows) or paste a key (`apiKeyUrl`). Free means
@@ -362,35 +381,6 @@ export const PRESETS: ProviderPreset[] = [
     headers: (turn) => copilotHeaders(appName(), turn),
     color: "#24292F",
     icon: "github",
-  },
-  {
-    // Google Antigravity, reached with a Google sign-in. The Cloud Code Assist
-    // backend behind it serves Gemini and Claude models on the account's
-    // Antigravity quota. It speaks Gemini's dialect but is not Google's public
-    // API: requests go in an envelope that carries the account's project id,
-    // which the sign-in discovers and keeps on the credential. All of that lives
-    // in @providerkit/core (the `antigravity` flow and the Gemini adapter); this
-    // row only names the host and path. It has no model-list route, so `models`
-    // is the list, and the first is what a run uses when none is picked.
-    id: "antigravity",
-    name: "Google Antigravity",
-    shape: "gemini",
-    baseUrl: "https://daily-cloudcode-pa.googleapis.com",
-    path: "/v1internal:streamGenerateContent?alt=sse",
-    models: [
-      "gemini-4-argon",
-      "gemini-3.8-flash",
-      "gemini-3.7-flash",
-      "gemini-3.1-pro",
-      "claude-opus-5-5",
-      "claude-sonnet-5-5",
-      "claude-sonnet-4-6",
-      "claude-opus-4-6-thinking",
-    ],
-    auth: "oauth",
-    staticModels: true,
-    color: "#1E88E5",
-    icon: "gemini",
   },
   {
     id: "anthropic",
@@ -593,7 +583,8 @@ export type PresetSection = "free" | "subscription" | "key";
  * out of place would open a second heading of the same name.
  */
 export function presetSection(preset: ProviderPreset): PresetSection {
-  if (preset.free) return "free";
+  // Antigravity's free quota is a display fact, not Zen's transport behavior.
+  if (preset.id === "antigravity" || preset.free) return "free";
   return preset.auth === "oauth" ? "subscription" : "key";
 }
 
