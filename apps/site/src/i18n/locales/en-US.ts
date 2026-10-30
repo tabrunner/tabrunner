@@ -135,14 +135,14 @@ export const enUS = {
     steps: [
       "Add TabRunner to your browser from the store listing. Updates arrive on their own from there.",
       "Pin the comet to your toolbar and click it to open the side panel.",
-      "Pick a provider, sign in with a subscription you already pay for or paste an API key, then describe a task.",
+      "Choose a provider and follow its connection steps. Then describe a task in the side panel.",
     ],
     storeCta: "Add to Chrome",
     caveatsTitle: "Said plainly",
     caveats: [
       "Chromium desktop browsers only: Chrome, Brave, Edge, Arc, Opera, Vivaldi. Edge and Opera ask you to allow extensions from other stores first.",
       "The install prompt asks for wide access to your tabs. That access is the product: it's how the agent reads pages and types for real. What it does with it is the section below.",
-      "You bring the model: a provider subscription you already pay for, or an API key. There's no TabRunner account and no free tier bundled in.",
+      "Your provider sets the price and usage limits. Some offer free usage; others need a paid plan or API key. TabRunner has no account or model credits.",
       "Already running the unpacked build? Remove it first. The store version shares its extension ID and Chrome won't run both. Removing deletes its storage, so your providers, sign-ins and conversations don't carry over.",
     ],
     releaseNotes: "Release notes",
@@ -270,7 +270,7 @@ export const enUS = {
       },
       account: {
         q: "Do I need a TabRunner account?",
-        a: "No. There's no TabRunner account and no free tier. You bring the model: sign in with a Claude, ChatGPT or Kimi plan you already pay for, or paste an API key. Any endpoint that speaks the OpenAI or Anthropic format works too.",
+        a: "No. Connect directly to an AI provider using its free option, paid plan or API key. Free usage has limits set by that provider. You can also use a local model or another provider that follows the OpenAI or Anthropic format.",
       },
       data: {
         q: "Where does my data go?",

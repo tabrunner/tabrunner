@@ -135,14 +135,14 @@ export const esES: Locale = {
     steps: [
       "Añade TabRunner a tu navegador desde la ficha de la tienda. A partir de ahí las actualizaciones llegan solas.",
       "Fija el cometa en la barra de herramientas y haz clic para abrir el panel lateral.",
-      "Elige un proveedor, inicia sesión con la suscripción que ya pagas o pega una clave de API y describe una tarea.",
+      "Elige un proveedor y sigue los pasos para conectarlo. Después, describe una tarea en el panel lateral.",
     ],
     storeCta: "Añadir a Chrome",
     caveatsTitle: "Sin letra pequeña",
     caveats: [
       "Solo navegadores Chromium de escritorio: Chrome, Brave, Edge, Arc, Opera, Vivaldi. En Edge y Opera hay que permitir antes las extensiones de otras tiendas.",
       "La pantalla de instalación pide acceso amplio a tus pestañas. Ese acceso es el producto: es como el agente lee las páginas y escribe de verdad. Lo que hace con él está en la sección de abajo.",
-      "El modelo lo pones tú: una suscripción de proveedor que ya pagas, o una clave de API. No hay cuenta de TabRunner ni plan gratuito incluido.",
+      "El proveedor fija los precios y los límites de uso. Algunos ofrecen uso gratuito; otros requieren un plan de pago o una clave de API. TabRunner no tiene cuenta ni incluye créditos para modelos.",
       "¿Ya tienes instalada la versión descomprimida? Quítala antes. La de la tienda usa el mismo ID de extensión y Chrome no ejecuta las dos. Quitarla borra su almacenamiento: tus proveedores, sesiones y conversaciones no se conservan.",
     ],
     releaseNotes: "Notas de la versión",
@@ -270,7 +270,7 @@ export const esES: Locale = {
       },
       account: {
         q: "¿Necesito una cuenta de TabRunner?",
-        a: "No. No hay cuenta de TabRunner ni plan gratuito. Tú pones el modelo: inicia sesión con un plan de Claude, ChatGPT o Kimi que ya pagas, o pega una clave de API. Cualquier endpoint compatible con el formato de OpenAI o de Anthropic también sirve.",
+        a: "No. Conecta directamente con un proveedor de IA mediante su opción gratuita, un plan de pago o una clave de API. El proveedor fija los límites del uso gratuito. También puedes usar un modelo local u otro proveedor compatible con el formato de OpenAI o Anthropic.",
       },
       data: {
         q: "¿A dónde van mis datos?",

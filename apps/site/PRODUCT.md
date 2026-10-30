@@ -6,9 +6,9 @@ web
 
 ## Users
 
-AI power users and developers: people who already pay for (or self-host) an LLM provider, are
-comfortable installing an extension via `chrome://extensions`, and want an agent to do real work in
-the browser they actually use — with their own tabs, sessions, and logins.
+AI power users and developers who want an agent to work in their own browser, using their
+existing tabs and logins. They connect an AI provider through free usage, a paid plan, an API
+key or a local model. Provider limits apply; TabRunner does not supply model credits.
 
 ## Product Purpose
 

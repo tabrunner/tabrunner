@@ -84,6 +84,16 @@ Caveats the site must state plainly where they apply:
   `telemetry` gold reserved for anything that measures. Two lights only — the retired purple and
   the brief cyan must not come back.
 
+## Provider access
+
+TabRunner does not require its own account or include model credits. Users connect directly
+with an AI provider. Some providers offer limited free usage; others require a paid plan or
+API key. Do not imply every provider needs payment, or promise unlimited free access.
+
+The extension offers Antigravity first and explains its free quota alongside Google's warning
+about third-party sign-in and account suspension. Keep that warning before sign-in. A model
+appearing in a provider's catalog does not prove generation quota is available.
+
 ## Hard requirements
 
 - Chromium-only (Chrome, Brave, Edge, Arc…) — `chrome.debugger` has no Firefox/Safari equivalent;
