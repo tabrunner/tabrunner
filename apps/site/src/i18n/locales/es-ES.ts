@@ -79,7 +79,7 @@ export const esES: Locale = {
     items: [
       {
         title: "Usa el proveedor que quieras",
-        body: "Son 15 preajustes para los 12 proveedores de abajo. Anthropic, OpenAI y Kimi aparecen dos veces: inicia sesión con el plan de Claude, ChatGPT o Kimi que ya pagas, o pega una clave de API. Además de cualquier endpoint que hable el formato de OpenAI o Anthropic. Sin lock-in y sin ningún servidor de por medio.",
+        body: "Usa tu plan de Claude, ChatGPT o Kimi, una clave de API o un modelo local. También puedes conectar otro proveedor compatible con el formato de OpenAI o Anthropic. Las solicitudes van directas a tu proveedor.",
       },
       {
         title: "Clics y teclas de verdad",

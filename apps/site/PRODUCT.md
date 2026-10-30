@@ -26,16 +26,11 @@ Two claims a neighboring product cannot copy:
 
 1. **It runs in your browser, not a sandbox** — it acts on the sites you're already logged into,
    with genuine trusted input events (CDP), not synthetic JS dispatches sites can ignore.
-2. **Provider-agnostic by construction** — 15 presets across 12 vendors (Anthropic, OpenAI and
-   Kimi appear twice: subscription sign-in and API key), plus any OpenAI/Anthropic-compatible
-   endpoint. No TabRunner server, no relay, no account, no telemetry. Your key goes straight
-   from the extension to your provider. Source of truth:
-   `apps/extension/src/modules/providers/presets.ts` — the site's chip list is the 12 vendor names.
-   **Prose naming the subscriptions names the products instead — Claude, ChatGPT, Kimi** — which
-   is what the extension's own subscription rows say, and what people recognize as the thing
-   they pay for. The chip list stays vendors because it counts providers, not rows, so the copy
-   has to bridge the two vocabularies itself ("Anthropic, OpenAI and Kimi appear twice") — drop
-   that clause and the sentence sells a Claude plan the chips below never mention.
+2. **Provider choice**: use a Claude, ChatGPT or Kimi plan, an API key or a local model.
+   Other OpenAI- and Anthropic-compatible providers also work. Requests go directly from the
+   extension to the provider. The source of availability is
+   `apps/extension/src/modules/providers/presets.ts`; disabled options must not be advertised
+   as usable. The site's vendor names are examples, not a live preset count.
 
 ## Operating Context
 

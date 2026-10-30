@@ -94,6 +94,11 @@ The extension offers Antigravity first and explains its free quota alongside Goo
 about third-party sign-in and account suspension. Keep that warning before sign-in. A model
 appearing in a provider's catalog does not prove generation quota is available.
 
+OpenCode Zen chat is disabled until its free access works reliably with TabRunner's instructions.
+Its code and saved credentials remain, but its option appears last and cannot be selected.
+Do not advertise it as a working free chat option. OpenCode Go and Jev's separate decision
+endpoint are unchanged. Describe available providers without a hardcoded preset count.
+
 ## Hard requirements
 
 - Chromium-only (Chrome, Brave, Edge, Arc…) — `chrome.debugger` has no Firefox/Safari equivalent;

@@ -22,9 +22,8 @@ goes straight from the extension to your provider.
 
 ## Features
 
-- **Bring your own provider**: 15 presets (Anthropic, OpenAI, Kimi, Z.ai, Qwen, DeepSeek,
-  Gemini, OpenRouter, Groq, Mistral, xAI, Ollama; Anthropic, OpenAI and Kimi each sign in with a
-  subscription) plus any custom endpoint speaking the OpenAI or Anthropic wire format.
+- **Use your AI provider**: sign in to a provider, paste an API key or connect a local model.
+  Other OpenAI- or Anthropic-compatible providers work too.
 - **Real trusted input**: clicks and keystrokes go through the Chrome DevTools Protocol, so they
   are genuine trusted events, not synthetic JS dispatches that sites can ignore.
 - **Sees the page, not the HTML**: the model works from a compact semantic tree
@@ -41,9 +40,8 @@ goes straight from the extension to your provider.
   Claude Code-style.
 - **Reasoning effort control**: optional per-provider effort (`none` → `max`), mapped to each
   wire format; omitted entirely when you want provider defaults.
-- **Auto model resolution**: leave the model on Auto and TabRunner runs the newest model the
-  endpoint lists, showing you which one that is; pin a model and effort per task from the panel
-  header.
+- **Auto model selection**: Auto uses the provider's model list and shows the selected model.
+  ChatGPT follows your account's catalog. You can pin a model and reasoning effort for each chat.
 - **Remembers across runs**: your standing instructions (`AGENTS.md`) and the agent's own notes
   (`MEMORY.md`) load into every run; a `## site:` section loads only when a task starts on that
   site. Editable on the options page, off with one toggle.

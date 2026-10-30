@@ -79,7 +79,7 @@ export const enUS = {
     items: [
       {
         title: "Bring your own provider",
-        body: "15 presets across the 12 providers below. Anthropic, OpenAI and Kimi appear twice: sign in with the Claude, ChatGPT or Kimi plan you already pay for, or paste an API key. Plus any endpoint speaking the OpenAI or Anthropic wire format. No lock-in, no relay.",
+        body: "Use your Claude, ChatGPT or Kimi plan, an API key or a local model. You can also connect another provider using the OpenAI or Anthropic format. Requests go straight to your provider.",
       },
       {
         title: "Real trusted input",

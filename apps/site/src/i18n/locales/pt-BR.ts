@@ -79,7 +79,7 @@ export const ptBR: Locale = {
     items: [
       {
         title: "Use o provedor que quiser",
-        body: "São 15 presets para os 12 provedores abaixo. Anthropic, OpenAI e Kimi aparecem duas vezes: faça login com o plano do Claude, do ChatGPT ou da Kimi que você já paga, ou cole uma chave de API. Além de qualquer endpoint que fale o formato da OpenAI ou da Anthropic. Sem lock-in e sem servidor no meio do caminho.",
+        body: "Use seu plano do Claude, do ChatGPT ou da Kimi, uma chave de API ou um modelo local. Também dá para conectar outro provedor compatível com o formato da OpenAI ou da Anthropic. Os pedidos vão direto para o provedor.",
       },
       {
         title: "Cliques e teclas de verdade",
