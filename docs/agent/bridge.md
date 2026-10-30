@@ -75,9 +75,11 @@ never cross this compact stream. Events carry `clientId`, `runId` and `conversat
 responses carry `clientId` and `requestId`. A queued launch sends `started` before its first
 run event, so the daemon replaces the previous run's status rather than mixing their steps.
 
-The daemon's status is a mirror. Each hello triggers per-client `sync`; a worker restart
-that lost a live run is reported as interrupted, not polled forever. The stored conversation
-survives even though the worker's run, queue and direct driver do not.
+The daemon's status is a mirror. Each hello triggers per-client `sync`. A failed or timed-out
+sync stays pending and retries on the next heartbeat or `get_status`, one read at a time.
+Healthy mirrors do not poll. Connection and status revisions fence delayed snapshots from
+replacing newer events. A reconnect that lost a live run reports it as interrupted, not
+running forever. The stored conversation survives even though its earlier run may not.
 
 Stop only aborts. It does not release admission or tab claims. The finalizer drains actions
 and bounded external reads, finishes artifacts and marks, releases that run's browser
@@ -98,17 +100,22 @@ uses broker discovery again. A short HTTP failure keeps the same session while t
 still recognizes it. The broker sends the live client ids to the extension every 20s; each
 extension owner has a 60s lease. A WebSocket disconnect starts a fresh 60s reconnect grace.
 Missing owners expire independently: their queued work is cancelled and their live work is
-aborted and drained. Panel and schedule owners are untouched.
+aborted and drained. Panel and schedule owners are untouched. Expiry does not retire the
+broker identity: the same live client can sync and start new work after cleanup finishes,
+using its stored conversation. Requests during cleanup report recovery in progress.
 
 `closeClient` returns `{ ok: true }` only after that owner's cleanup finishes. If the
 extension is disconnected, the broker retains this cleanup request and retries it after
 reconnect. It never retries a run, click, type or other browser mutation. A timed-out or
 lost action may already have happened; clients must inspect status or the page before
-retrying. A retired client id cannot start work again in the same worker.
+retrying. Only an explicit client close retires its id; later heartbeats or requests cannot
+revive it in the same worker.
 
 Once no clients or cleanup remain, the broker exits after a 10s idle grace by default.
-A short extension link outage can preserve the same client ids. Restarting a stdio client
-creates a new identity. If the broker restarts or confirms that an upstream session expired,
+An extension link outage preserves client ids while their broker sessions stay alive. An
+owner's expired task is not restarted automatically; reconnect restores its thread, not its
+old work. Restarting a stdio client creates a new identity. If the broker restarts or confirms
+that an upstream session expired,
 the proxy opens a new upstream session without closing stdio. Its earlier status and run
 controls do not carry over. `health` and `get_status` disclose the new session until the client
 starts a new task or resets its conversation. No browser action is replayed.
@@ -139,6 +146,8 @@ the agent loop uses. Direct actions, start and end are ordered within their clie
 `health` reads the active provider's name and saved credential state through `providerInfo`.
 It does not send a test model request or prove that a saved key is valid. Direct browser
 control needs no model provider. The short provider lookup timeout cannot hold health open.
+A pending status sync or failed provider lookup never reports Ready. An uncertain mirror is
+labelled as the last known status, with a safe retry instead of a claim the old run is live.
 
 `BridgeSocket.start()` stays synchronous so MV3 registers its alarm listeners in the first
 worker turn. One reconcile path arms a 30s alarm when enabled and clears it when disabled.
