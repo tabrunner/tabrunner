@@ -1,0 +1,49 @@
+{
+  "name": "tabrunner",
+  "description": "Provider-agnostic browser agent extension",
+  "private": true,
+  "version": "0.16.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "i18n:check": "bun run scripts/check-i18n.ts",
+    "icons": "bun run scripts/gen-icons.ts",
+    "shots": "bun run scripts/shoot-store.ts",
+    "shots:ui": "bun run scripts/shoot-ui.ts",
+    "bench:jev": "bun run scripts/jev-bench.ts",
+    "postinstall": "wxt prepare",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@base-ui-components/react": "catalog:",
+    "@providerkit/core": "catalog:",
+    "@shadcn/react": "catalog:",
+    "i18next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-i18next": "catalog:",
+    "react-markdown": "catalog:",
+    "remark-gfm": "catalog:",
+    "zustand": "catalog:"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "@types/chrome": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@wxt-dev/module-react": "catalog:",
+    "jsdom": "catalog:",
+    "puppeteer-core": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "wxt": "catalog:"
+  }
+}

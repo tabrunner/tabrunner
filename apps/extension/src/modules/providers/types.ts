@@ -1,0 +1,323 @@
+import { isTransportFailure, type ErrorKind } from "@providerkit/core";
+import type { Credential } from "@providerkit/core/auth";
+
+/** Provider shape — determines wire format for API calls. */
+export type ProviderShape = "openai" | "anthropic" | "responses" | "gemini";
+
+/**
+ * Reasoning effort — how hard the model thinks before acting.
+ * Absent = provider default (never sent). Passed through verbatim on
+ * OpenAI-shape (`reasoning_effort`); mapped to adaptive thinking +
+ * `output_config.effort` on Anthropic-shape (the Claude 4.5 ids get neither;
+ * see anthropic.ts). There, the pickers offer only the levels anthropic.ts's
+ * table gives a model, and a run drops a stored level the model does not take
+ * (models.ts, effortLevels). On the other shapes support varies per model, and
+ * an unsupported level comes back as a clean provider 400, surfaced in chat.
+ *
+ * Ordered least → most; the type derives from the array so a runtime guard
+ * and the union can never drift apart.
+ */
+export const REASONING_EFFORTS = ["none", "low", "medium", "high", "max"] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+
+/** The one place the effort union meets raw input (the pickers, slash commands). */
+export function isEffort(value: string): value is ReasoningEffort {
+  return REASONING_EFFORTS.some((effort) => effort === value);
+}
+
+/** i18n keys for the effort levels — a Record keyed by the union, so a new
+ *  level is a compile error here instead of a silently missing option. */
+export const EFFORT_LABEL_KEYS = {
+  none: "modelPicker.effort.none",
+  low: "modelPicker.effort.low",
+  medium: "modelPicker.effort.medium",
+  high: "modelPicker.effort.high",
+  max: "modelPicker.effort.max",
+} as const satisfies Record<ReasoningEffort, string>;
+
+/** A configured provider instance (stored in chrome.storage). */
+export interface ProviderConfig {
+  id: string;
+  name: string;
+  shape: ProviderShape;
+  baseUrl: string;
+  /** Empty when the provider signs in instead — `auth` carries the credential. */
+  apiKey: string;
+  /** Present only for OAuth providers; absent means the apiKey is the credential. */
+  auth?: Credential;
+  /** Absent = auto — resolveProviderModel picks the newest model the endpoint serves. */
+  model?: string;
+  reasoningEffort?: ReasoningEffort;
+  createdAt: number;
+}
+
+/**
+ * One conversation's engine pick — the three picker choices, stored verbatim.
+ * The PICK, never the resolution: an absent `model` means auto, so a pinned
+ * conversation still follows the endpoint's newest model, and an absent
+ * `effort` means the provider's own default. What a run actually resolved to
+ * is stamped per run on `RunSummary.model` instead.
+ */
+export interface ConversationEngine {
+  providerId: string;
+  model?: string;
+  effort?: ReasoningEffort;
+}
+
+/**
+ * A config whose model has been resolved to a concrete id — what adapters
+ * accept. `apiKey` here is the EFFECTIVE bearer: for OAuth providers the
+ * credential seam swaps in a fresh access token, so adapters never learn
+ * which kind of credential they are holding.
+ */
+export interface ResolvedProviderConfig extends ProviderConfig {
+  model: string;
+  /**
+   * The conversation this run answers in. Only sent where a preset asks for
+   * it (`sessionHeader`, `responsesCacheKey`) — OpenCode's gateway wants its
+   * per-conversation routing header on Zen turns, and the ChatGPT backend keys
+   * its prompt cache on it. Run-scoped, never stored.
+   */
+  sessionId?: string;
+  /**
+   * Whether the resolved model can receive images. Absent = capable: the flag
+   * is only ever false for a known text-only family (DeepSeek preset). No
+   * provider ships per-model vision in its listing, so the preset is the source.
+   */
+  supportsImages?: boolean;
+}
+
+/** One entry from a provider's model listing. `created` is epoch ms when the endpoint reports it. */
+export interface ModelInfo {
+  id: string;
+  /** Human label when the endpoint ships one — Anthropic's `display_name`
+   *  ("Claude Sonnet 4.5"), OpenRouter's `name`. Absent on plain OpenAI. */
+  name?: string;
+  created?: number;
+  /** Context window in tokens, when the endpoint volunteers it (OpenRouter,
+   *  LM Studio, Ollama do; Anthropic and OpenAI don't). Feeds the compaction
+   *  threshold — see providers/context-window.ts for the rest of the ladder. */
+  contextLength?: number;
+  /** Accepted levels when the account's catalog reports them. Empty means no supported knob. */
+  reasoningEfforts?: ReasoningEffort[];
+}
+
+/** Chat message in provider-agnostic format. */
+export interface ChatMessage {
+  role: "system" | "user" | "assistant" | "tool_results";
+  content: string;
+  /**
+   * The model's reasoning on an assistant turn. Thinking-mode providers demand
+   * it echoed verbatim (DeepSeek 400s on tool-call turns without it), so the
+   * loop commits it even though the panel treats reasoning as display-only.
+   * OpenAI-shape serializes it as `reasoning_content`; Anthropic-shape drops
+   * it — its thinking blocks carry signatures we never capture. Loop-local:
+   * transcripts persist the panel's own rows, never the wire conversation.
+   */
+  reasoning?: string;
+  toolCalls?: ToolCall[];
+  /** Results of tool calls from the previous assistant turn. Adapters serialize
+   *  differently: OpenAI expands to N role:tool messages, Anthropic collapses
+   *  to one user message with N tool_result blocks. */
+  toolResults?: ToolResult[];
+  /** Images attached to a user message, as `data:` URLs. */
+  images?: string[];
+}
+
+export interface ToolResult {
+  id: string;
+  content: string;
+  /**
+   * Images produced by the tool (screenshots), as `data:` URLs. Anthropic nests
+   * them inside the tool_result block; OpenAI-shape tool messages are text-only,
+   * so that adapter trails a user message carrying them instead.
+   */
+  images?: string[];
+}
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  /**
+   * Gemini's opaque reasoning token. It must ride back on the next turn
+   * verbatim or the model loses its chain of thought across a tool round
+   * (and ends turns with a thought-only STOP — textless, call-less). Only
+   * the Gemini adapter reads it; every other adapter ignores it.
+   */
+  thoughtSignature?: string;
+}
+
+/** Tool definition in provider-agnostic format. */
+export interface ToolDef {
+  name: string;
+  description: string;
+  params: ToolParams;
+}
+
+/**
+ * Schemas we author stay on the narrow `JSONSchema` above; schemas ingested
+ * from remote MCP servers are full JSON Schema (anyOf, $ref, string formats…)
+ * that every adapter passes to the provider verbatim (`input_schema` /
+ * `parameters` are assigned, never rebuilt). The only promise this type makes
+ * is "an object schema" — describing every keyword would buy nothing.
+ */
+export interface ExternalJsonSchema {
+  type: "object";
+  [key: string]: unknown;
+}
+
+export type ToolParams = JSONSchema | ExternalJsonSchema;
+
+export interface JSONSchema {
+  type: "object";
+  properties: Record<string, JSONSchemaProperty>;
+  required?: string[];
+}
+
+export interface JSONSchemaProperty {
+  type: string;
+  description: string;
+  enum?: string[];
+  /** Element schema for `type: "array"` — both wire formats pass it through verbatim.
+   *  Object elements carry their own fields (delegate's `{for, text}` values). */
+  items?: { type: string; properties?: Record<string, JSONSchemaProperty>; required?: string[] };
+  /** Nested fields for `type: "object"` — a rule with several parts (a
+   *  recurrence) reads far better as one argument than as five flat ones. */
+  properties?: Record<string, JSONSchemaProperty>;
+  required?: string[];
+}
+
+/**
+ * One call's token counts, as the adapters report them. `input` is the FULL
+ * input — every token the request put in the window, cached or not — because
+ * that is what context size means everywhere else (the gauge, compaction).
+ * `cacheRead`/`cacheWrite` are the cached slices OF that input, kept because
+ * they bill at different rates and cost cannot be computed without them.
+ * `cost` rides through only from gateways that price the call themselves
+ * (OpenRouter-style `usage.cost`); absent everywhere else.
+ */
+export interface UsageTick {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  /** What the gateway says this call cost, USD — used verbatim when present. */
+  cost?: number;
+}
+
+/** Why a turn ended, mapped from each wire's finish reason. */
+export type FinishReason = "stop" | "length" | "tool_use" | "content_filter";
+
+/** Streaming delta from the provider. */
+export type Delta =
+  | { type: "text"; text: string }
+  /** Model reasoning (Anthropic thinking blocks, OpenAI-shape reasoning_content) — the panel
+   *  displays it live; the loop also commits it on the assistant turn for providers that
+   *  demand it echoed (see ChatMessage.reasoning). */
+  | { type: "reasoning"; text: string }
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      args: Record<string, unknown>;
+      thoughtSignature?: string;
+    }
+  | ({ type: "usage" } & UsageTick)
+  | { type: "finish"; reason: FinishReason }
+  | { type: "done" };
+
+/** Provider error with HTTP status so the loop can classify retryability. */
+export class ProviderError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    /** What the body says is actually wrong — overrides the status for retry decisions. */
+    public readonly kind?: ErrorKind,
+    /** Server-requested wait (`retry-after`) — a long one means a usage window, not a blip. */
+    public readonly retryAfterMs?: number,
+    /**
+     * The server's `x-should-retry: false` — it already knows the next attempt
+     * fails the same way. Only the refusal is kept: a `true` would retry kinds
+     * this file refuses on purpose, and nothing measured asks for that.
+     */
+    public readonly shouldRetry?: false,
+  ) {
+    super(message);
+    this.name = "ProviderError";
+  }
+}
+
+/** Permanent failures — no amount of backoff fixes an empty balance or a missing model. */
+const NON_RETRYABLE_KINDS: readonly ErrorKind[] = ["entitlement", "quota", "model"];
+
+/**
+ * Longest server-requested wait worth holding a run for. Beyond it the limit
+ * is a usage window (subscription 5h/weekly resets run hours to days), so the
+ * run fails fast with the reset time instead of retrying into the same wall.
+ */
+const MAX_RETRY_WAIT_MS = 60_000;
+
+/**
+ * 429 and 5xx are transient — retry in place. Other 4xx request errors are not.
+ * A classified permanent failure never retries even when its status looks
+ * transient: OpenAI files "insufficient_quota" under 429 — except a quota
+ * error WITH a short server-directed wait, which is a throttle with its own
+ * recovery time, not an empty balance. A 429 whose
+ * retry-after exceeds MAX_RETRY_WAIT_MS isn't transient either.
+ *
+ * A `network` failure is retryable by definition: nothing about the request was
+ * refused, it never arrived. Waiting is the whole fix. `timeout` is the same
+ * argument on the other side of the wire — a 408, or a body saying the request
+ * timed out, is a provider that ran out of time rather than one that refused.
+ * Both were retried on status before the classifier named them; keeping them
+ * here is what stops the naming from quietly narrowing the policy.
+ *
+ * Auth is the one kind a single response can't settle. Coding-plan gateways —
+ * Kimi most visibly — reject roughly one request in fifty with
+ * `authentication_error` on a credential that works on the next call, and that
+ * body is indistinguishable from a real rejection. So the retry IS the test: a
+ * key that is genuinely invalid loses all of the loop's attempts and still
+ * reports itself with its "check the key" fix, while a gateway blip clears on
+ * the second. Only the streaming endpoint gets here — a dead OAuth refresh
+ * throws from start-run, and a mistyped key fails model listing in Settings,
+ * both well outside the loop.
+ */
+export function isRetryable(e: unknown): boolean {
+  if (e instanceof ProviderError) {
+    if (e.shouldRetry === false) return false;
+    if (e.kind && NON_RETRYABLE_KINDS.includes(e.kind)) {
+      // The one exception: a quota error carrying a SHORT server-directed
+      // wait is a per-minute throttle, not an empty balance — Google's model
+      // quotas answer 429 with a 3-second RetryInfo, and waiting it out
+      // succeeds. A truly exhausted balance carries no wait (or a long one)
+      // and still fails fast below.
+      const shortWait = e.retryAfterMs !== undefined && e.retryAfterMs <= MAX_RETRY_WAIT_MS;
+      if (!(e.kind === "quota" && shortWait)) return false;
+    }
+    if (e.retryAfterMs !== undefined && e.retryAfterMs > MAX_RETRY_WAIT_MS) return false;
+    // `overload` and `rate` name the same transient states as a 5xx and a 429,
+    // and they need the name when the status cannot say it: a failure inside
+    // a 200 stream (streamFrameError) carries the 200 that really arrived.
+    return (
+      e.kind === "auth" ||
+      e.kind === "network" ||
+      e.kind === "timeout" ||
+      e.kind === "overload" ||
+      e.kind === "rate" ||
+      e.status === 429 ||
+      e.status >= 500
+    );
+  }
+  // An unwrapped rejection from a fetch outside streamSse's envelope. The
+  // shared guard matches on the MESSAGE and walks up to five `cause` levels, so
+  // a dead socket wrapped by an intermediate layer still reads as transport —
+  // it is no longer a bare-TypeError check. Safe to widen because a genuine bug
+  // ("driver.click is not a function") does not word itself like a failed fetch.
+  return isTransportFailure(e);
+}
+
+/** Provider interface — every adapter implements this. */
+export interface ChatProvider {
+  stream(messages: ChatMessage[], tools: ToolDef[], signal: AbortSignal): AsyncIterable<Delta>;
+}

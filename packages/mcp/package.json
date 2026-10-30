@@ -1,0 +1,42 @@
+{
+  "name": "tabrunner-mcp",
+  "description": "MCP server that lets Claude, ChatGPT or any MCP client drive the TabRunner browser agent in your own Chrome",
+  "version": "0.16.0",
+  "type": "module",
+  "license": "MIT",
+  "author": "Gustavo Salomé <gustavonips@gmail.com>",
+  "homepage": "https://tabrunner.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tabrunner/tabrunner.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": "https://github.com/tabrunner/tabrunner/issues",
+  "keywords": [
+    "mcp",
+    "browser",
+    "chrome",
+    "agent",
+    "tabrunner"
+  ],
+  "mcpName": "app.tabrunner/tabrunner",
+  "bin": {
+    "tabrunner-mcp": "dist/tabrunner-mcp.js"
+  },
+  "files": [
+    "dist/tabrunner-mcp.js"
+  ],
+  "scripts": {
+    "start": "bun src/index.ts",
+    "prepack": "bun run build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src smoke.ts",
+    "build": "bun build --target=bun src/index.ts --outfile dist/tabrunner-mcp.js"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:",
+    "zod": "catalog:"
+  }
+}

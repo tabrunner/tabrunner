@@ -1,7 +1,7 @@
 # TabRunner
 
 <p>
-  <img src="public/icon/128.png?v=2" width="64" height="64" alt="TabRunner comet mark" align="left" />
+  <img src="apps/extension/public/icon/128.png?v=2" width="64" height="64" alt="TabRunner comet mark" align="left" />
   <strong>You give the goal. It runs the tabs.</strong><br/>
   An AI agent that drives your <em>real</em> browser (your tabs, your sessions and your logged-in
   accounts) through any provider you choose. Describe a task in the side panel; TabRunner reads
@@ -22,9 +22,8 @@ goes straight from the extension to your provider.
 
 ## Features
 
-- **Bring your own provider**: 15 presets (Anthropic, OpenAI, Kimi, Z.ai, Qwen, DeepSeek,
-  Gemini, OpenRouter, Groq, Mistral, xAI, Ollama; Anthropic, OpenAI and Kimi each sign in with a
-  subscription) plus any custom endpoint speaking the OpenAI or Anthropic wire format.
+- **Use your AI provider**: sign in to a provider, paste an API key or connect a local model.
+  Other OpenAI- or Anthropic-compatible providers work too.
 - **Real trusted input**: clicks and keystrokes go through the Chrome DevTools Protocol, so they
   are genuine trusted events, not synthetic JS dispatches that sites can ignore.
 - **Sees the page, not the HTML**: the model works from a compact semantic tree
@@ -41,9 +40,8 @@ goes straight from the extension to your provider.
   Claude Code-style.
 - **Reasoning effort control**: optional per-provider effort (`none` → `max`), mapped to each
   wire format; omitted entirely when you want provider defaults.
-- **Auto model resolution**: leave the model on Auto and TabRunner runs the newest model the
-  endpoint lists, showing you which one that is; pin a model and effort per task from the panel
-  header.
+- **Auto model selection**: Auto uses the provider's model list and shows the selected model.
+  ChatGPT follows your account's catalog. You can pin a model and reasoning effort for each chat.
 - **Remembers across runs**: your standing instructions (`AGENTS.md`) and the agent's own notes
   (`MEMORY.md`) load into every run; a `## site:` section loads only when a task starts on that
   site. Editable on the options page, off with one toggle.
@@ -77,11 +75,11 @@ goes straight from the extension to your provider.
 
 ```bash
 bun install
-bun run build
+bun run --cwd apps/extension build
 ```
 
 Then `chrome://extensions` → **Developer mode** → **Load unpacked** → select
-`dist/chrome-mv3`. Click the TabRunner toolbar icon to open the side panel, add a provider
+`apps/extension/dist/chrome-mv3`. Click the TabRunner toolbar icon to open the side panel, add a provider
 (options page), and describe a task.
 
 Works on Chrome, Brave, Edge, Arc, Opera, and Vivaldi. Chromium-only by design: Firefox has no
@@ -102,29 +100,50 @@ side panel (React) ──Port──▶ background service worker ──▶ provi
 2. The provider streams a reply; tool calls (`navigate`, `click`, `type`, `scroll`, `snapshot`,
    `screenshot`, `done`) execute against the real tab.
 3. Results feed back into the conversation until the model calls `done` or you hit Stop.
-   One task runs at a time; the next submissions wait in a serial queue.
+   Panel tasks run one at a time. MCP clients and schedules have separate queues, with at most
+   four tasks active across the extension.
 
 An open Port keeps the MV3 service worker alive while the panel is open; with the panel closed
 (after a background submit it closes itself) a periodic alarm holds it through long silences.
 Durable state is written to storage as it changes, and tasks keep working with the panel closed.
 Stop them from the Tasks band or by closing the driven tab.
 
+## Repository layout
+
+The extension, website and MCP daemon live in one Bun + Turbo workspace. Install once at the root.
+Dependency versions live in the root catalog, with one `bun.lock`.
+
+| Path              | What it contains                                       |
+| ----------------- | ------------------------------------------------------ |
+| `apps/extension/` | Chromium extension, WXT build and UI                   |
+| `apps/site/`      | tabrunner.app, built and deployed separately           |
+| `packages/mcp/`   | The published `tabrunner-mcp` daemon                   |
+| `plugin/`         | Client plugin, skill and MCP launchers                 |
+| `docs/`           | Public guides, product contract and source screenshots |
+
 ## Development
 
+Run these from the repository root:
+
 ```bash
-bun run dev           # watch mode with hot reload
-bun run test          # vitest
-bun run lint          # eslint
-bun run compile       # tsc --noEmit (extension + daemon)
-bun run deadcode      # knip
-bun run icons         # regenerate extension icons + OG card from src/shared/logo.ts
+bun run extension     # extension hot reload
+bun run site          # site dev server
+bunx turbo run lint typecheck --filter=./apps/extension
+bun run icons         # extension, plugin and repository brand assets
 bun run bridge        # run the MCP daemon by hand
-bun run bridge:check  # end-to-end check of the MCP bridge, no Chrome needed
+bun run bridge:check  # isolated bridge smoke check, no Chrome needed
 ```
 
-Domain-first layout under `src/modules/` (agent, browser, providers, conversation), UI primitives
-in `src/components/` (Base UI + Tailwind 4). See [AGENTS.md](AGENTS.md) for the full architecture
-and conventions.
+Use `--filter=./apps/site` or `--filter=./packages/mcp` to check another package. Run only the test
+file you changed, from its package directory. The full suite is manual, not part of CI or `check`.
+
+The extension's domains live under `apps/extension/src/modules/`, with Base UI primitives in
+`apps/extension/src/components/`. See [AGENTS.md](AGENTS.md) for workspace commands and the
+[extension guide](apps/extension/AGENTS.md) for architecture and runtime boundaries.
+
+Ready PRs typecheck affected packages and root scripts, then merge and start the site deploy when
+its inputs changed. Draft PRs do not release anything. The extension and MCP package still publish
+only from release tags; the site can deploy without an extension release.
 
 ## Roadmap
 

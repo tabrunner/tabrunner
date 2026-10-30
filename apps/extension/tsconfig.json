@@ -1,0 +1,14 @@
+{
+  "extends": ["./.wxt/tsconfig.json", "../../tsconfig.react.json"],
+  "compilerOptions": {
+    "types": ["chrome"],
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*", ".wxt/wxt.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

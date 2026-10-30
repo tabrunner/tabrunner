@@ -1,7 +1,7 @@
 # Provider wire contracts
 
 The load-bearing details of talking to each provider shape. Read this when a task touches
-`src/modules/providers/` adapters, streaming, tool results, or model lists.
+`apps/extension/src/modules/providers/` adapters, streaming, tool results, or model lists.
 
 - **Anthropic rejects consecutive same-role messages.** Tool results go back as ONE user
   message with N `tool_result` blocks; OpenAI expands to N separate `role: "tool"`
@@ -164,19 +164,34 @@ The load-bearing details of talking to each provider shape. Read this when a tas
 - **Stop is not an error.** User abort is normal control flow: the loop ends with `done`,
   never a red bubble. The `done` event carries the model's final summary — on tool-only
   final turns it IS the answer, so the panel renders it when no text was streamed.
-- **Model lists are live, presets are fallback.** `listModels` (`models.ts`) reads
-  `GET {base}/v1/models` (Anthropic-shape) or `GET {base}/models` (OpenAI-shape, non-chat
-  ids filtered). `ProviderConfig.model` is optional — absent means auto, resolved at run
-  start by `resolveProviderModel`: persisted choice → newest listed (by `created`) →
-  preset's first → clear error. QwenCloud has no list route; that's why presets keep model
-  ids at all. The ChatGPT backend (responses shape) has NO list route either —
-  `listModels` short-circuits to `[]`, so the preset models ARE the picker's list.
-  Endpoints that ship a human label (Anthropic `display_name`, OpenRouter `name`) get it
-  in `ModelInfo.name` and the picker shows it; the id stays the value on the wire and in
-  the tooltip. Model and effort are per-task choices in the side-panel header selects,
-  persisted per provider — never asked for at provider-setup time (the key doesn't exist
-  yet, so the list can't be fetched there). The "Auto" option renders the model it
-  currently resolves to, tagged with an `Auto` chip. A listing that reports its window
-  (`context_length`, `max_context_length`, `context_window`) lands in
-  `ModelInfo.contextLength` and feeds `context-window.ts` — one rung below ceilings
-  learned from real rejections, one above the 200k default.
+- **Model lists come from the connection.** `listModels` (`models.ts`) reads
+  `GET {base}/v1/models` (Anthropic) or `GET {base}/models` (OpenAI, with non-chat ids
+  filtered). Most providers resolve a saved model first, then the newest listed model,
+  then the preset's first model. Endpoints without a list route can still use presets
+  or a manually entered model.
+  ChatGPT is different: `listChatGPTModels` from `@providerkit/core/auth` reads the
+  signed-in account's Codex catalog with its bearer, account id and client version.
+  Auto follows that catalog's priority. A saved model must still appear in it, and
+  reasoning effort is limited to the levels the account catalog reports. No static
+  ChatGPT shelf or completion probes stand in for an unavailable catalog.
+  The picker, slash menu and run use the same connection-keyed cache. A failed refresh
+  keeps the last list and marks it as possibly out of date; an empty account catalog
+  stays empty. The picker offers Refresh models in place. Runs revalidate ChatGPT and
+  public Zen models before sending a task and never silently change a saved model.
+  Human labels stay in `ModelInfo.name`; ids stay on the wire and in tooltips.
+  Reported context windows feed `context-window.ts`, below ceilings learned from real
+  rejections and above the 200k default.
+- **Zen chat stays behind a disabled preset flag.** `ProviderPreset.disabled` makes an
+  option unavailable for new selection and sends it to the bottom of the list. The shared
+  support predicate drives setup, pickers, onboarding and default selection. Model listing,
+  resolution and provider construction reject disabled presets before network calls.
+  Saved credentials are not deleted. An existing chat pin stays intact and gets a clear
+  choose-another-provider error, rather than silently moving a scheduled chat to another
+  provider. OpenCode Go and Jev's separate decision endpoint are unchanged.
+  Zen's public credential, model routing, session headers and read-tool compatibility code
+  remain for a future repair. Native OpenCode succeeded in controlled checks, but requests
+  with TabRunner's own instructions still returned `FreeUsageLimitError`, including checks
+  against the current upstream inference endpoint and model-identity card. This does not
+  prove a new account exhausted quota or that OpenCode rejects every custom prompt.
+  Re-enable the preset only after an app-compatible request is verified without replacing
+  browser safety rules. A model-list response alone does not prove generation works.

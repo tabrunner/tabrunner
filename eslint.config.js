@@ -3,66 +3,26 @@ import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
-/**
- * Runtime boundary: files outside a ui/ folder must not import React/zustand.
- * This keeps the service-worker bundle React-free.
- */
-const noReactOutsideUi = {
-  files: ["**/*.{ts,tsx}"],
-  ignores: [
-    "**/ui/**",
-    "src/components/**",
-    "**/entrypoints/**",
-    // React bindings for the shared i18next instance — only entrypoints import it.
-    "src/i18n/ui.ts",
-    "**/__tests__/**",
-    ".wxt/**",
-    "dist/**",
-    "refs/**",
-  ],
-  rules: {
-    "no-restricted-imports": [
-      "error",
-      {
-        paths: [
-          { name: "react", message: "React is UI-only — import from within a ui/ folder." },
-          { name: "react-dom", message: "React is UI-only — import from within a ui/ folder." },
-          { name: "zustand", message: "zustand is UI-only — import from within a ui/ folder." },
-          {
-            name: "react-i18next",
-            message: "react-i18next is UI-only — import from within a ui/ folder.",
-          },
-        ],
-        patterns: [
-          {
-            group: ["react/*", "react-dom/*"],
-            message: "React is UI-only — import from within a ui/ folder.",
-          },
-          {
-            group: ["*/ui/*"],
-            message: "UI modules are UI-only — import from within a ui/ folder.",
-          },
-        ],
-      },
+export default tseslint.config(
+  {
+    ignores: [
+      "**/.wxt/**",
+      "**/dist/**",
+      "**/dist-ssr/**",
+      "**/node_modules/**",
+      "**/.turbo/**",
+      ".cache/**",
+      ".claude/**",
+      ".agents/**",
+      "**/preview/**",
     ],
   },
-};
-
-export default tseslint.config(
-  // daemon/dist: the npm package's bundle, which `npm publish` builds in place (prepack).
-  { ignores: [".wxt/**", "dist/**", "daemon/dist/**", "refs/**", "node_modules/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
     files: ["**/*.{ts,tsx}"],
-    languageOptions: {
-      globals: { ...globals.browser, chrome: "readonly" },
-    },
-    plugins: {
-      "react-hooks": reactHooks,
-    },
+    plugins: { "react-hooks": reactHooks },
     rules: {
-      ...reactHooks.configs["recommended-latest"].rules,
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/consistent-type-imports": "error",
       "no-unused-vars": "off",
@@ -70,18 +30,63 @@ export default tseslint.config(
     },
   },
   {
-    // The MCP daemon is a bun program, not an extension context: no chrome, no
-    // DOM, and its own package.json. Only its globals differ from the rules above.
-    files: ["daemon/**/*.ts"],
+    files: ["apps/extension/**/*.{ts,tsx}"],
+    rules: reactHooks.configs["recommended-latest"].rules,
+    languageOptions: {
+      globals: { ...globals.browser, chrome: "readonly" },
+    },
+  },
+  {
+    files: ["apps/site/**/*.{ts,tsx}"],
+    languageOptions: { globals: globals.browser },
+    rules: {
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+    },
+  },
+  {
+    files: ["scripts/**/*.ts", "apps/*/scripts/**/*.ts", "packages/mcp/**/*.ts"],
     languageOptions: {
       globals: { ...globals.node, Bun: "readonly", WebSocket: "readonly" },
     },
   },
-  noReactOutsideUi,
   {
-    // Everything this file imports statically joins the load Chromium waits on
-    // before it shows the panel at all. The app arrives by import() instead.
-    files: ["src/entrypoints/sidepanel/shell.ts"],
+    // Keep React and UI stores out of the extension's service worker.
+    files: ["apps/extension/**/*.{ts,tsx}"],
+    ignores: [
+      "apps/extension/**/ui/**",
+      "apps/extension/src/components/**",
+      "apps/extension/**/entrypoints/**",
+      "apps/extension/src/i18n/ui.ts",
+      "apps/extension/**/__tests__/**",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            { name: "react", message: "React is UI-only. Import it from a ui/ folder." },
+            { name: "react-dom", message: "React is UI-only. Import it from a ui/ folder." },
+            { name: "zustand", message: "zustand is UI-only. Import it from a ui/ folder." },
+            {
+              name: "react-i18next",
+              message: "react-i18next is UI-only. Import it from a ui/ folder.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["react/*", "react-dom/*"],
+              message: "React is UI-only. Import it from a ui/ folder.",
+            },
+            { group: ["*/ui/*"], message: "Import UI modules from a ui/ folder." },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Static imports delay the first side-panel load. The app loads by import().
+    files: ["apps/extension/src/entrypoints/sidepanel/shell.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -90,7 +95,7 @@ export default tseslint.config(
             {
               regex: ".",
               message:
-                "The panel stays hidden until this file's load finishes — import() the app after it (see shell.ts).",
+                "The panel stays hidden until this file loads. Use import() afterward (see shell.ts).",
             },
           ],
         },

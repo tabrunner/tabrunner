@@ -11,9 +11,12 @@ permissions:
 jobs:
   release:
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -29,7 +32,7 @@ jobs:
       # never need a site deploy when a version ships.
       - name: Stable download aliases for tabrunner.app
         run: |
-          cp dist/tabrunner-*-chrome.zip dist/tabrunner-latest-chrome.zip
+          cp apps/extension/dist/tabrunner-*-chrome.zip dist/tabrunner-latest-chrome.zip
           cp dist/tabrunner-*-mcp.js dist/tabrunner-latest-mcp.js
       # Permanent record of the version's artifacts — public download links on
       # the tagged GitHub Release, with auto-generated notes. The CWS dashboard
@@ -38,7 +41,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/tabrunner-*.zip
+            apps/extension/dist/tabrunner-*.zip
+            dist/tabrunner-latest-chrome.zip
             dist/tabrunner-*.js
           generate_release_notes: true
       # The same daemon as the npm package `tabrunner-mcp`: what the plugin's server runs
@@ -46,7 +50,7 @@ jobs:
       # `prepack` builds the bundle. After the release assets, so a refused publish never holds
       # them back.
       - name: Publish the daemon to npm
-        working-directory: daemon
+        working-directory: packages/mcp
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -59,7 +63,7 @@ jobs:
           MCP_PUBLISHER: https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1
         run: |
           set -euo pipefail
-          version=$(jq -r .version daemon/package.json)
+          version=$(jq -r .version packages/mcp/package.json)
           for try in $(seq 1 30); do
             curl -fsS -o /dev/null "https://registry.npmjs.org/tabrunner-mcp/$version" && break
             if [ "$try" = 30 ]; then echo "::error::npm never served tabrunner-mcp@$version"; exit 1; fi
@@ -68,4 +72,4 @@ jobs:
           arch=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
           curl -fsSL "$MCP_PUBLISHER/mcp-publisher_linux_$arch.tar.gz" | tar xz mcp-publisher
           ./mcp-publisher login dns --domain tabrunner.app --private-key "$MCP_REGISTRY_KEY"
-          ./mcp-publisher publish daemon/server.json
+          ./mcp-publisher publish packages/mcp/server.json

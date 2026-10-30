@@ -1,0 +1,128 @@
+@import "tailwindcss";
+@import "@fontsource-variable/unbounded";
+@import "@fontsource-variable/figtree";
+@import "@fontsource-variable/jetbrains-mono";
+
+/*
+ * tabrunner.app — "The Comet Field" (see DESIGN.md).
+ * Two lights only: burn emerald = motion, telemetry amber = measurement.
+ */
+@theme {
+  /* Deep Field — the night sky, indigo-leaning, never pure black */
+  --color-field-950: #04060d;
+  --color-field-900: #070b16;
+  --color-field-800: #0b1224;
+  --color-field-700: #111a33;
+  --color-field-600: #1a2547;
+  --color-field-500: #25325c;
+
+  /* Flare — the green a comet burns on entry; the color of things that move.
+     Tailwind emerald, the same scale the extension's brand-* aliases. */
+  --color-flare-200: #d1fae5;
+  --color-flare-300: #6ee7b7;
+  --color-flare-400: #34d399;
+  --color-flare-500: #10b981;
+  --color-flare-600: #059669;
+  --color-flare-700: #047857;
+
+  /* Telemetry — amber measures; if it's amber, the agent is working */
+  --color-tel-300: #fcd34d;
+  --color-tel-400: #fbbf24;
+
+  /* Starlight — text, tinted from the sky, never pure gray */
+  --color-star-100: #e8eefb;
+  --color-star-300: #b9c6de;
+  --color-star-500: #8797ba;
+
+  --font-display: "Unbounded Variable", "Figtree Variable", system-ui, sans-serif;
+  --font-sans: "Figtree Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-field-900 font-sans text-star-100 antialiased;
+}
+
+::selection {
+  background: var(--color-flare-600);
+  color: #ffffff;
+}
+
+/* Telemetry numerals never jitter while ticking. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Live pulse — the one dot that says "working". Amber, because it measures.
+ */
+@keyframes tel-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-tel-400) 55%, transparent);
+  }
+  50% {
+    opacity: 0.75;
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+.live-dot {
+  animation: tel-pulse 1.6s ease-in-out infinite;
+}
+
+/*
+ * Status-verb shimmer (adapted from the extension's shimmer-text): a run can sit
+ * between visible changes; a moving highlight is the honest "still working" signal.
+ */
+@keyframes flare-shimmer {
+  from {
+    background-position: 150% center;
+  }
+  to {
+    background-position: -50% center;
+  }
+}
+.shimmer-text {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-tel-400) 30%,
+    var(--color-flare-300) 50%,
+    var(--color-tel-400) 70%
+  );
+  background-size: 250% auto;
+  background-clip: text;
+  color: transparent;
+  animation: flare-shimmer 2.4s linear infinite;
+}
+
+/*
+ * Focus ring — the page owns it rather than inheriting the UA's. Flare, because
+ * focus is the one thing on the page that moves under the keyboard.
+ */
+:focus-visible {
+  outline: 2px solid var(--color-flare-400);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .live-dot,
+  .shimmer-text {
+    animation: none;
+  }
+  .shimmer-text {
+    color: var(--color-tel-400);
+  }
+}

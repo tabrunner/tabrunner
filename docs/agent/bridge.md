@@ -5,7 +5,7 @@ directly. Human-facing setup and tool examples: [../mcp.md](../mcp.md).
 
 ## One local broker, separate clients
 
-Each MCP client launches `daemon/src/index.ts` over stdio. That process is a small proxy:
+Each MCP client launches `packages/mcp/src/index.ts` over stdio. That process is a small proxy:
 it discovers or starts one shared broker for `TABRUNNER_BRIDGE_PORT`, then connects to the
 broker over local Streamable HTTP. The extension is still the WebSocket client. An MV3
 worker cannot listen on a socket, so it dials `ws://127.0.0.1:<port>/ws` on the broker.
@@ -92,11 +92,13 @@ The recorder keeps its separate capture timeout.
 
 ## Leases and reconnects
 
-The stdio proxy renews its broker session every 20s by default. The broker sends the live
-client ids to the extension every 20s; each extension owner has a 60s lease. A WebSocket
-disconnect starts a fresh 60s reconnect grace. Missing owners expire independently: their
-queued work is cancelled and their live work is aborted and drained. Panel and schedule
-owners are untouched.
+The stdio proxy renews its broker session every 20s by default. A failed ping or upstream
+initialization does not close an initialized stdio connection. The next request or heartbeat
+uses broker discovery again. A short HTTP failure keeps the same session while the broker
+still recognizes it. The broker sends the live client ids to the extension every 20s; each
+extension owner has a 60s lease. A WebSocket disconnect starts a fresh 60s reconnect grace.
+Missing owners expire independently: their queued work is cancelled and their live work is
+aborted and drained. Panel and schedule owners are untouched.
 
 `closeClient` returns `{ ok: true }` only after that owner's cleanup finishes. If the
 extension is disconnected, the broker retains this cleanup request and retries it after
@@ -106,8 +108,10 @@ retrying. A retired client id cannot start work again in the same worker.
 
 Once no clients or cleanup remain, the broker exits after a 10s idle grace by default.
 A short extension link outage can preserve the same client ids. Restarting a stdio client
-creates a new identity; restarting the broker requires its clients to reconnect as new
-sessions, not silently replay earlier actions.
+creates a new identity. If the broker restarts or confirms that an upstream session expired,
+the proxy opens a new upstream session without closing stdio. Its earlier status and run
+controls do not carry over. `health` and `get_status` disclose the new session until the client
+starts a new task or resets its conversation. No browser action is replayed.
 
 ## Direct control
 
@@ -125,8 +129,10 @@ the agent loop uses. Direct actions, start and end are ordered within their clie
 - Direct control has no TabRunner model or `ask_user` policy. The external client must get
   permission before consequential actions. On-page marks and the stored transcript still
   make the work visible.
-- A session expires after five idle minutes, not during an in-flight action. End aborts,
-  drains, removes an unused starter tab and releases only this session's browser resources.
+- A session expires after five idle minutes, not during an in-flight action. Closing its
+  driven tab also ends that session. End aborts, drains, removes an unused starter tab and
+  releases only this session's browser resources. The same MCP client can then start another
+  task without reconnecting.
 
 ## Readiness and MV3 timing
 
@@ -140,6 +146,6 @@ The bridge ships disabled. A refused connection waits for the alarm; only a conn
 that actually opened earns the 2s fast retry. `bridgeConnected` mirrors open/close state
 through storage for UI contexts. Config remains in `bridge/config.ts`, not the socket.
 
-The protocol is declared twice on purpose: `src/modules/bridge/protocol.ts` is the source
-of truth; `daemon/src/protocol.ts` is its standalone-package copy. Change both together.
+The protocol is declared twice on purpose: `apps/extension/src/modules/bridge/protocol.ts` is the source
+of truth; `packages/mcp/src/protocol.ts` is its standalone-package copy. Change both together.
 `bun run bridge:check` checks the broker and client wiring without Chrome.

@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreExportsUsedInFile": true,
   "workspaces": {
-    ".": {
+    "apps/extension": {
       "entry": [
         "src/entrypoints/background.ts",
         "src/entrypoints/*/main.tsx",
@@ -10,11 +10,9 @@
         "src/entrypoints/*/index.html",
         "src/**/__tests__/**/*.test.ts"
       ],
-      "project": ["src/**/*.{ts,tsx,css}", "*.{ts,js,mjs}"],
-      "ignoreDependencies": ["@types/chrome"]
+      "project": ["src/**/*.{ts,tsx,css}", "*.{ts,js,mjs}"]
     },
-    "daemon": {
-      "entry": ["smoke.ts"],
+    "packages/mcp": {
       "project": ["**/*.ts"]
     }
   }

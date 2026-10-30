@@ -375,8 +375,8 @@ Four **1280×800 PNGs**, uploaded in this order — the first is the card image.
 | 3   | [![Options page Providers tab with subscription and API-key rows](screenshots/03-providers.png)](screenshots/03-providers.png)    | The options page's Providers tab: subscription rows (Claude, ChatGPT) and an API-key row (DeepSeek), active provider highlighted.                                             |
 | 4   | [![Hacker News with a second chat and the floating status widget](screenshots/04-chat-2.png)](screenshots/04-chat-2.png)          | Hacker News with a second chat and the floating status pill bottom-right (task · +1 queued · Hide — the pill itself is the way back to the task).                             |
 
-Regenerate with `bun run build && bun run shots` — it rewrites all four in place and refreshes the
-site's webp derivatives when `../site` is checked out. Rerun after any UI rebrand and eyeball them
+From the repository root, run `bun run --cwd apps/extension build && bun run shots`. This rewrites
+all four screenshots and refreshes apps/site/public/screenshots/. Rerun after any UI rebrand and eyeball them
 before committing.
 
 ---
@@ -540,8 +540,8 @@ text** — the store renders no Markdown in it (see §2).
 
 **The package** is a separate submission. Every new upload goes through review again, so a
 feature that must reach store users means: fix the code, then `bun run release patch | minor` and
-upload the new `dist/tabrunner-<version>-chrome.zip` (see
-[AGENTS.md → Releasing](../AGENTS.md#releasing)). The live listing's text, screenshots and privacy
+upload the new `apps/extension/dist/tabrunner-<version>-chrome.zip` (see
+[AGENTS.md → Releasing](../apps/extension/AGENTS.md#releasing)). The live listing's text, screenshots and privacy
 answers are inherited, not reset, by a package update — correct them above first.
 
 **A rejection on a package update** names the policy clause. Same split as above:
