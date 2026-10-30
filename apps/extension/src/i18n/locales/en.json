@@ -1233,6 +1233,7 @@
     "saveSkillBadUrl": "Could not reach a skill file at {{url}}. Use a direct https link to the markdown file or owner/repo[/path].",
     "saveSkillUnnamed": "The file has no skill name, and no replacement name was given. Pass a kebab-case name: lowercase words separated by hyphens.",
     "tabInUse": "Another task is using tab {{tabId}}. Choose a different tab, or wait for that task to finish.",
+    "bridgeClientRecovering": "The previous task is still stopping after the connection was lost. Call health or get_status again before starting another task.",
     "staleBridgeRun": "This task is no longer current. Check its status, then try again with the current run ID.",
     "noBridgeScreenshot": "There is no page to capture for this task. Start a task or a browser session, then try again."
   }
