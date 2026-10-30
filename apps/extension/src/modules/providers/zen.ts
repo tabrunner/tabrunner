@@ -1,5 +1,5 @@
-import { forgeOpenCodeSessionId, isZenFreeModel } from "@providerkit/core";
-import type { ResolvedProviderConfig, ToolDef } from "./types";
+import { forgeOpenCodeSessionId, isZenFreeModel, OPENCODE_PUBLIC_API_KEY } from "@providerkit/core";
+import type { ProviderConfig, ResolvedProviderConfig, ToolDef } from "./types";
 import { PRESETS } from "./presets";
 
 /**
@@ -33,6 +33,17 @@ export async function zenSessionHeaders(sessionId: string): Promise<Record<strin
     "x-opencode-project": "global",
     "x-opencode-client": "cli",
   };
+}
+
+/** Zen uses its public credential when no account or key is connected. */
+export function usesZenFreeAccess(
+  config: Pick<ProviderConfig, "apiKey" | "auth"> & { id?: string },
+): boolean {
+  return (
+    config.id === "opencode" &&
+    !config.auth &&
+    (!config.apiKey || config.apiKey === OPENCODE_PUBLIC_API_KEY)
+  );
 }
 
 const READ_DECOY: ToolDef = {

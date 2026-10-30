@@ -292,29 +292,13 @@ export const PRESETS: ProviderPreset[] = [
     icon: "anthropic",
   },
   {
-    // The Codex agent backend behind a ChatGPT Plus/Pro sign-in instead of a
-    // key — the same quota your ChatGPT subscription pays for. It speaks the
-    // Responses wire format at a backend with no public model-list route, so
-    // the preset models ARE the picker's list, and the first is the model a
-    // run uses when none is picked. The backend retires models without
-    // notice. By 2026-10-01 it rejected three of the four listed here,
-    // including the first, so every run without a picked model got a 400.
-    // This is the list the backend accepted that day, the same as
-    // @providerkit/core's `chatgpt` preset.
+    // Codex lists the signed-in account's models. Never guess an Auto model
+    // from the public API catalog or a static subscription shelf.
     id: "chatgpt",
     name: "ChatGPT",
     shape: "responses",
     baseUrl: "https://chatgpt.com/backend-api/codex",
-    models: [
-      "gpt-6-sol",
-      "gpt-6.1-sol",
-      "gpt-6-astra",
-      "gpt-6-luna",
-      "gpt-5.6-sol",
-      "gpt-5.6-terra",
-      "gpt-5.6-luna",
-      "gpt-5.5",
-    ],
+    models: [],
     auth: "oauth",
     paired: true,
     inlineToolImages: true,

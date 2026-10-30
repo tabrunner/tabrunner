@@ -164,19 +164,27 @@ The load-bearing details of talking to each provider shape. Read this when a tas
 - **Stop is not an error.** User abort is normal control flow: the loop ends with `done`,
   never a red bubble. The `done` event carries the model's final summary — on tool-only
   final turns it IS the answer, so the panel renders it when no text was streamed.
-- **Model lists are live, presets are fallback.** `listModels` (`models.ts`) reads
-  `GET {base}/v1/models` (Anthropic-shape) or `GET {base}/models` (OpenAI-shape, non-chat
-  ids filtered). `ProviderConfig.model` is optional — absent means auto, resolved at run
-  start by `resolveProviderModel`: persisted choice → newest listed (by `created`) →
-  preset's first → clear error. QwenCloud has no list route; that's why presets keep model
-  ids at all. The ChatGPT backend (responses shape) has NO list route either —
-  `listModels` short-circuits to `[]`, so the preset models ARE the picker's list.
-  Endpoints that ship a human label (Anthropic `display_name`, OpenRouter `name`) get it
-  in `ModelInfo.name` and the picker shows it; the id stays the value on the wire and in
-  the tooltip. Model and effort are per-task choices in the side-panel header selects,
-  persisted per provider — never asked for at provider-setup time (the key doesn't exist
-  yet, so the list can't be fetched there). The "Auto" option renders the model it
-  currently resolves to, tagged with an `Auto` chip. A listing that reports its window
-  (`context_length`, `max_context_length`, `context_window`) lands in
-  `ModelInfo.contextLength` and feeds `context-window.ts` — one rung below ceilings
-  learned from real rejections, one above the 200k default.
+- **Model lists come from the connection.** `listModels` (`models.ts`) reads
+  `GET {base}/v1/models` (Anthropic) or `GET {base}/models` (OpenAI, with non-chat ids
+  filtered). Most providers resolve a saved model first, then the newest listed model,
+  then the preset's first model. Endpoints without a list route can still use presets
+  or a manually entered model.
+  ChatGPT is different: `listChatGPTModels` from `@providerkit/core/auth` reads the
+  signed-in account's Codex catalog with its bearer, account id and client version.
+  Auto follows that catalog's priority. A saved model must still appear in it, and
+  reasoning effort is limited to the levels the account catalog reports. No static
+  ChatGPT shelf or completion probes stand in for an unavailable catalog.
+  The picker, slash menu and run use the same connection-keyed cache. A failed refresh
+  keeps the last list and marks it as possibly out of date; an empty account catalog
+  stays empty. The picker offers Refresh models in place. Runs revalidate ChatGPT and
+  public Zen models before sending a task and never silently change a saved model.
+  Human labels stay in `ModelInfo.name`; ids stay on the wire and in tooltips.
+  Reported context windows feed `context-window.ts`, below ceilings learned from real
+  rejections and above the 200k default.
+- **Zen free access does not require an account.** Like OpenCode, an empty key uses the
+  literal public credential. That path lists only free chat models, not paid models or
+  Jev's decision models. A real key or sign-in keeps its own account. The existing
+  session headers and read-tool compatibility remain. `FreeUsageLimitError` is a
+  non-retryable free-usage limit, not a request to top up an account; the translated
+  error states the reset time only when Zen supplies one. A model-list response does
+  not prove that generation quota is available.

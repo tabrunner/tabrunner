@@ -31,6 +31,21 @@ const provider = (auth: Credential): ProviderConfig => ({
 });
 
 describe("ensureProviderCredential", () => {
+  it("normalizes anonymous Zen without replacing a real key or signing in", async () => {
+    const zen: ProviderConfig = {
+      id: "opencode",
+      name: "OpenCode Zen",
+      shape: "openai",
+      baseUrl: "https://opencode.ai/zen/v1",
+      apiKey: "",
+      createdAt: 0,
+    };
+    expect((await ensureProviderCredential(zen)).apiKey).toBe("public");
+    expect(zen.apiKey).toBe("");
+    const keyed = { ...zen, apiKey: "oc_sk_real" };
+    expect(await ensureProviderCredential(keyed)).toBe(keyed);
+  });
+
   it("returns a keyed provider untouched", async () => {
     const keyed: ProviderConfig = { ...provider(FRESH), apiKey: "sk-1" };
     delete keyed.auth;

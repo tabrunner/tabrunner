@@ -7,6 +7,9 @@ import type { Select } from "@/components/Select";
 import { i18n } from "@/i18n";
 import { ProviderForm } from "../ui/ProviderForm";
 import { useProvidersStore } from "../ui/store";
+import { checkCredential } from "../models";
+import type * as Models from "../models";
+import { getProvider } from "../storage";
 import type { ProviderConfig } from "../types";
 
 type SelectProps = ComponentProps<typeof Select>;
@@ -19,7 +22,8 @@ vi.mock("../oauth-flows", () => ({
   authFlowFor: () => ({ signIn }),
   signInErrorMessage: (error: unknown) => String(error),
 }));
-vi.mock("../models", () => ({
+vi.mock("../models", async (importOriginal) => ({
+  ...(await importOriginal<typeof Models>()),
   checkCredential: vi.fn().mockResolvedValue({ rejected: false, models: [] }),
   writeModelsCache: vi.fn(),
 }));
@@ -75,6 +79,71 @@ async function chooseProvider(id: string): Promise<void> {
 }
 
 describe("provider setup", () => {
+  it("saves fresh Zen free access without an account or completion probe", async () => {
+    const onSaved = vi.fn();
+    await render({ onSaved });
+    await chooseProvider("opencode");
+    expect(container.textContent).toContain("API key (optional)");
+    expect(container.textContent).toContain("without an account");
+    await act(async () => button("Use free models").click());
+    expect(await getProvider("opencode")).toMatchObject({ apiKey: "public" });
+    expect((await getProvider("opencode"))?.auth).toBeUndefined();
+    expect(checkCredential).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "opencode", apiKey: "public" }),
+      expect.any(AbortSignal),
+    );
+    expect(signIn).not.toHaveBeenCalled();
+    expect(onSaved).toHaveBeenCalledWith("opencode");
+  });
+
+  it("keeps an account on a blank-key update, but switches to an explicitly pasted key", async () => {
+    const zen: ProviderConfig = {
+      id: "opencode",
+      name: "OpenCode Zen",
+      shape: "openai",
+      baseUrl: "https://opencode.ai/zen/v1",
+      apiKey: "",
+      auth: {
+        accessToken: "account-token",
+        refreshToken: "refresh",
+        expiresAt: Date.now() + 3_600_000,
+      },
+      model: "big-pickle",
+      reasoningEffort: "high",
+      createdAt: 0,
+    };
+    useProvidersStore.setState({ providers: [zen], activeId: zen.id });
+    await render({ initialProvider: zen });
+    await act(async () =>
+      container
+        .querySelector("form")
+        ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+    );
+    expect(await getProvider("opencode")).toMatchObject({ auth: zen.auth, model: zen.model });
+    expect(checkCredential).toHaveBeenLastCalledWith(
+      expect.objectContaining({ apiKey: "account-token", auth: zen.auth }),
+      expect.any(AbortSignal),
+    );
+    const input = container.querySelector('input[type="password"]');
+    if (!(input instanceof HTMLInputElement)) throw new Error("Missing API key input");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        input,
+        "oc_new_key",
+      );
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () =>
+      container
+        .querySelector("form")
+        ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+    );
+    const stored = await getProvider("opencode");
+    expect(stored?.apiKey).toBe("oc_new_key");
+    expect(stored?.auth).toBeUndefined();
+    expect(stored?.reasoningEffort).toBe("high");
+  });
+
   it("starts with Antigravity's free quota and explains the account risk", async () => {
     await render();
     expect(container.querySelector("select")?.value).toBe("antigravity");

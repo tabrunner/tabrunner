@@ -95,6 +95,20 @@ describe("googleRetryAfterMs", () => {
 });
 
 describe("envelopeProviderError", () => {
+  it("explains the public free limit without account-credit or top-up advice", () => {
+    const body = JSON.stringify({
+      type: "error",
+      error: { type: "FreeUsageLimitError", message: "Free usage limit reached" },
+    });
+    const error = envelopeProviderError({ id: "opencode", name: "OpenCode Zen" }, 429, body);
+    expect(error.kind).toBe("quota");
+    expect(error.message).toContain("free models reached their usage limit");
+    expect(error.message).toContain("Zen did not say when it resets");
+    expect(error.message).toContain("connect another provider");
+    expect(error.message).not.toMatch(/top.?up|billing|account balance|your plan/);
+    expect(isRetryable(error)).toBe(false);
+  });
+
   it("tells a spent ChatGPT window when it resets, now that it reads as quota", () => {
     // The codex backend's 429 for a spent plan window. @providerkit/core 0.16
     // names it `quota` (it was `rate` by status before), and the generic quota

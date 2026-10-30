@@ -4,11 +4,17 @@ import {
   effectiveEffort,
   effortLevels,
   isKeyRejected,
+  listStoredModels,
+  knownModels,
+  modelsTarget,
+  readModelsCache,
+  writeModelsCache,
   listModels,
   pickLatestModel,
   resolveProviderModel,
 } from "../models";
 import { PRESETS } from "../presets";
+import { saveProvider } from "../storage";
 import { ProviderError, REASONING_EFFORTS } from "../types";
 import type { ProviderConfig } from "../types";
 
@@ -252,7 +258,7 @@ describe("resolveProviderModel", () => {
   it("throws a clear error when nothing can resolve a model", async () => {
     stubFetch(404, {});
     const custom = { ...anthropicConfig, id: "custom-1", name: "My box" };
-    await expect(resolveProviderModel(custom)).rejects.toThrow(/Pick a model in Settings/);
+    await expect(resolveProviderModel(custom)).rejects.toThrow(/Choose a model in the chat/);
   });
 });
 
@@ -462,6 +468,126 @@ describe("effort levels per model", () => {
       reasoningEffort: "high",
     });
     expect(opus.reasoningEffort).toBe("high");
+  });
+});
+
+describe("account and free model discovery", () => {
+  const chatgpt: ProviderConfig = {
+    ...openaiConfig,
+    id: "chatgpt",
+    name: "ChatGPT",
+    shape: "responses",
+    baseUrl: "https://chatgpt.com/backend-api/codex",
+    apiKey: "",
+    auth: {
+      accessToken: "account-models-token",
+      refreshToken: "refresh",
+      expiresAt: Date.now() + 3_600_000,
+      chatgptAccountId: "account-1",
+    },
+  };
+  const zen: ProviderConfig = {
+    ...openaiConfig,
+    id: "opencode",
+    name: "OpenCode Zen",
+    baseUrl: "https://opencode.ai/zen/v1",
+    apiKey: "",
+  };
+  const catalog = {
+    models: [
+      { slug: "account-second", visibility: "list", priority: 2 },
+      {
+        slug: "account-first",
+        display_name: "Account first",
+        visibility: "list",
+        priority: 1,
+        supported_in_api: false,
+        supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
+      },
+      { slug: "hidden", visibility: "hide", priority: 0 },
+    ],
+  };
+
+  it("uses the account catalog and priority, not a static Responses shelf", async () => {
+    const mock = stubFetch(200, catalog);
+    await saveProvider(chatgpt);
+    const models = await listStoredModels(chatgpt);
+    expect(models.map((model) => model.id)).toEqual(["account-first", "account-second"]);
+    const [url, init] = mock.mock.calls[0]!;
+    expect(url).toBe("https://chatgpt.com/backend-api/codex/models?client_version=0.0.0-test");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer account-models-token");
+    expect(new Headers(init?.headers).get("ChatGPT-Account-Id")).toBe("account-1");
+    expect(knownModels(chatgpt)).toEqual(models);
+    expect((await resolveProviderModel(chatgpt)).model).toBe("account-first");
+    expect(mock.mock.calls.every(([, request]) => request?.method === "GET")).toBe(true);
+  });
+
+  it("validates pins against the account list without silently changing them", async () => {
+    stubFetch(200, catalog);
+    await saveProvider(chatgpt);
+    await expect(resolveProviderModel({ ...chatgpt, model: "gpt-6-sol" })).rejects.toMatchObject({
+      kind: "model",
+      status: 400,
+    });
+    expect((await resolveProviderModel({ ...chatgpt, model: "account-second" })).model).toBe(
+      "account-second",
+    );
+  });
+
+  it("keeps empty and failed account lists distinct, with no static fallback", async () => {
+    await saveProvider(chatgpt);
+    stubFetch(200, { models: [] });
+    await expect(resolveProviderModel(chatgpt)).rejects.toMatchObject({ kind: "model" });
+    expect(knownModels(chatgpt)).toEqual([]);
+    stubFetch(401, { error: "unauthorized" });
+    await expect(resolveProviderModel(chatgpt)).rejects.toMatchObject({
+      kind: "auth",
+      status: 401,
+    });
+  });
+
+  it("keeps account caches separate even when two accounts share a bearer", () => {
+    const other: ProviderConfig = {
+      ...chatgpt,
+      auth: { ...chatgpt.auth!, chatgptAccountId: "account-2" },
+    };
+    writeModelsCache(modelsTarget(chatgpt), [{ id: "account-only" }]);
+    expect(readModelsCache(modelsTarget(other))).toBeUndefined();
+    expect(knownModels(other)).toEqual([]);
+  });
+
+  it("sends only account-supported effort without rewriting the stored choice", async () => {
+    stubFetch(200, catalog);
+    await saveProvider(chatgpt);
+    const config: ProviderConfig = { ...chatgpt, model: "account-first", reasoningEffort: "max" };
+    expect((await resolveProviderModel(config)).reasoningEffort).toBeUndefined();
+    expect(config.reasoningEffort).toBe("max");
+    expect(effortLevels(chatgpt, "account-first")).toEqual(["low", "high"]);
+    expect(
+      (await resolveProviderModel({ ...config, reasoningEffort: "high" })).reasoningEffort,
+    ).toBe("high");
+  });
+
+  it("uses public access and never offers paid or decision-only Zen models", async () => {
+    const mock = stubFetch(200, {
+      data: [
+        { id: "paid-newest", created: 999 },
+        { id: "jev-1.13-free", created: 998 },
+        { id: "big-pickle", created: 1 },
+        { id: "deepseek-v4.1-flash-free", created: 2 },
+      ],
+    });
+    expect((await listModels(zen)).map((model) => model.id)).toEqual([
+      "big-pickle",
+      "deepseek-v4.1-flash-free",
+    ]);
+    expect(new Headers(mock.mock.calls[0]![1]?.headers).get("Authorization")).toBe("Bearer public");
+    const resolved = await resolveProviderModel(zen);
+    expect(resolved.apiKey).toBe("public");
+    expect(resolved.model).toBe("deepseek-v4.1-flash-free");
+    await expect(resolveProviderModel({ ...zen, model: "paid-newest" })).rejects.toMatchObject({
+      kind: "model",
+    });
   });
 });
 

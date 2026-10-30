@@ -3,6 +3,7 @@ import { ProviderError } from "./types";
 import {
   classifyHttp,
   isTransportFailure,
+  isOpenCodeFreeLimit,
   parseRateLimitReset,
   parseSseStream,
   parseUsageLimitBody,
@@ -128,6 +129,15 @@ function providerErrorMessage(
   unknownAs?: ErrorKind,
 ): { message: string; kind?: ErrorKind } {
   const label = providerDisplayName(provider);
+  if (provider.id === "opencode" && isOpenCodeFreeLimit(text)) {
+    const line =
+      reset.resetAtMs === undefined
+        ? i18n.t("errors.zenFreeLimit")
+        : i18n.t("errors.zenFreeLimitReset", {
+            reset: formatResetRelative(reset.resetAtMs, now),
+          });
+    return { message: text ? `${line}: ${text}` : line, kind: "quota" };
+  }
   // The data-policy gate is checked before classification: its body would
   // otherwise classify as auth ("rejected the key"), which misdiagnoses a
   // working credential and offers re-keying as the fix.

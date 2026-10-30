@@ -1,5 +1,6 @@
 import type { ProviderConfig } from "./types";
 import { PRESETS } from "./presets";
+import { usesZenFreeAccess } from "./zen";
 
 /**
  * Whether a provider can actually run a task. The list sorts and labels on
@@ -43,7 +44,7 @@ export function credentialStatus(provider: ProviderConfig): CredentialStatus {
   // A signed-in row is connected whatever kind of preset it is. A keyed row that
   // can also be signed into holds `auth` and an empty key, which the key check
   // below would call missing.
-  if (provider.auth) return "connected";
+  if (provider.auth || usesZenFreeAccess(provider)) return "connected";
   if (isOAuthProvider(provider.id)) return "missing";
   return provider.apiKey || needsNoCredential(provider.baseUrl) ? "connected" : "missing";
 }

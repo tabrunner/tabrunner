@@ -1,6 +1,11 @@
 import type { ProviderConfig } from "./types";
 import { ProviderError } from "./types";
-import { isTransportFailure, ProviderError as CoreProviderError } from "@providerkit/core";
+import {
+  isTransportFailure,
+  OPENCODE_PUBLIC_API_KEY,
+  ProviderError as CoreProviderError,
+} from "@providerkit/core";
+import { usesZenFreeAccess } from "./zen";
 import { tokenSource, type TokenSource } from "@providerkit/core/auth";
 import { networkError } from "./http";
 import { authFlowFor } from "./oauth-flows";
@@ -47,6 +52,7 @@ function sourceFor(id: string): TokenSource | undefined {
  * mid-run is renewed on the next turn.
  */
 export async function ensureProviderCredential<C extends ProviderConfig>(config: C): Promise<C> {
+  if (usesZenFreeAccess(config)) return { ...config, apiKey: OPENCODE_PUBLIC_API_KEY };
   if (!config.auth) return config;
   try {
     const source = sourceFor(config.id);

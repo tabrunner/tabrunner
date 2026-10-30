@@ -15,9 +15,9 @@ import {
   modelsTarget,
   pickLatestModel,
   readModelsCache,
-  writeModelsCache,
 } from "../models";
 import { PRESETS, providerDisplayName } from "../presets";
+import { usesZenFreeAccess } from "../zen";
 import { supportsUsage } from "../usage";
 import { EFFORT_LABEL_KEYS, isEffort } from "../types";
 import type { ConversationEngine, ModelInfo, ProviderConfig } from "../types";
@@ -66,6 +66,7 @@ import { CheckIcon, ChevronDownIcon } from "@/components/Icon";
 
 interface ModelsResult {
   key: string;
+  attempt: number;
   models: ModelInfo[];
   error: string | null;
 }
@@ -82,18 +83,22 @@ function useModels(provider: ProviderConfig | null) {
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
 
   useEffect(() => {
-    if (!key || !target || !provider || readModelsCache(target)) return;
+    if (!key || !target || !provider || (attempt === 0 && readModelsCache(target))) return;
     let cancelled = false;
     listStoredModels(provider)
       .then((models) => {
-        writeModelsCache(target, models);
-        if (!cancelled) setFetched({ key, models, error: null });
+        if (cancelled) return;
+        setFetched({ key, attempt, models, error: null });
       })
-      .catch(
-        (e: unknown) =>
-          !cancelled &&
-          setFetched({ key, models: [], error: e instanceof Error ? e.message : String(e) }),
-      );
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setFetched({
+          key,
+          attempt,
+          models: readModelsCache(target) ?? [],
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     return () => {
       cancelled = true;
     };
@@ -109,12 +114,13 @@ function useModels(provider: ProviderConfig | null) {
     key && fetched?.key === key
       ? fetched
       : key && cached
-        ? { key, models: cached, error: null }
+        ? { key, attempt: 0, models: cached, error: null }
         : null;
+  const loading = key !== null && (current === null || current.attempt !== attempt);
   return {
     models: current?.models ?? [],
-    loading: key !== null && current === null,
-    error: current?.error ?? null,
+    loading,
+    error: loading ? null : (current?.error ?? null),
     retry,
   };
 }
@@ -215,21 +221,22 @@ function ModelList({
   loading,
   error,
   onPick,
+  onRetry,
 }: {
   provider: ProviderConfig;
   models: ModelInfo[];
   loading: boolean;
   error: string | null;
   onPick: (model: string | undefined) => void;
+  onRetry: () => void;
 }) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState("");
   const preset = PRESETS.find((pr) => pr.id === provider.id);
-  // Live list wins; presets are both the fallback for endpoints without a list
-  // route AND what fills the wait, so a cold open shows models rather than a
-  // spinner and refines in place when the listing lands.
+  const requiresList = provider.id === "chatgpt" || usesZenFreeAccess(provider);
+  // Account-only and public-free access never inherit an unverified preset shelf.
   const listed: ModelInfo[] =
-    models.length > 0 ? models : (preset?.models.map((id) => ({ id })) ?? []);
+    models.length > 0 || requiresList ? models : (preset?.models.map((id) => ({ id })) ?? []);
   const autoTarget = pickLatestModel(models) ?? listed[0];
 
   if (listed.length === 0) {
@@ -237,6 +244,21 @@ function ModelList({
       return (
         <div className="px-2 py-1 text-xs text-neutral-500 dark:text-neutral-400">
           {t("enginePicker.loadingModels")}
+        </div>
+      );
+    }
+    if (requiresList) {
+      return (
+        <div className="flex flex-col gap-2 px-2 py-1 text-xs text-neutral-600 dark:text-neutral-300">
+          <p role={error ? "alert" : "status"}>
+            {t(error ? "enginePicker.listFailed" : "enginePicker.listEmpty")}
+          </p>
+          {!error && provider.model && (
+            <p>{t("enginePicker.unavailableModel", { model: provider.model })}</p>
+          )}
+          <Button variant="outline" size="sm" className="self-start" onClick={onRetry}>
+            {t("enginePicker.refreshModels")}
+          </Button>
         </div>
       );
     }
@@ -255,13 +277,33 @@ function ModelList({
   }
 
   const { shown, hidden, matched } = narrowModels(listed, filter);
-  // The live listing failed and these rows are the preset's saved shelf,
-  // which may be older than the endpoint — said outright, so a stale list
-  // never passes for the live one. Reopening the picker retries.
-  const usingFallback = models.length === 0 && (preset?.models.length ?? 0) > 0;
+  const canRefresh =
+    !preset?.staticModels && (provider.id === "chatgpt" || provider.shape !== "responses");
 
   return (
     <>
+      {canRefresh && (
+        <div className="mb-1 flex items-center justify-between gap-2 px-1.5">
+          {requiresList && (
+            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              {t(
+                provider.id === "chatgpt"
+                  ? "enginePicker.accountModels"
+                  : "enginePicker.freeModels",
+              )}
+            </p>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto shrink-0"
+            disabled={loading}
+            onClick={onRetry}
+          >
+            {t(loading ? "enginePicker.refreshingModels" : "enginePicker.refreshModels")}
+          </Button>
+        </div>
+      )}
       {listed.length > FILTER_THRESHOLD && (
         <TextField
           size="sm"
@@ -273,8 +315,8 @@ function ModelList({
           placeholder={t("enginePicker.filterPlaceholder", { n: listed.length })}
         />
       )}
-      {usingFallback && error && (
-        <p className="px-2 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+      {error && (
+        <p role="alert" className="px-2 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">
           {t("enginePicker.listFallback")}
         </p>
       )}
@@ -324,15 +366,21 @@ function ModelList({
           </p>
         )}
 
-        {/* A persisted id the endpoint no longer lists stays selectable. */}
-        {provider.model && !listed.some((m) => m.id === provider.model) && (
-          <Row selected onClick={() => onPick(provider.model)} title={t("modelPicker.notListed")}>
-            <span className="min-w-0 truncate">{provider.model}</span>
-            <span className="ml-auto shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400">
-              {t("modelPicker.notListed")}
-            </span>
-          </Row>
-        )}
+        {/* Keep the saved choice visible without offering an unavailable account model. */}
+        {provider.model &&
+          !listed.some((m) => m.id === provider.model) &&
+          (requiresList ? (
+            <p className="px-2 py-1 text-xs break-words text-neutral-500 dark:text-neutral-400">
+              {t("enginePicker.unavailableModel", { model: provider.model })}
+            </p>
+          ) : (
+            <Row selected onClick={() => onPick(provider.model)} title={t("modelPicker.notListed")}>
+              <span className="min-w-0 truncate">{provider.model}</span>
+              <span className="ml-auto shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400">
+                {t("modelPicker.notListed")}
+              </span>
+            </Row>
+          ))}
       </div>
     </>
   );
@@ -358,19 +406,6 @@ export function EnginePicker({
   const alt = useRef(false);
   const [addOpen, setAddOpen] = useState(false);
   const listing = useModels(active ?? null);
-
-  // A failed listing re-arms every time the picker opens — the failure may
-  // have been a pasted key the endpoint hadn't propagated yet, and without
-  // this the preset fallback sits until the provider is switched away and
-  // back. Opens are user-initiated, so a retry here is never a background
-  // poll; an in-flight fetch is left alone.
-  useEffect(() => {
-    if (open && listing.error && !listing.loading) listing.retry();
-    // Field deps on purpose: the whole `listing` object is new every render
-    // and would re-arm the retry in a loop; error/loading/retry are the only
-    // signals that matter here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, listing.error, listing.loading, listing.retry]);
 
   // With zero providers the side panel shows Onboarding instead.
   if (!active) return null;
@@ -410,7 +445,10 @@ export function EnginePicker({
     <>
       <Popover
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (next && listing.error && !listing.loading) listing.retry();
+        }}
         className="max-h-[70vh] w-72 overflow-y-auto"
         trigger={
           <Button
@@ -447,7 +485,13 @@ export function EnginePicker({
 
           {/* Keyed on the provider so a switch resets the filter with the list. */}
           <div className="flex flex-col gap-0.5">
-            <ModelList key={active.id} provider={active} {...listing} onPick={pick} />
+            <ModelList
+              key={active.id}
+              provider={active}
+              {...listing}
+              onPick={pick}
+              onRetry={listing.retry}
+            />
           </div>
 
           <div className="mt-2 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">

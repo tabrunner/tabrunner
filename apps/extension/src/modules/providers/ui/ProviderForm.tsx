@@ -5,9 +5,10 @@ import { useProvidersStore } from "./store";
 import { ProviderIcon } from "./ProviderIcon";
 import { OAuthSignIn, SIGN_IN_DONE_MS } from "./OAuthSignIn";
 import { PRESETS, presetSection, providerName, type PresetSection } from "../presets";
-import { checkCredential, writeModelsCache } from "../models";
+import { checkCredential, modelsTarget, writeModelsCache } from "../models";
 import { splitErrorDetail } from "@/modules/conversation/error-detail";
 import type { ProviderConfig, ProviderShape } from "../types";
+import { OPENCODE_PUBLIC_API_KEY } from "@providerkit/core";
 import type { Credential } from "@providerkit/core/auth";
 import { Select } from "@/components/Select";
 import { TextField } from "@/components/TextField";
@@ -74,6 +75,11 @@ export function ProviderForm({
   const existing = providers.find((p) => p.id === (preset ? preset.id : initialProvider?.id));
   const isOAuth = preset?.auth === "oauth";
   const auth = existing?.auth;
+  const freeAccess =
+    preset?.free &&
+    !auth &&
+    !apiKey.trim() &&
+    (!existing?.apiKey || existing.apiKey === OPENCODE_PUBLIC_API_KEY);
 
   const fail = (message: string) => setError(message);
 
@@ -82,14 +88,18 @@ export function ProviderForm({
    * each word their own failure.
    */
   const save = async (authOverride?: Credential): Promise<string> => {
+    const nextAuth = authOverride ?? (apiKey.trim() ? undefined : auth);
     return add({
       // Unseeded custom → undefined → the store assigns custom-<ts>.
       id: preset?.id ?? existing?.id,
       name: preset ? preset.name : name.trim(),
       shape: preset ? preset.shape : shape,
       baseUrl: preset ? preset.baseUrl : baseUrl.trim(),
-      apiKey: apiKey.trim() || (existing?.apiKey ?? ""),
-      ...(authOverride ? { auth: authOverride } : {}),
+      apiKey:
+        apiKey.trim() ||
+        existing?.apiKey ||
+        (preset?.free && !nextAuth ? OPENCODE_PUBLIC_API_KEY : ""),
+      ...(nextAuth ? { auth: nextAuth } : {}),
       // Not asked at setup — preserved across an update, picked per task in the panel.
       model: existing?.model,
       reasoningEffort: existing?.reasoningEffort,
@@ -116,7 +126,11 @@ export function ProviderForm({
 
     const resolvedName = preset ? preset.name : name.trim();
     const resolvedUrl = preset ? preset.baseUrl : baseUrl.trim();
-    const key = apiKey.trim() || (existing?.apiKey ?? "");
+    const checkedAuth = apiKey.trim() ? undefined : auth;
+    const key =
+      apiKey.trim() ||
+      existing?.apiKey ||
+      (preset?.free && !checkedAuth ? OPENCODE_PUBLIC_API_KEY : "");
 
     if (!preset && !resolvedName) {
       fail(t("providerForm.nameRequired"));
@@ -145,15 +159,14 @@ export function ProviderForm({
       // stops the save. A successful listing also warms the picker's cache, so
       // the panel opens on the live shelf instead of the preset fallback.
       setBusy("checking");
-      const checked = await checkCredential(
-        {
-          ...(preset?.id ? { id: preset.id } : {}),
-          shape: preset ? preset.shape : shape,
-          baseUrl: resolvedUrl,
-          apiKey: key,
-        },
-        AbortSignal.timeout(KEY_CHECK_TIMEOUT_MS),
-      );
+      const target = {
+        ...(preset?.id ? { id: preset.id } : {}),
+        shape: preset ? preset.shape : shape,
+        baseUrl: checkedAuth?.baseUrl ?? resolvedUrl,
+        apiKey: checkedAuth?.accessToken ?? key,
+        ...(checkedAuth ? { auth: checkedAuth } : {}),
+      };
+      const checked = await checkCredential(target, AbortSignal.timeout(KEY_CHECK_TIMEOUT_MS));
       if (checked.rejected) {
         // Bare name: the sentence is about a key, so "(API key)" would say it twice.
         fail(t("providerForm.keyRejected", { name: resolvedName }));
@@ -165,10 +178,7 @@ export function ProviderForm({
         // Same target shape the picker lists with (see modelsTarget), so the
         // warmed entry is found, not orphaned. Custom rows learn their id at
         // save time, which is why this lands after, not before.
-        writeModelsCache(
-          { id, shape: preset ? preset.shape : shape, baseUrl: resolvedUrl, apiKey: key },
-          checked.models,
-        );
+        writeModelsCache(modelsTarget({ ...target, id }), checked.models);
       }
       onSaved?.(id);
     } catch (err) {
@@ -186,6 +196,10 @@ export function ProviderForm({
 
   const keyHint = isLocalUrl(preset ? preset.baseUrl : baseUrl.trim()) ? (
     t("providerForm.keyHintLocal")
+  ) : freeAccess ? (
+    t("providerForm.zenFreeHint")
+  ) : auth && !apiKey.trim() ? (
+    t("providerForm.keyHintAccount")
   ) : existing ? (
     t("providerForm.keyHintKeep")
   ) : preset?.apiKeyUrl ? (
@@ -203,6 +217,14 @@ export function ProviderForm({
   // user can act on — lift the provider's own reason into the line, the JSON
   // behind the disclosure, same as the chat error bubble.
   const split = error ? splitErrorDetail(error) : null;
+  let submitLabel = t("providerForm.add");
+  if (existing) submitLabel = t("providerForm.update", { name: providerName(existing) });
+  if (freeAccess) submitLabel = t("providerForm.useFreeModels");
+  if (busy === "checking") {
+    submitLabel = t(freeAccess ? "providerForm.connecting" : "providerForm.checkingKey");
+  } else if (busy === "saving") {
+    submitLabel = t("providerForm.saving");
+  }
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3">
@@ -323,7 +345,7 @@ export function ProviderForm({
             </>
           )}
           <PasswordField
-            label={t("providerForm.apiKey")}
+            label={preset?.free ? t("providerForm.apiKeyOptional") : t("providerForm.apiKey")}
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder={
@@ -362,13 +384,7 @@ export function ProviderForm({
 
       {!isOAuth && (
         <Button type="submit" disabled={busy !== null}>
-          {busy === "checking"
-            ? t("providerForm.checkingKey")
-            : busy === "saving"
-              ? t("providerForm.saving")
-              : existing
-                ? t("providerForm.update", { name: providerName(existing) })
-                : t("providerForm.add")}
+          {submitLabel}
         </Button>
       )}
     </form>

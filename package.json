@@ -19,7 +19,7 @@
       "@fontsource-variable/unbounded": "^5.2.5",
       "@gusnips/vite": "^0.8.44",
       "@modelcontextprotocol/sdk": "^1.22.0",
-      "@providerkit/core": "0.26.2",
+      "@providerkit/core": "0.27.0",
       "@resvg/resvg-js": "^2.6.2",
       "@shadcn/react": "^0.3.0",
       "@tailwindcss/vite": "^4.3.3",

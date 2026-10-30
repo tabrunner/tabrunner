@@ -38,7 +38,9 @@ describe("credentialStatus", () => {
     // `auth` and an empty apiKey, and the key check alone called it missing.
     expect(credentialStatus(config({ id: "opencode", auth }))).toBe("connected");
     expect(credentialStatus(config({ id: "opencode", apiKey: "oc_sk_1" }))).toBe("connected");
-    expect(credentialStatus(config({ id: "opencode" }))).toBe("missing");
+    expect(credentialStatus(config({ id: "opencode" }))).toBe("connected");
+    expect(credentialStatus(config({ id: "opencode", apiKey: "public" }))).toBe("connected");
+    expect(credentialStatus(config({ id: "opencode-go" }))).toBe("missing");
   });
 
   it("stays connected on a stale token — the next run refreshes it silently", () => {

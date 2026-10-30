@@ -3,8 +3,17 @@ import { ProviderError, REASONING_EFFORTS } from "./types";
 import { claudeEffortLevels } from "./anthropic";
 import { PRESETS } from "./presets";
 import type { ProviderPreset } from "./presets";
-import { apiUrl, classifyHttp } from "@providerkit/core";
-import { anthropicHeaders, anthropicOAuthHeaders, providerHeaders } from "./http";
+import {
+  apiUrl,
+  classifyHttp,
+  isTransportFailure,
+  isZenFreeModel,
+  OPENCODE_PUBLIC_API_KEY,
+  ProviderError as CoreProviderError,
+} from "@providerkit/core";
+import { listChatGPTModels } from "@providerkit/core/auth";
+import { usesZenFreeAccess } from "./zen";
+import { anthropicHeaders, anthropicOAuthHeaders, networkError, providerHeaders } from "./http";
 import { ensureProviderCredential } from "./credential";
 import { i18n } from "@/i18n";
 
@@ -12,14 +21,14 @@ import { i18n } from "@/i18n";
 export type ModelsTarget = Pick<ProviderConfig, "id" | "shape" | "baseUrl" | "apiKey" | "auth">;
 
 /** The target for a stored config — an OAuth provider lists with its access token as bearer. */
-export function modelsTarget(p: ProviderConfig): ModelsTarget {
+export function modelsTarget(p: ModelsTarget): ModelsTarget {
   return {
     id: p.id,
     shape: p.shape,
     // The host the credential is pinned to when the vendor picked one per
     // account (GitHub Copilot), else the preset's own.
     baseUrl: p.auth?.baseUrl ?? p.baseUrl,
-    apiKey: p.auth?.accessToken ?? p.apiKey,
+    apiKey: p.auth?.accessToken ?? (usesZenFreeAccess(p) ? OPENCODE_PUBLIC_API_KEY : p.apiKey),
     ...(p.auth ? { auth: p.auth } : {}),
   };
 }
@@ -36,7 +45,10 @@ export async function listStoredModels(
   p: ProviderConfig,
   signal?: AbortSignal,
 ): Promise<ModelInfo[]> {
-  return listModels(modelsTarget(await ensureProviderCredential(p)), signal);
+  const target = modelsTarget(await ensureProviderCredential(p));
+  const models = await listModels(target, signal);
+  writeModelsCache(target, models);
+  return models;
 }
 
 /**
@@ -63,8 +75,9 @@ export function writeModelsCache(target: ModelsTarget, models: ModelInfo[]): voi
  */
 export function knownModels(p: ProviderConfig): ModelInfo[] {
   const cached = readModelsCache(modelsTarget(p));
-  if (cached && cached.length > 0) return cached;
-  return PRESETS.find((pr) => pr.id === p.id)?.models.map((id) => ({ id })) ?? [];
+  if (cached && (cached.length > 0 || p.id === "chatgpt" || usesZenFreeAccess(p))) return cached;
+  const fallback = PRESETS.find((pr) => pr.id === p.id)?.models.map((id) => ({ id })) ?? [];
+  return usesZenFreeAccess(p) ? fallback.filter((model) => isZenFreeModel(model.id)) : fallback;
 }
 
 /**
@@ -78,9 +91,36 @@ export async function listModels(
   config: Pick<ProviderConfig, "shape" | "baseUrl" | "apiKey" | "auth"> & { id?: string },
   signal?: AbortSignal,
 ): Promise<ModelInfo[]> {
-  // The ChatGPT backend (responses shape) and Antigravity's Cloud Code Assist
-  // expose no model-list route — the preset's static models are the
-  // authoritative list.
+  if (config.id === "chatgpt") {
+    try {
+      return await listChatGPTModels(
+        {
+          accessToken: config.auth?.accessToken ?? config.apiKey,
+          chatgptAccountId: config.auth?.chatgptAccountId,
+        },
+        {
+          baseUrl: config.baseUrl,
+          clientVersion: chrome.runtime.getManifest().version,
+          signal,
+          timeoutMs: 8_000,
+        },
+      );
+    } catch (error) {
+      if (isTransportFailure(error)) {
+        throw networkError({ id: config.id, name: "ChatGPT", auth: config.auth });
+      }
+      if (!(error instanceof CoreProviderError)) throw error;
+      throw new ProviderError(
+        i18n.t("errors.modelListError", {
+          status: error.status ?? 0,
+          detail: error.body ?? error.message,
+        }),
+        error.status ?? 0,
+        error.kind,
+      );
+    }
+  }
+  // Other Responses backends and Cloud Code Assist still use their static shelf.
   if (config.shape === "responses" || PRESETS.some((p) => p.id === config.id && p.staticModels)) {
     return [];
   }
@@ -95,9 +135,12 @@ export async function listModels(
       ? config.auth
         ? anthropicOAuthHeaders(config.apiKey)
         : anthropicHeaders(config.apiKey)
-      : { Authorization: `Bearer ${config.apiKey}`, ...providerHeaders(config.id ?? "") };
+      : {
+          Authorization: `Bearer ${usesZenFreeAccess(config) ? OPENCODE_PUBLIC_API_KEY : config.apiKey}`,
+          ...providerHeaders(config.id ?? ""),
+        };
 
-  const res = await fetch(url, { headers, ...(signal ? { signal } : {}) });
+  const res = await fetch(url, { headers, signal: signal ?? AbortSignal.timeout(8_000) });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new ProviderError(
@@ -107,7 +150,8 @@ export async function listModels(
   }
 
   const entries = parseModelEntries(await res.json(), config.id);
-  return config.shape === "openai" ? entries.filter((m) => !isNonChatModel(m.id)) : entries;
+  const chat = config.shape === "openai" ? entries.filter((m) => !isNonChatModel(m.id)) : entries;
+  return usesZenFreeAccess(config) ? chat.filter((model) => isZenFreeModel(model.id)) : chat;
 }
 
 /**
@@ -228,13 +272,14 @@ export async function resolveProviderModel(
   const preset = PRESETS.find((p) => p.id === config.id);
   const supportsImages = preset?.supportsImages ?? true;
 
-  const model = await resolveModelId(config, preset);
+  const ready = await ensureProviderCredential(config);
+  const model = await resolveModelId(ready, preset);
   return {
-    ...config,
+    ...ready,
     model,
     supportsImages,
-    reasoningEffort: effectiveEffort(config, model),
-    ...routeModel(preset, config.baseUrl, model),
+    reasoningEffort: effectiveEffort(ready, model),
+    ...routeModel(preset, ready.baseUrl, model),
   };
 }
 
@@ -249,6 +294,9 @@ export function effortLevels(
   p: ProviderConfig,
   model: string | undefined,
 ): readonly ReasoningEffort[] {
+  if (p.id === "chatgpt") {
+    return knownModels(p).find((entry) => entry.id === model)?.reasoningEfforts ?? [];
+  }
   if (model === undefined) return REASONING_EFFORTS;
   const preset = PRESETS.find((pr) => pr.id === p.id);
   const shape = routeModel(preset, p.baseUrl, model)?.shape ?? p.shape;
@@ -273,10 +321,27 @@ async function resolveModelId(
   config: ProviderConfig,
   preset: ProviderPreset | undefined,
 ): Promise<string> {
+  if (config.id === "chatgpt" || usesZenFreeAccess(config)) {
+    const models = await listStoredModels(config);
+    if (config.model && !models.some((model) => model.id === config.model)) {
+      throw new ProviderError(
+        i18n.t("errors.modelUnavailable", { model: config.model, name: config.name }),
+        400,
+        "model",
+      );
+    }
+    const available = config.model ?? pickLatestModel(models)?.id;
+    if (available) return available;
+    throw new ProviderError(
+      i18n.t("errors.noAvailableModels", { name: config.name }),
+      400,
+      "model",
+    );
+  }
   if (config.model) return config.model;
 
   try {
-    const latest = pickLatestModel(await listModels(config));
+    const latest = pickLatestModel(await listStoredModels(config));
     if (latest) return latest.id;
   } catch {
     // Endpoint has no list route (or is unreachable) — fall through to preset.

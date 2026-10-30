@@ -98,6 +98,8 @@ export interface ModelInfo {
    *  LM Studio, Ollama do; Anthropic and OpenAI don't). Feeds the compaction
    *  threshold — see providers/context-window.ts for the rest of the ladder. */
   contextLength?: number;
+  /** Accepted levels when the account's catalog reports them. Empty means no supported knob. */
+  reasoningEfforts?: ReasoningEffort[];
 }
 
 /** Chat message in provider-agnostic format. */

@@ -99,7 +99,7 @@
     "@fontsource-variable/unbounded": "^5.2.5",
     "@gusnips/vite": "^0.8.44",
     "@modelcontextprotocol/sdk": "^1.22.0",
-    "@providerkit/core": "0.26.2",
+    "@providerkit/core": "0.27.0",
     "@resvg/resvg-js": "^2.6.2",
     "@shadcn/react": "^0.3.0",
     "@tailwindcss/vite": "^4.3.3",
@@ -405,7 +405,7 @@
 
     "@oxc-resolver/binding-win32-x64-msvc": ["@oxc-resolver/binding-win32-x64-msvc@11.24.2", "", { "os": "win32", "cpu": "x64" }, "sha512-UqGPmo56KDfLlfXFAFIrNflHT8tFxWGEivWg3Zeyp4Uy2NlKN1FGPr6/BxcLGG3+kZ6Wp14g5Uj+n71boqZfiw=="],
 
-    "@providerkit/core": ["@providerkit/core@0.26.2", "", { "peerDependencies": { "zod": "^4" }, "optionalPeers": ["zod"] }, "sha512-kPhMEl4JW59j/asSDWVDoQrmOzI2VICehVF25m0HDMM7HqdLp205bqtllrJo2tJcgXxmTy7+rd1JHudCoa5Htg=="],
+    "@providerkit/core": ["@providerkit/core@0.27.0", "", { "peerDependencies": { "zod": "^4" }, "optionalPeers": ["zod"] }, "sha512-MnMArVh95ytN37ReivxL+OdHmRjFPGYn3fOHz4ShSJIr0IZHg+euqwvPaIFFaoeq942Zzsx5uPmt8vkozCC71g=="],
 
     "@puppeteer/browsers": ["@puppeteer/browsers@3.1.0", "", { "dependencies": { "modern-tar": "^0.7.6", "yargs": "^18.0.0" }, "peerDependencies": { "proxy-agent": ">=8.0.1", "yauzl": "^2.10.0 || ^3.4.0" }, "optionalPeers": ["proxy-agent", "yauzl"], "bin": { "browsers": "lib/main-cli.js" } }, "sha512-RDLpio3fH/qrj5k4DVY6eyiN8tCS0Zovd/6jW//n605oeqkWcUjn+3k+9ZtZBnbwMpsu0F7xDIiKXvVmG5c5Bw=="],
 
