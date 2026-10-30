@@ -16,6 +16,7 @@ const drivers: DriverOptions[] = [];
 const sessions: InstanceType<typeof DirectSession>[] = [];
 const created: string[] = [];
 const removed: number[] = [];
+const removedListeners = new Set<(tabId: number) => void>();
 let nextTab = 42;
 let queried = 0;
 
@@ -75,6 +76,7 @@ beforeEach(() => {
   sessions.length = 0;
   created.length = 0;
   removed.length = 0;
+  removedListeners.clear();
   drivers.length = 0;
   claims.clear();
   storedTabs.clear();
@@ -104,6 +106,10 @@ beforeEach(() => {
       remove: (id: number) => {
         removed.push(id);
         return Promise.resolve();
+      },
+      onRemoved: {
+        addListener: (listener: (tabId: number) => void) => removedListeners.add(listener),
+        removeListener: (listener: (tabId: number) => void) => removedListeners.delete(listener),
       },
     },
   });
@@ -200,6 +206,35 @@ describe("DirectSession ownership", () => {
     expect(getOwnerRun("bridge", "b")).toBeNull();
     expect(getOwnerRun("bridge", "a")?.id).toBe(a.run?.id);
     expect(claims.get(42)).toBe(a.run?.id);
+  });
+
+  it("drains only the removed tab's owner before allowing the same client to start again", async () => {
+    const a = session("a");
+    const b = session("b");
+    await a.start("first goal", "Editor", { background: true }, "chat-a");
+    await b.start("second goal", "Editor", { background: true }, "chat-b");
+    const oldRun = a.run;
+    const pending = deferred<ToolResult>();
+    executeTool.mockImplementationOnce(() => pending.promise);
+    const action = a.act("click", { ref: "e1" });
+    await vi.advanceTimersByTimeAsync(0);
+    for (const listener of removedListeners) listener(42);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(oldRun?.controller.signal.aborted).toBe(true);
+    expect(getOwnerRun("bridge", "a")).toBe(oldRun);
+    expect(claims.get(42)).toBe(oldRun?.id);
+    expect(b.run?.controller.signal.aborted).toBe(false);
+    pending.resolve({ ok: false, error: "The tab closed" });
+    expect(await action).toEqual({ ok: false, error: "The tab closed" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(a.open).toBe(false);
+    expect(getOwnerRun("bridge", "a")).toBeNull();
+    expect(claims.has(42)).toBe(false);
+    expect(claims.get(43)).toBe(b.run?.id);
+    expect(removedListeners.size).toBe(1);
+    await a.start("next goal", "Editor", { background: true }, "chat-a");
+    expect(a.run?.id).not.toBe(oldRun?.id);
+    expect(b.open).toBe(true);
   });
 
   it("expires idle sessions but does not expire under a long action", async () => {

@@ -54,6 +54,10 @@ export class DirectSession {
   private claim: ActiveRun | null = null;
   private idle: ReturnType<typeof setTimeout> | null = null;
   private readonly serialize = createWriteQueue();
+  private readonly onTabRemoved = (tabId: number): void => {
+    if (tabId !== this.tabId) return;
+    void this.end().catch((error: unknown) => log.warn("direct cleanup failed", String(error)));
+  };
 
   get open(): boolean {
     return this.claim !== null;
@@ -80,6 +84,7 @@ export class DirectSession {
       this.claim = run;
       trackRunningRun(run, goal);
       try {
+        chrome.tabs.onRemoved.addListener(this.onTabRemoved);
         const { tabId, opened, starter } = await this.pickTab(where, run);
         run.controller.signal.throwIfAborted();
         this.unactedTabId = opened ? tabId : null;
@@ -145,6 +150,7 @@ export class DirectSession {
   private async cleanup(): Promise<void> {
     const run = this.claim;
     if (!run) return;
+    chrome.tabs.onRemoved.removeListener(this.onTabRemoved);
     this.clearIdle();
     run.controller.abort();
     run.readsClosed = true;

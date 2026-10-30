@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /** Shared-broker integration check. Uses private temp files and no real browser. */
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -18,6 +19,52 @@ import {
 import type { BrokerMetadata } from "./src/runtime";
 
 const runtimeDir = await mkdtemp(join(tmpdir(), "tabrunner-bridge-check-"));
+const pingFault = join(runtimeDir, "fail-next-ping");
+const pingFailed = join(runtimeDir, "ping-failed");
+const bootstrapFault = join(runtimeDir, "fail-next-initialize");
+const bootstrapFailed = join(runtimeDir, "initialize-failed");
+const pauseInitialize = join(runtimeDir, "pause-next-initialize");
+const initializePaused = join(runtimeDir, "initialize-paused");
+const releaseInitialize = join(runtimeDir, "release-initialize");
+const preload = join(runtimeDir, "fail-upstream.ts");
+await Bun.write(
+  preload,
+  `import { existsSync, rmSync, writeFileSync } from "node:fs";
+const originalFetch = globalThis.fetch;
+globalThis.fetch = Object.assign(async (input, init) => {
+  if (init?.method === "POST" && typeof init.body === "string") {
+    const method = JSON.parse(init.body).method;
+    if (method === "initialize" && existsSync(${JSON.stringify(pauseInitialize)})) {
+      rmSync(${JSON.stringify(pauseInitialize)});
+      const response = await originalFetch(input, init);
+      writeFileSync(${JSON.stringify(initializePaused)}, response.headers.get("mcp-session-id") ?? "");
+      await new Promise((resolve, reject) => {
+        const timer = setInterval(() => {
+          if (!existsSync(${JSON.stringify(releaseInitialize)})) return;
+          clearInterval(timer);
+          resolve();
+        }, 10);
+        init.signal?.addEventListener("abort", () => {
+          clearInterval(timer);
+          reject(new Error("Test-owned initialization aborted"));
+        }, { once: true });
+      });
+      return response;
+    }
+    for (const [target, trigger, receipt] of ${JSON.stringify([
+      ["ping", pingFault, pingFailed],
+      ["initialize", bootstrapFault, bootstrapFailed],
+    ])}) {
+      if (method !== target || !existsSync(trigger)) continue;
+      rmSync(trigger);
+      writeFileSync(receipt, new Headers(init.headers).get("mcp-session-id") ?? "");
+      return new Response("One test-owned upstream failure", { status: 503 });
+    }
+  }
+  return originalFetch(input, init);
+}, originalFetch);
+`,
+);
 const reserved = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() });
 const port = reserved.port;
 assert(port);
@@ -50,10 +97,14 @@ function check(label: string, ok: unknown): void {
   console.log(`  passed: ${label}`);
 }
 
-async function until<T>(read: () => T | undefined, label: string, ms = 6_000): Promise<T> {
+async function until<T>(
+  read: () => T | undefined | Promise<T | undefined>,
+  label: string,
+  ms = 6_000,
+): Promise<T> {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
-    const result = read();
+    const result = await read();
     if (result !== undefined) return result;
     await Bun.sleep(20);
   }
@@ -99,7 +150,10 @@ async function request(method: string, clientId?: string): Promise<BridgeRequest
   }, `${method} request`);
 }
 
-function startClient(name: string): {
+function startClient(
+  name: string,
+  faultPreload?: string,
+): {
   client: Client;
   transport: StdioClientTransport;
   connected: Promise<void>;
@@ -107,7 +161,7 @@ function startClient(name: string): {
   const client = new Client({ name, version: "0" });
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [entry],
+    args: [...(faultPreload ? ["--preload", faultPreload] : []), entry],
     env,
     stderr: "inherit",
   });
@@ -160,6 +214,10 @@ async function connectExtension(protocolVersion = BRIDGE_PROTOCOL_VERSION): Prom
       );
       return;
     }
+    if (msg.method === "providerInfo") {
+      reply(msg, { name: null, ready: false, auth: null, model: null });
+      return;
+    }
     if (msg.method === "closeClient") {
       closedClients.push(msg.clientId);
       if (delayCleanup) deferredCleanup.push(msg);
@@ -174,7 +232,7 @@ async function connectExtension(protocolVersion = BRIDGE_PROTOCOL_VERSION): Prom
 
 try {
   console.log("TabRunner shared MCP bridge check");
-  const first = startClient("same display name");
+  const first = startClient("same display name", preload);
   const second = startClient("same display name");
   await Promise.all([first.connected, second.connected]);
   await Promise.all([first.client.listTools(), second.client.listTools()]);
@@ -189,14 +247,60 @@ try {
       ((await stat(join(runtimeDir, `${port}.json`))).mode & 0o777) === 0o600,
   );
   check("all tools remain registered", (await first.client.listTools()).tools.length >= 23);
+  await Bun.write(pingFault, "");
+  await until(() => (existsSync(pingFailed) ? true : undefined), "one failed upstream ping");
+  await Bun.sleep(200);
+  check(
+    "one failed upstream ping keeps the same downstream client usable",
+    (await call(first.client, "health")).includes("side panel"),
+  );
+  check(
+    "another client is unaffected by the failed ping",
+    (await call(second.client, "health")).includes("side panel"),
+  );
   check("offline health gives a fix", (await call(first.client, "health")).includes("side panel"));
+  await Bun.write(bootstrapFault, "");
+  const bootstrap = startClient("bootstrap recovery", preload);
+  await bootstrap.connected;
+  await until(() => (existsSync(bootstrapFailed) ? true : undefined), "failed upstream initialize");
+  await Bun.sleep(200);
+  check(
+    "failed upstream initialization does not close an initialized downstream client",
+    (await call(bootstrap.client, "health")).includes("side panel"),
+  );
+  await bootstrap.client.close();
+  await Bun.write(pauseInitialize, "");
+  const shuttingDown = startClient("shutdown during upstream initialization", preload);
+  await shuttingDown.connected;
+  await until(
+    () => (existsSync(initializePaused) ? true : undefined),
+    "paused upstream initialize",
+  );
+  const shuttingDownPid = shuttingDown.transport.pid;
+  assert(shuttingDownPid);
+  process.kill(shuttingDownPid, "SIGTERM");
+  await until(
+    () => {
+      try {
+        process.kill(shuttingDownPid, 0);
+        return undefined;
+      } catch {
+        return true;
+      }
+    },
+    "proxy shutdown cancels pending initialization",
+    1_200,
+  );
+  check("shutdown cannot install a late upstream connection", true);
+  await Bun.write(releaseInitialize, "");
+  await shuttingDown.client.close();
   check(
     "offline mutations fail without hanging",
     (await call(first.client, "run", { task: "offline task" })).includes("isn't connected"),
   );
 
-  const base = new URL(metadata.url);
-  const auth = { authorization: `Bearer ${metadata.token}` };
+  let base = new URL(metadata.url);
+  let auth = { authorization: `Bearer ${metadata.token}` };
   check("HTTP token is required", (await fetch(new URL("/health", base))).status === 401);
   check(
     "foreign HTTP Origin is rejected",
@@ -241,6 +345,10 @@ try {
     aAnswered = true;
   });
   const aRequest = await request("run");
+  check(
+    "a transient ping failure preserves the upstream session identity",
+    aRequest.clientId === (await readFile(pingFailed, "utf8")),
+  );
   socket.send(
     JSON.stringify({
       type: "response",
@@ -262,6 +370,7 @@ try {
   );
   const b = call(second.client, "run", { task: "client B private task" });
   const bRequest = await request("run");
+  let currentBId = bRequest.clientId;
   reply(bRequest, { runId: "b1", conversationId: "cb" });
   await b;
   check(
@@ -427,6 +536,44 @@ try {
   reply(resetRequest, { ok: true });
   await reset;
 
+  const recovering = startClient("session recovery");
+  await recovering.connected;
+  const recoveryStart = call(recovering.client, "browser_start", { goal: "session recovery" });
+  const recoveryRequest = await request("browserStart");
+  reply(recoveryRequest, { ok: true, runId: "expired-direct", conversationId: "expired-chat" });
+  await recoveryStart;
+  check(
+    "the test expires only its own upstream HTTP session",
+    (
+      await fetch(base, {
+        method: "DELETE",
+        headers: { ...auth, "mcp-session-id": recoveryRequest.clientId },
+      })
+    ).ok,
+  );
+  await until(
+    () => (closedClients.includes(recoveryRequest.clientId) ? true : undefined),
+    "expired upstream cleanup",
+  );
+  await Bun.sleep(400);
+  check(
+    "an expired upstream session reconnects and discloses its new identity",
+    (await call(recovering.client, "health")).includes("This client has a new session"),
+  );
+  const resetExpired = call(recovering.client, "new_conversation");
+  const resetExpiredRequest = await request("newConversation");
+  check(
+    "an expired session does not retain its old run controls",
+    resetExpiredRequest.clientId !== recoveryRequest.clientId &&
+      resetExpiredRequest.runId === undefined,
+  );
+  reply(resetExpiredRequest, { ok: true });
+  await resetExpired;
+  check(
+    "upstream expiry leaves the simultaneous client usable",
+    (await call(second.client, "health")).includes("connected: true"),
+  );
+
   const expiredTransport = new StreamableHTTPClientTransport(new URL(metadata.url), {
     requestInit: { headers: auth },
     reconnectionOptions: {
@@ -460,10 +607,68 @@ try {
   );
   await Bun.write(join(runtimeDir, `${port}.json`), original);
 
+  const beforeRestart = call(second.client, "browser_start", { goal: "broker restart check" });
+  const beforeRestartRequest = await request("browserStart");
+  reply(beforeRestartRequest, {
+    ok: true,
+    runId: "before-broker-restart",
+    conversationId: "cb",
+  });
+  await beforeRestart;
+  const interrupted = call(second.client, "browser_click", { ref: "e1", snapshot: false });
+  await request("browserAct", currentBId);
+  const previousBroker = metadata;
+  // Only this check's broker, discovered in its private runtime directory, is stopped.
+  process.kill(previousBroker.pid, "SIGKILL");
+  check(
+    "a broker exit fails an in-flight action without replaying it",
+    (await interrupted).includes("before repeating an action"),
+  );
+  metadata = await until(
+    async () => {
+      const fresh = JSON.parse(
+        await readFile(join(runtimeDir, `${port}.json`), "utf8"),
+      ) as BrokerMetadata;
+      return fresh.token !== previousBroker.token ? fresh : undefined;
+    },
+    "replacement broker discovery",
+    10_000,
+  );
+  base = new URL(metadata.url);
+  auth = { authorization: `Bearer ${metadata.token}` };
+  socket = await connectExtension();
+  await Bun.sleep(200);
+  const restartedStatus = await call(second.client, "get_status", { wait: false });
+  check(
+    "the same downstream client reports a fresh session after broker restart",
+    restartedStatus.includes("This client has a new session") &&
+      restartedStatus.includes("state: idle"),
+  );
+  const resetRestarted = call(second.client, "new_conversation");
+  const resetRestartedRequest = await request("newConversation");
+  check(
+    "broker restart does not carry old run controls into the new owner",
+    resetRestartedRequest.clientId !== currentBId && resetRestartedRequest.runId === undefined,
+  );
+  currentBId = resetRestartedRequest.clientId;
+  reply(resetRestartedRequest, { ok: true });
+  await resetRestarted;
+  check(
+    "another downstream client also recovers after the broker restart",
+    (await call(recovering.client, "health")).includes("connected: true"),
+  );
+  check(
+    "broker restart never replays browser mutations",
+    requests.filter(
+      (r) => r.method === "browserAct" || r.method === "browserStart" || r.method === "run",
+    ).length === 0,
+  );
+  await recovering.client.close();
+
   delayCleanup = true;
   await second.client.close();
   await until(
-    () => (deferredCleanup.some((r) => r.clientId === bRequest.clientId) ? true : undefined),
+    () => (deferredCleanup.some((r) => r.clientId === currentBId) ? true : undefined),
     "final cleanup request",
   );
   await Bun.sleep(700);

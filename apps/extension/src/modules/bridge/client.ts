@@ -315,10 +315,15 @@ export class BridgeClient {
   private async updateDriving(): Promise<void> {
     const tabId = this.direct.drivenTab;
     if (tabId === null) return;
-    const tab = await chrome.tabs.get(tabId);
-    const driving = { tabId, windowId: tab.windowId, title: tab.title ?? "" };
-    this.status.driving = driving;
-    this.publish({ type: "driving", ...driving });
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      const driving = { tabId, windowId: tab.windowId, title: tab.title ?? "" };
+      this.status.driving = driving;
+      this.publish({ type: "driving", ...driving });
+    } catch (error) {
+      if (!(error instanceof Error) || !/^No tab with id: \d+\.?$/.test(error.message)) throw error;
+      await this.direct.end();
+    }
   }
 
   private requireCurrent(runId?: string): void {

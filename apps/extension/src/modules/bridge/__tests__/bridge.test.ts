@@ -168,6 +168,7 @@ beforeEach(() => {
       get: (id: number) =>
         Promise.resolve({ id, windowId: 1, title: `Tab ${id}`, url: `https://${id}.test/` }),
       remove: () => Promise.resolve(),
+      onRemoved: { addListener: () => {}, removeListener: () => {} },
     },
   });
 });
@@ -344,6 +345,38 @@ describe("Bridge direct sessions and screenshots", () => {
     expect(getOwnerRun("bridge", "b")?.id).toBe(b.runId);
     const resumed = await begin("a", "delegate-after-direct");
     expect(resumed.conversationId).toBe(direct.conversationId);
+  });
+
+  it("preserves a closed-tab tool result and frees only that client for another run", async () => {
+    const bridge = new Bridge();
+    bridge.start();
+    request("a", "start", "browserStart", { goal: "read the form", agent: "Editor" });
+    const direct = (await response("start")).result as { runId: string; conversationId: string };
+    const b = await begin("b");
+    vi.spyOn(chrome.tabs, "get").mockRejectedValue(new Error("No tab with id: 20."));
+    executeTool.mockResolvedValueOnce({ ok: false, data: { pageContent: "tab closed" } });
+    request("a", "closed-tab-action", "browserAct", { tool: "snapshot" }, direct.runId);
+    expect(await response("closed-tab-action")).toMatchObject({
+      ok: true,
+      result: { ok: false, data: { pageContent: "tab closed" } },
+    });
+    expect(getOwnerRun("bridge", "a")).toBeNull();
+    expect(claims.has(20)).toBe(false);
+    expect(getOwnerRun("bridge", "b")?.id).toBe(b.runId);
+    expect(getOwnerRun("bridge", "b")?.controller.signal.aborted).toBe(false);
+    const resumed = await begin("a", "delegate-after-closed-tab");
+    expect(resumed.conversationId).toBe(direct.conversationId);
+  });
+
+  it("does not hide unrelated Chrome metadata errors", async () => {
+    const bridge = new Bridge();
+    bridge.start();
+    request("a", "start", "browserStart", { goal: "read the form", agent: "Editor" });
+    const direct = (await response("start")).result as { runId: string };
+    vi.spyOn(chrome.tabs, "get").mockRejectedValueOnce(new Error("Chrome connection failed"));
+    request("a", "chrome-error", "browserAct", { tool: "snapshot" }, direct.runId);
+    expect((await response("chrome-error")).error?.message).toBe("Chrome connection failed");
+    expect(getOwnerRun("bridge", "a")?.id).toBe(direct.runId);
   });
 
   it("registers bounded external reads on their run and rejects reads once cleanup closes admission", async () => {
