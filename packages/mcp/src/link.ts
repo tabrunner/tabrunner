@@ -31,9 +31,13 @@ const LOST_CONNECTION =
 const TIMED_OUT =
   "TabRunner didn't answer in time. The browser may be busy or the worker may have restarted. The request may already have changed the browser.\n" +
   "Fix: call health, then get_status or browser_snapshot to check the result before retrying.";
-const WORKER_GONE =
-  "The task stopped because Chrome restarted TabRunner's service worker.\n" +
-  "Fix: check the page before sending the task again. Keep the side panel open during long tasks.";
+const TASK_INTERRUPTED =
+  "TabRunner could not resume the previous task after reconnecting.\n" +
+  "Fix: check the page before starting another task. Do not repeat an action until you know whether it already happened.";
+const SYNC_PENDING =
+  "TabRunner is connected, but this client's task status is not confirmed yet.\n" +
+  "Cause: the status read is still pending or did not finish.\n" +
+  "Fix: the bridge retries automatically. Call get_status or health again before repeating a task or browser action.";
 const REQUEST_TIMEOUT_MS = 30_000;
 export const QUICK_TIMEOUT_MS = 4_000;
 
@@ -126,6 +130,9 @@ export class ClientBridgeLink {
   private queuedRuns = new Set<string>();
   private seenRuns = new Set<string>();
   private pendingStarts = 0;
+  private syncRequired = true;
+  private syncEpoch = 0;
+  private syncing: Promise<void> | null = null;
   closed = false;
 
   constructor(
@@ -140,7 +147,7 @@ export class ClientBridgeLink {
     return this.owner.extension;
   }
   get problem(): string | null {
-    return this.owner.problem;
+    return this.owner.problem ?? (this.connected && this.syncRequired ? SYNC_PENDING : null);
   }
   get port(): number {
     return config.port;
@@ -187,6 +194,7 @@ export class ClientBridgeLink {
   startRun(runId: string, conversationId: string, queued?: number): void {
     if (queued !== undefined) {
       this.queuedRuns.add(runId);
+      this.bump();
       return;
     }
     if (this.status.runId === runId) return;
@@ -205,6 +213,7 @@ export class ClientBridgeLink {
   forgetRun(runId: string): void {
     this.queuedRuns.delete(runId);
     this.seenRuns.add(runId);
+    this.bump();
   }
 
   reset(): void {
@@ -235,33 +244,47 @@ export class ClientBridgeLink {
     if (applyCompact(this.status, event)) this.bump();
   }
 
-  async resync(): Promise<void> {
-    const previous = structuredClone(this.status);
-    try {
-      const fresh = statusSchema.parse(await this.request<unknown>("sync"));
-      if (
-        this.closed ||
-        (this.status.runId !== previous.runId && fresh.runId !== this.status.runId)
-      )
-        return;
-      this.status =
-        previous.state === "running" && fresh.runId === null
-          ? {
-              ...previous,
-              runId: fresh.runId,
-              conversationId: fresh.conversationId ?? previous.conversationId,
-              queue: fresh.queue,
-              state: "error",
-              error: WORKER_GONE,
-              finishedAt: Date.now(),
-            }
-          : fresh;
-      if (fresh.runId) this.seenRuns.add(fresh.runId);
-      this.queuedRuns = new Set(fresh.queue.map((entry) => entry.runId));
-    } catch {
-      // A later hello retries this read. Browser actions are never replayed.
-    }
+  markSyncPending(): void {
+    this.syncRequired = true;
+    this.syncEpoch++;
     this.bump();
+  }
+
+  /** Retry only the safe status read, once at a time, until the mirror is current. */
+  resync(): Promise<void> {
+    if (this.closed || !this.connected || !this.syncRequired) return Promise.resolve();
+    if (this.syncing) return this.syncing;
+    const previous = structuredClone(this.status);
+    const revision = this.seq;
+    const epoch = this.syncEpoch;
+    this.syncing = (async () => {
+      try {
+        const fresh = statusSchema.parse(await this.request<unknown>("sync", {}, QUICK_TIMEOUT_MS));
+        // A newer connection, run receipt or live event owns the mirror now.
+        if (this.closed || epoch !== this.syncEpoch || revision !== this.seq) return;
+        this.status =
+          previous.state === "running" && fresh.runId === null
+            ? {
+                ...previous,
+                runId: fresh.runId,
+                conversationId: fresh.conversationId ?? previous.conversationId,
+                queue: fresh.queue,
+                state: "error",
+                error: TASK_INTERRUPTED,
+                finishedAt: Date.now(),
+              }
+            : fresh;
+        if (fresh.runId) this.seenRuns.add(fresh.runId);
+        this.queuedRuns = new Set(fresh.queue.map((entry) => entry.runId));
+        this.syncRequired = false;
+        this.bump();
+      } catch {
+        // The next heartbeat or status read retries. Browser actions are never replayed.
+      } finally {
+        this.syncing = null;
+      }
+    })();
+    return this.syncing;
   }
 
   waitForChange(sinceRevision: number, timeoutMs: number): Promise<void> {
@@ -323,6 +346,7 @@ export class BridgeLink {
     });
     this.pingTimer = setInterval(() => {
       this.ping();
+      for (const client of this.clients.values()) void client.resync();
       for (const clientId of this.closing.keys()) this.drainClient(clientId);
     }, config.pingMs);
   }
@@ -418,7 +442,7 @@ export class BridgeLink {
     this.socket = null;
     this.extension = null;
     this.rejectPending();
-    for (const client of this.clients.values()) client.bump();
+    for (const client of this.clients.values()) client.markSyncPending();
   }
 
   private rejectPending(clientId?: string): void {
@@ -459,7 +483,10 @@ export class BridgeLink {
       this.extension = { id: msg.extensionId, version: msg.version };
       this.problem = null;
       this.ping();
-      for (const client of this.clients.values()) void client.resync();
+      for (const client of this.clients.values()) {
+        client.markSyncPending();
+        void client.resync();
+      }
       for (const clientId of this.closing.keys()) this.drainClient(clientId);
       return;
     }
