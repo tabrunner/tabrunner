@@ -25,7 +25,6 @@ import { settleStatusWidgets, type SettleOutcome } from "@/modules/browser/statu
 import {
   createProvider,
   engineOf,
-  ensureProviderCredential,
   getProviderFor,
   resolveProviderModel,
   sameEngine,
@@ -241,7 +240,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     let provider;
     let resolvedProvider: ResolvedProviderConfig | undefined;
     try {
-      resolvedProvider = await resolveProviderModel(await ensureProviderCredential(providerConfig));
+      resolvedProvider = await resolveProviderModel(providerConfig);
       // Names the conversation for gateways that route (or gate) per session —
       // OpenCode's Zen rows send it as `x-opencode-session`. Set here, at the
       // one place that knows which conversation the run answers in.
