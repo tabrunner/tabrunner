@@ -1152,7 +1152,7 @@
     "noModel": "No model is set for {{name}} and the provider doesn't list any. Choose a model in the chat.",
     "noAvailableModels": "No usable models were listed for {{name}}. Refresh the model list or choose another provider.",
     "modelUnavailable": "{{model}} isn't in the model list for {{name}}. Choose another model in the chat or reconnect the provider.",
-    "zenFreeLimit": "OpenCode Zen's free models reached their usage limit. Zen did not say when it resets. Choose another free model or connect another provider.",
+    "zenFreeLimit": "OpenCode Zen reports a free-usage limit. It did not say when it resets. Choose another free model or connect another provider.",
     "zenFreeLimitReset": "OpenCode Zen's free usage resets {{reset}}. You can wait, choose another free model or connect another provider.",
     "noModelData": "The endpoint answered, but not with a model list. Type a model id yourself, or leave it empty to auto-pick at run time.",
     "emptyTurns": "The model sent no text or tool call for {{count}} turns in a row. The run stopped to avoid using more tokens. Retry or pick another model.",

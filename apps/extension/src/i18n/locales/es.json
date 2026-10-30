@@ -1152,7 +1152,7 @@
     "noModel": "No hay un modelo elegido para {{name}} y el proveedor no lista ninguno. Elige un modelo en el chat.",
     "noAvailableModels": "No se ha listado ningún modelo disponible para {{name}}. Actualiza la lista o elige otro proveedor.",
     "modelUnavailable": "{{model}} no está en la lista de modelos de {{name}}. Elige otro modelo en el chat o vuelve a conectar el proveedor.",
-    "zenFreeLimit": "Se ha agotado el uso gratis de OpenCode Zen. Zen no indica cuándo se renueva. Elige otro modelo gratis o conecta otro proveedor.",
+    "zenFreeLimit": "OpenCode Zen indica un límite de uso gratis, pero no dice cuándo se renueva. Elige otro modelo gratis o conecta otro proveedor.",
     "zenFreeLimitReset": "El uso gratis de OpenCode Zen se renueva {{reset}}. Puedes esperar, elegir otro modelo gratis o conectar otro proveedor.",
     "noModelData": "El endpoint respondió, pero no con una lista de modelos. Escribe tú un id de modelo, o déjalo vacío para elegir automáticamente al ejecutar.",
     "emptyTurns": "El modelo no ha enviado texto ni llamado a herramientas durante {{count}} turnos seguidos. La ejecución se ha detenido para evitar gastar más tokens. Reintenta o elige otro modelo.",

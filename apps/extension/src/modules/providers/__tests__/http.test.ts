@@ -102,8 +102,8 @@ describe("envelopeProviderError", () => {
     });
     const error = envelopeProviderError({ id: "opencode", name: "OpenCode Zen" }, 429, body);
     expect(error.kind).toBe("quota");
-    expect(error.message).toContain("free models reached their usage limit");
-    expect(error.message).toContain("Zen did not say when it resets");
+    expect(error.message).toContain("reports a free-usage limit");
+    expect(error.message).toContain("It did not say when it resets");
     expect(error.message).toContain("connect another provider");
     expect(error.message).not.toMatch(/top.?up|billing|account balance|your plan/);
     expect(isRetryable(error)).toBe(false);
