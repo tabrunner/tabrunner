@@ -1,6 +1,6 @@
 # Términos de uso de TabRunner
 
-_Última actualización: 2026-09-27 · Se aplican a TabRunner para navegadores Chromium (Chrome, Brave,
+_Última actualización: 2026-10-31 · Se aplican a TabRunner para navegadores Chromium (Chrome, Brave,
 Edge, Arc, Opera, Vivaldi)._
 
 Este documento también existe en [inglés](TERMS.md). Si la traducción y el texto en inglés difieren,
@@ -68,9 +68,12 @@ acciones que el agente haya realizado en tu navegador.
 Si estos términos cambian, se actualizará este documento y el cambio se indicará en las notas de la
 versión que lo incluya.
 
-## 8. Contacto
+## 8. Empresa y contacto
 
-Este proyecto se mantiene en GitHub, en
-[tabrunner/tabrunner](https://github.com/tabrunner/tabrunner). Si tienes preguntas sobre estos
-términos, abre un issue
-([github.com/tabrunner/tabrunner/issues](https://github.com/tabrunner/tabrunner/issues)).
+**OPENWINGS AUTOMACAO COMERCIAL LTDA.** (Openwings) es la empresa brasileña que publica
+TabRunner. Su CNPJ es **63.852.648/0001-06** (identificación fiscal de empresas en Brasil).
+
+Domicilio social: Rua Padre João Wislinski, 441, Santa Cândida, Curitiba, PR, 82630-494, Brasil.
+
+Si tienes preguntas sobre estos términos, escribe a
+[contato@openwings.com.br](mailto:contato@openwings.com.br).

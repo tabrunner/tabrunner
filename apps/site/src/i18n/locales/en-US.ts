@@ -304,6 +304,7 @@ export const enUS = {
     store: "Chrome Web Store",
     downloadZip: "Download ZIP",
     issues: "Issues",
+    contact: "Contact",
     privacyLink: "Privacy policy",
     termsLink: "Terms of use",
     docs: "Docs",

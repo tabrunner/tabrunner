@@ -20,6 +20,7 @@ export function Footer({ route }: { route: string }) {
   const projectLinks = [
     { label: "GitHub", href: LINKS.repo },
     { label: t("footer.issues"), href: LINKS.issues },
+    { label: t("footer.contact"), href: LINKS.contact },
     { label: t("footer.privacyLink"), href: localePath(language, LINKS.privacy), internal: true },
     { label: t("footer.termsLink"), href: localePath(language, LINKS.terms), internal: true },
     { label: t("footer.docs"), href: localePath(language, LINKS.docs), internal: true },
@@ -80,8 +81,10 @@ export function Footer({ route }: { route: string }) {
                 <li key={link.label}>
                   <a
                     href={link.href}
-                    {...("internal" in link ? {} : { target: "_blank", rel: "noreferrer" })}
-                    className="text-star-300 transition-colors hover:text-flare-300"
+                    {...("internal" in link || link.href.startsWith("mailto:")
+                      ? {}
+                      : { target: "_blank", rel: "noreferrer" })}
+                    className="text-star-300 transition-colors hover:text-flare-300 active:text-flare-200"
                   >
                     {link.label}
                   </a>

@@ -33,6 +33,7 @@ const GITHUB_BLOB = "https://github.com/tabrunner/tabrunner/blob/main/";
  * reading. Every other relative link goes to the file on GitHub.
  */
 function resolveHref(href: string): { href: string; external: boolean } {
+  if (href.startsWith("mailto:")) return { href, external: false };
   if (/^https?:\/\//.test(href)) return { href, external: true };
   const file = href.replace(/^\.\//, "");
   const legal = legalLinkTarget(file);

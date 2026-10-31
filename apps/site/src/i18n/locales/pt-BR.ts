@@ -303,6 +303,7 @@ export const ptBR: Locale = {
     store: "Chrome Web Store",
     downloadZip: "Baixar ZIP",
     issues: "Issues",
+    contact: "Contato",
     privacyLink: "Política de privacidade",
     termsLink: "Termos de uso",
     docs: "Docs",
