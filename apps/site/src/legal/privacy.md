@@ -1,6 +1,6 @@
 # TabRunner Privacy Policy
 
-_Last updated: 2026-09-30 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
+_Last updated: 2026-10-31 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
 Opera, Vivaldi)._
 
 TabRunner also publishes this document in Portuguese and Spanish. If a translation and this
@@ -184,8 +184,11 @@ If TabRunner's data handling changes in a way that affects this policy, this doc
 the version bump is noted in the changelog of the release. Material changes will be called out in
 the extension's release notes.
 
-## 8. Contact
+## 8. Company and contact
 
-This project is maintained on GitHub at [tabrunner/tabrunner](https://github.com/tabrunner/tabrunner).
-Questions about this policy: open an issue
-([github.com/tabrunner/tabrunner/issues](https://github.com/tabrunner/tabrunner/issues)).
+TabRunner is published by **OPENWINGS AUTOMACAO COMERCIAL LTDA.** (Openwings), a Brazilian
+company with CNPJ **63.852.648/0001-06** (Brazil's company tax ID).
+
+Registered address: Rua Padre João Wislinski, 441, Santa Cândida, Curitiba, PR, 82630-494, Brazil.
+
+Questions about this policy: email [contato@openwings.com.br](mailto:contato@openwings.com.br).

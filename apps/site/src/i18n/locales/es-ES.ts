@@ -304,6 +304,7 @@ export const esES: Locale = {
     store: "Chrome Web Store",
     downloadZip: "Descargar ZIP",
     issues: "Issues",
+    contact: "Contacto",
     privacyLink: "Política de privacidad",
     termsLink: "Términos de uso",
     docs: "Docs",

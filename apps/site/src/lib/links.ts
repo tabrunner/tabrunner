@@ -17,6 +17,7 @@ export const LINKS = {
   releases: "https://github.com/tabrunner/tabrunner/releases/latest",
   repo: "https://github.com/tabrunner/tabrunner",
   issues: "https://github.com/tabrunner/tabrunner/issues",
+  contact: "mailto:contato@openwings.com.br",
   license: "https://github.com/tabrunner/tabrunner/blob/main/LICENSE",
   // Legal docs render in-site (synced from the chrome repo by `bun run sync:legal`). English
   // routes: put them in the reader's language with `localePath`.
