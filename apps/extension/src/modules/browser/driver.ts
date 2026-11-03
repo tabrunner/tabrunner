@@ -1,4 +1,10 @@
-import { captureSnapshot, resolveRefPoint, resolveTarget, type RefTarget } from "./snapshot";
+import {
+  captureSnapshot,
+  resolveDraft,
+  resolveRefPoint,
+  resolveTarget,
+  type RefTarget,
+} from "./snapshot";
 import type { SnapshotOptions, SnapshotResult } from "./snapshot";
 import { capturePageText } from "./page-text";
 import type { PageTextResult } from "./page-text";
@@ -63,6 +69,8 @@ export interface BrowserDriver {
   click(ref: string): Promise<{ x: number; y: number }>;
   /** How the page names a ref, or the focused element with no ref — read before a click or Enter commits. */
   describeTarget(ref: string | null): Promise<RefTarget | null>;
+  /** Whether the driven tab holds text the user typed and never sent (a draft). */
+  holdsDraft(): Promise<boolean>;
   type(text: string): Promise<void>;
   insert(text: string): Promise<void>;
   /**
@@ -199,6 +207,10 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions): BrowserD
 
     async describeTarget(ref) {
       return resolveTarget(current, ref);
+    },
+
+    async holdsDraft() {
+      return resolveDraft(current);
     },
 
     async click(ref) {

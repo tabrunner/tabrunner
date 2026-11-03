@@ -903,6 +903,7 @@
     "stepNew": "nuevo",
     "stepAsks": "pregunta antes",
     "confirmSchedule": "Guardar una tarea que se repite: {{task}}",
+    "confirmDraft": "Trabajar en esta página. Tiene un texto escrito que aún no se ha enviado.",
     "confirmMcp": "Llamar a {{tool}} en {{server}}",
     "confirmEvaluate": "Ejecutar un script en la página",
     "confirmKey": "Pulsar {{key}}",

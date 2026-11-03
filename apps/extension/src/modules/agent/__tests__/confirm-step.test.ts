@@ -16,10 +16,11 @@ const snapshot = async (): Promise<SnapshotResult> => ({
 });
 
 /** A page whose one button is named `label`; clicks are recorded. */
-function makeDriver(label: string, calls: string[]): BrowserDriver {
+function makeDriver(label: string, calls: string[], draft = false): BrowserDriver {
   return {
     snapshot,
     describeTarget: async () => ({ name: label, paysByCard: false }),
+    holdsDraft: async () => draft,
     click: async () => {
       calls.push("click");
       return { x: 1, y: 2 };
@@ -56,15 +57,18 @@ async function run(
   label: string,
   clickArgs: Record<string, unknown>,
   answer: { approved: boolean; feedback?: string },
+  page: { mode?: "adopted" | "own"; draft?: boolean; twice?: boolean } = {},
 ) {
   const clicks: string[] = [];
   const asks: PlanApprovalPayload[] = [];
   const plans: number[][] = [];
+  const click = call("click", { ref: "e1", ...clickArgs });
   const wire = await runAgentLoop({
-    provider: scriptedProvider([[plan], [call("click", { ref: "e1", ...clickArgs })]]),
-    driver: makeDriver(label, clicks),
+    provider: scriptedProvider([[plan], [click], ...(page.twice ? [[click]] : [])]),
+    driver: makeDriver(label, clicks, page.draft),
     task: "order it",
     autoApprovePlan: true,
+    ...(page.mode ? { mode: page.mode } : {}),
     signal: new AbortController().signal,
     callbacks: {
       onPlan: (p) => plans.push(p.confirm ?? []),
@@ -95,6 +99,48 @@ describe("auto-approved plan", () => {
     const { asks, clicks } = await run("Finalizar compra", { commits: false }, { approved: true });
     expect(asks.map((a) => a.action)).toEqual(["Click “Finalizar compra”"]);
     expect(clicks).toEqual(["click"]);
+  });
+
+  describe("a draft on the user's own tab", () => {
+    const yes = { approved: true };
+
+    it("asks once before the first action, not again for the next", async () => {
+      const { asks, clicks } = await run("Next", { commits: false }, yes, {
+        mode: "adopted",
+        draft: true,
+        twice: true,
+      });
+      expect(asks.map((a) => a.action)).toEqual([
+        "Work on this page. It has text you typed that is not sent yet.",
+      ]);
+      expect(clicks).toEqual(["click", "click"]);
+    });
+
+    it("still asks about a commit on that same click, after the draft", async () => {
+      const { asks } = await run("Send", { commits: true }, yes, { mode: "adopted", draft: true });
+      expect(asks).toHaveLength(2);
+      expect(asks[1]?.action).toBe("Click “Send”");
+    });
+
+    it("does not run the click when the user keeps the draft safe", async () => {
+      const { clicks } = await run(
+        "Next",
+        { commits: false },
+        { approved: false },
+        {
+          mode: "adopted",
+          draft: true,
+        },
+      );
+      expect(clicks).toEqual([]);
+    });
+
+    it("never asks on a clean page, or on a tab the run opened itself", async () => {
+      const clean = await run("Next", { commits: false }, yes, { mode: "adopted" });
+      const own = await run("Next", { commits: false }, yes, { mode: "own", draft: true });
+      expect(clean.asks).toEqual([]);
+      expect(own.asks).toEqual([]);
+    });
   });
 
   it("never runs a declined click and tells the model, with the user's note", async () => {

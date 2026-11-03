@@ -264,7 +264,12 @@ note; `planRejected` stays false for it, so the tab is kept. The plan's `confirm
 indexes are display only (an outlined "asks first" tag on the checklist, never enforcement).
 `deviates_from_approved` re-asks exactly as before, but only against a baseline: with
 nothing approved yet there is nothing to deviate from. Bridge and schedule runs keep their
-unattended auto-approval and never see these cards. The ceiling: a commit the model does not
+unattended auto-approval and never see these cards. The plan card also used to protect a page
+the user did not want touched, so an **adopted** run (the user's own tab) checks once, before
+the first action that changes that page, whether it holds typed-but-unsent text
+(`pageHoldsDraft`: a non-empty textarea, rich editor or textbox, never a one-line input), and
+asks before touching it. It runs once per run, never on a tab the run opened or a continuation,
+and a commit on the same call still gets its own card. The ceiling: a commit the model does not
 flag and whose label is in no list slips through, so the settings copy says so.
 
 With auto-approve off, the first `plan` call of a run parks the loop on `onPlanApproval`; the panel renders the

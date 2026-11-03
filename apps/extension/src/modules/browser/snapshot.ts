@@ -1,4 +1,4 @@
-import { describeTarget, generateSnapshot, refClickPoint } from "./snapshot-script";
+import { describeTarget, generateSnapshot, pageHoldsDraft, refClickPoint } from "./snapshot-script";
 import type { RefTarget, SnapshotOptions, SnapshotResult } from "./snapshot-script";
 import { runInPage } from "./inject";
 import type { TabId } from "@/shared/types";
@@ -47,3 +47,8 @@ export async function resolveTarget(tabId: TabId, ref: string | null): Promise<R
 }
 
 export type { RefTarget };
+
+/** Whether the tab holds typed-but-unsent text — see `pageHoldsDraft`. */
+export async function resolveDraft(tabId: TabId): Promise<boolean> {
+  return (await runInPage(tabId, pageHoldsDraft, [])) === true;
+}

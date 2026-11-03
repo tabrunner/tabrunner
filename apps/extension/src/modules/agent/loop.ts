@@ -161,6 +161,22 @@ const PAGE_STATE_TOOLS = new Set(["click", "type", "fill", "press_key"]);
 const NEW_PAGE_TOOLS = new Set(["navigate", "go_back", "open_tab", "switch_tab", "delegate"]);
 
 /**
+ * Actions that change the page the run is driving, which is what a draft on an
+ * adopted tab needs protecting from. open_tab and switch_tab are absent: they
+ * leave the user's page as it was.
+ */
+const TOUCHES_PAGE = new Set([...PAGE_WORK_TOOLS, "navigate", "go_back"]);
+
+/** A page that cannot be read (restricted, mid-navigation) has no readable draft. */
+async function holdsDraft(driver: BrowserDriver): Promise<boolean> {
+  try {
+    return await driver.holdsDraft();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Whether the page is holding interactive elements no ref covers yet — a menu
  * that opened, a validation error, an autocomplete list. Deliberately the same
  * no-arguments walk the snapshot tool makes, because mint counts only compare
@@ -589,6 +605,10 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
   // replan answers their words, and their words already approved what they
   // asked for — parking there would be requesting permission to obey.
   let steeredSincePlan = false;
+  // Whether the adopted tab has been checked for a draft yet. Only an adopted
+  // run has one to check: its own tab starts empty, and a continuation already
+  // had its yes on the first message.
+  let draftChecked = mode !== "adopted";
   // The last list the user was SHOWN at a gate — what the next ask diffs
   // against. Not `approvedPlan`: a plan sent back for revision clears that one,
   // and "did it change what I asked it to?" is exactly the question the revised
@@ -824,8 +844,20 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
       // the model hears that, and the rest of the batch (written on the
       // assumption it did) is held back like after any failed action.
       if (autoApprovePlan && isGatedTool(call.name)) {
-        const action = await confirmAction(call, driver);
-        if (action) {
+        // The user's own tab, taken as-is: the first thing that would touch it
+        // is the moment to ask, once, if it holds a draft the plan card used to
+        // protect. A page with nothing typed on it never asks. A commit on that
+        // same call still gets its own card after it.
+        const actions: string[] = [];
+        if (!draftChecked && TOUCHES_PAGE.has(call.name)) {
+          draftChecked = true;
+          if (await holdsDraft(driver)) actions.push(i18n.t("plan.confirmDraft"));
+        }
+        const commit = await confirmAction(call, driver);
+        if (commit) actions.push(commit);
+
+        let declined: { action: string; note?: string } | null = null;
+        for (const action of actions) {
           const base = approvedPlan ?? { steps: [], current: 0 };
           const outcome = (await callbacks.onPlanApproval?.({
             ...base,
@@ -837,26 +869,29 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
             return messages;
           }
           if (!outcome.approved) {
-            const note = outcome.feedback?.trim();
-            log.info(`${call.name} declined by user`);
-            callbacks.onStep?.({
-              tool: call.name,
-              summary: i18n.t("errors.stepDeclined"),
-              ok: false,
-              args: call.args,
-              detail: action,
-            });
-            results.push({
-              id: call.id,
-              content: JSON.stringify({
-                error: i18n.t("errors.stepDeclinedModel", {
-                  note: note ? `Their note: ${note} ` : "",
-                }),
-              }),
-            });
-            cancelled = cancelledAfterFailure(call.name);
-            continue;
+            declined = { action, note: outcome.feedback?.trim() };
+            break;
           }
+        }
+        if (declined) {
+          log.info(`${call.name} declined by user`);
+          callbacks.onStep?.({
+            tool: call.name,
+            summary: i18n.t("errors.stepDeclined"),
+            ok: false,
+            args: call.args,
+            detail: declined.action,
+          });
+          results.push({
+            id: call.id,
+            content: JSON.stringify({
+              error: i18n.t("errors.stepDeclinedModel", {
+                note: declined.note ? `Their note: ${declined.note} ` : "",
+              }),
+            }),
+          });
+          cancelled = cancelledAfterFailure(call.name);
+          continue;
         }
       }
 
