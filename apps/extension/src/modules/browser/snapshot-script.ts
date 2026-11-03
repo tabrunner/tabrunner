@@ -547,3 +547,69 @@ export function refClickPoint(refId: string): { x: number; y: number } | null {
   });
   return label ? center(label) : point;
 }
+
+/** What a ref names, as far as "does acting on it commit the user" is concerned. */
+export interface RefTarget {
+  /** The visible name: aria-label, text, value or title, capped. */
+  name: string;
+  /** A submit control in a form that takes a card — the one signal that needs no language. */
+  paysByCard: boolean;
+}
+
+/**
+ * Names the element a click (or, with no ref, an Enter on the focused field) is
+ * about to hit. Read from the page itself, never from the model's `intent`: the
+ * model can mislabel its own click, the DOM cannot.
+ *
+ * MUST be fully self-contained, like generateSnapshot.
+ */
+export function describeTarget(refId: string | null): RefTarget | null {
+  const el = refId ? window.__tabrunnerRefs?.get(refId)?.deref() : document.activeElement;
+  if (!el || el === document.body) return null;
+  const input = el as HTMLInputElement;
+  const name = (
+    el.getAttribute("aria-label") ||
+    (input.type === "submit" || input.type === "button" ? input.value : "") ||
+    (el as HTMLElement).innerText ||
+    el.textContent ||
+    el.getAttribute("title") ||
+    ""
+  )
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  const form = el.closest("form");
+  const submits =
+    input.type === "submit" ||
+    input.type === "text" ||
+    input.type === "tel" ||
+    (el.tagName === "BUTTON" && (el as HTMLButtonElement).type === "submit");
+  const paysByCard =
+    submits &&
+    !!form?.querySelector(
+      'input[autocomplete^="cc-"], input[name*="cvv" i], input[name*="cvc" i], input[name*="cardnumber" i]',
+    );
+  return { name, paysByCard };
+}
+
+/**
+ * Whether the page holds text the user typed and has not sent: a textarea, a
+ * rich editor or a textbox with words in it (a mail draft, a half-written
+ * post). Language-free and read-only. Plain one-line inputs are left out on
+ * purpose: a filled search box is not a draft, and asking about it would make
+ * the check fire on most pages.
+ *
+ * MUST be fully self-contained, like generateSnapshot.
+ */
+export function pageHoldsDraft(): boolean {
+  const fields = document.querySelectorAll<HTMLElement>(
+    'textarea, [contenteditable]:not([contenteditable="false"]), [role="textbox"]',
+  );
+  for (const el of Array.from(fields).slice(0, 200)) {
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) continue;
+    const text = el instanceof HTMLTextAreaElement ? el.value : (el.innerText ?? "");
+    if (text.trim() !== "") return true;
+  }
+  return false;
+}

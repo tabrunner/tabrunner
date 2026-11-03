@@ -1,6 +1,6 @@
 # Política de privacidade do TabRunner
 
-_Última atualização: 2026-10-31 · Aplica-se ao TabRunner para navegadores Chromium (Chrome, Brave,
+_Última atualização: 2026-11-02 · Aplica-se ao TabRunner para navegadores Chromium (Chrome, Brave,
 Edge, Arc, Opera, Vivaldi)._
 
 Este documento também existe em [inglês](PRIVACY.md). Se a tradução e o texto em inglês divergirem,
@@ -54,7 +54,8 @@ ferramenta também pode **executar um script curto dentro da página** (para def
 campo teimoso ou ler algo que a árvore omite) e ler a **atividade de rede e do console** da aba
 (endereços e status, nunca o conteúdo das respostas). Os resultados dos scripts têm tamanho limitado
 e, antes de entrarem na conversa, perdem tudo o que pareça uma credencial. Como qualquer outra ação,
-os scripts só rodam dentro de uma tarefa cujo plano você aprovou.
+os scripts só rodam dentro de uma tarefa que você iniciou. Uma tarefa mostra o plano e começa na
+hora, a menos que você desligue "Começar as tarefas na hora" em Configurações.
 
 **O TabRunner nunca envia os seus dados para nenhum outro lugar.** Esta é a lista completa dos
 destinatários na rede:
@@ -91,8 +92,9 @@ destinatários na rede:
 6. **Servidores MCP remotos, só se você adicionar um**: Configurações → MCP → Conectar a
    servidores MCP. Quando uma tarefa começa, e quando você clica em Testar conexão, o TabRunner se
    conecta a cada servidor ativado para listar as ferramentas dele, enviando os cabeçalhos de
-   autenticação que você salvou. Depois que você aprova o plano, o seu modelo pode usar essas
-   ferramentas: cada chamada envia ao servidor o que o seu modelo escreveu para ela, e isso pode
+   autenticação que você salvou. O seu modelo só pode usar essas ferramentas depois que você disser
+   sim: o TabRunner pergunta antes de cada chamada, ou você aprova o plano inteiro antes, se desligou
+   "Começar as tarefas na hora" em Configurações. Cada chamada envia ao servidor o que o seu modelo escreveu para ela, e isso pode
    incluir texto da página ou da conversa. Se um servidor fizer uma pergunta durante a tarefa, a sua
    resposta vai para ele. O que o servidor faz com esses dados depende de quem o mantém. Sem
    servidores, ou com todos desativados, o TabRunner não se conecta a nenhum.
@@ -163,7 +165,7 @@ servidor dos desenvolvedores) recebe os seus dados, em momento algum.
 
 | Permissão                             | Para que serve                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `debugger`                            | Entrada real e confiável: cliques e teclas são enviados pelo Chrome DevTools Protocol, para que os sites não possam ignorá-los. É também o canal da ferramenta de script na página e do registro de rede e console, sempre dentro da tarefa que você aprovou.                                                                                                                                                                                                                                         |
+| `debugger`                            | Entrada real e confiável: cliques e teclas são enviados pelo Chrome DevTools Protocol, para que os sites não possam ignorá-los. É também o canal da ferramenta de script na página e do registro de rede e console, sempre dentro de uma tarefa que você iniciou.                                                                                                                                                                                                                                     |
 | `scripting`                           | Injeta, na aba que o TabRunner lê, o script que gera o snapshot da árvore de acessibilidade e também o script que define o valor de um campo quando a digitação não funciona.                                                                                                                                                                                                                                                                                                                         |
 | `sidePanel`                           | Exibe a interface de conversa em que você escreve as tarefas e acompanha a execução.                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `tabs`                                | Assume a aba em que você está ou abre uma aba própria para a tarefa, lê a URL e o título, e troca de aba quando uma tarefa faz referência a outra aba aberta.                                                                                                                                                                                                                                                                                                                                         |

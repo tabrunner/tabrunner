@@ -1,6 +1,6 @@
 # Política de privacidad de TabRunner
 
-_Última actualización: 2026-10-31 · Se aplica a TabRunner para navegadores Chromium (Chrome, Brave,
+_Última actualización: 2026-11-02 · Se aplica a TabRunner para navegadores Chromium (Chrome, Brave,
 Edge, Arc, Opera, Vivaldi)._
 
 Este documento también existe en [inglés](PRIVACY.md). Si la traducción y el texto en inglés
@@ -56,7 +56,8 @@ dentro de la página** (para fijar el valor de un campo rebelde o leer algo que 
 leer la **actividad de red y de consola** de la pestaña (direcciones y códigos de estado, nunca el
 contenido de las respuestas). Los resultados de los scripts tienen un tamaño limitado y, antes de
 sumarse al chat, se les quita todo lo que parezca una credencial. Como cualquier otra acción, los
-scripts solo se ejecutan dentro de una tarea cuyo plan hayas aprobado.
+scripts solo se ejecutan dentro de una tarea que hayas iniciado. Una tarea muestra su plan y
+empieza al momento, salvo que desactives "Empezar las tareas al momento" en Configuración.
 
 **TabRunner nunca envía tus datos a ningún otro lugar.** Esta es la lista completa de destinatarios
 en la red:
@@ -92,7 +93,9 @@ en la red:
 6. **Servidores MCP remotos, solo si añades uno**: Configuración → MCP → Conectar a servidores
    MCP. Cuando empieza una tarea, y cuando pulsas Probar conexión, TabRunner se conecta a cada
    servidor activado para ver qué herramientas ofrece y le envía los encabezados de autenticación
-   que guardaste. Cuando apruebas el plan, tu modelo puede usar esas herramientas: cada llamada le
+   que guardaste. Tu modelo solo puede usar esas herramientas después de que digas que sí:
+   TabRunner te pregunta antes de cada llamada, o apruebas todo el plan antes si desactivaste
+   "Empezar las tareas al momento" en Configuración. Cada llamada le
    envía al servidor lo que tu modelo escribió para ella, que puede incluir texto de la página o del
    chat. Si un servidor te pregunta algo durante una tarea, tu respuesta va a ese servidor. Lo que
    el servidor haga con esos datos depende de quien lo gestione. Sin servidores, o con todos
@@ -163,7 +166,7 @@ desarrolladores) recibe nunca tus datos.
 
 | Permiso                               | Para qué sirve                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `debugger`                            | Entrada real y de confianza: los clics y las pulsaciones de teclas se envían a través del Chrome DevTools Protocol para que los sitios no puedan ignorarlos. También es el canal de la herramienta de scripts en la página y del registro de red y consola, siempre dentro de la tarea que hayas aprobado.                                                                                                                                                                                                                                    |
+| `debugger`                            | Entrada real y de confianza: los clics y las pulsaciones de teclas se envían a través del Chrome DevTools Protocol para que los sitios no puedan ignorarlos. También es el canal de la herramienta de scripts en la página y del registro de red y consola, siempre dentro de una tarea que hayas iniciado.                                                                                                                                                                                                                                   |
 | `scripting`                           | Inyecta en la pestaña que lee TabRunner el script que genera la instantánea del árbol de accesibilidad, y también el que fija el valor de un campo cuando las pulsaciones de teclas no surten efecto.                                                                                                                                                                                                                                                                                                                                         |
 | `sidePanel`                           | Aloja la interfaz del chat donde escribes las tareas y sigues la ejecución.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `tabs`                                | Usa tu pestaña actual o abre una pestaña propia para la tarea, lee la URL y el título, y cambia de pestaña cuando una tarea hace referencia a otra pestaña abierta.                                                                                                                                                                                                                                                                                                                                                                           |

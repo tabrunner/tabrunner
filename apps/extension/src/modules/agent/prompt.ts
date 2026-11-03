@@ -189,6 +189,23 @@ The user enabled Jev for routine page actions. When a stretch needs 3 or more cl
 
 Keep reading, extraction, judgment and signing in with you. Never hand over a payment, purchase, message, post, deletion or final submission that commits the user. You take those steps yourself, with "ask_user" first when the task did not explicitly authorize them. Jev's "done" is only a claim: check the snapshot it returns. If it stops short, continue from that page yourself; do not delegate the same goal again.`;
 
+/**
+ * The auto-approve contract. In this mode the first plan starts without a card,
+ * so the lines in BASE_PROMPT about the run pausing for the plan no longer hold
+ * and this section says what does: the app, not the model, asks before a step
+ * that commits the user. Static, and appended only with the setting on, so the
+ * prompt-cache prefix stays stable within a run.
+ */
+const CONFIRM_SECTION = `# Steps that need a yes
+
+In this run the user's setting starts your first plan without asking. They still see it as a checklist and can stop or steer you at any time. What stops the run is a step that commits them, and the app asks about it for you.
+
+- In "plan", list the indexes (0-based) of steps that pay or spend, send or post something in their name, delete data, or make a final submission in "confirm_steps". A search, a filter, an add-to-cart or a "next" is not one.
+- On "click", "press_key" and "evaluate", set "commits" to true when that exact action completes one of those. The run then pauses on a card showing the action, and continues only after the user allows it. The app also checks button labels itself, but do not rely on that.
+- For an act the task named ("send the reply", "buy it"), do not call "ask_user" for permission: plan it, flag it and set "commits". The card is the permission. For an act the task did not name, ask first with "ask_user" as before.
+- If the user declines a card, the action did not run. Never retry it. Say what was left undone with "done", or ask what they want instead.
+- A new plan that adds cost keeps its own flag and card ("deviates_from_approved"), as before.`;
+
 export function buildSystemPrompt(
   ctx: AgentContext,
   language: string,
@@ -196,6 +213,7 @@ export function buildSystemPrompt(
   schedules: Schedule[] = [],
   skills: Skill[] = [],
   delegateOn = false,
+  confirmOn = false,
 ): string {
   const sections = [BASE_PROMPT];
   if (!supportsImages) sections.push(TEXT_ONLY_NOTE);
@@ -205,6 +223,7 @@ export function buildSystemPrompt(
   if (schedules.length > 0) sections.push(schedulesSection(schedules));
   if (skills.length > 0) sections.push(skillsSection(skills));
   if (delegateOn) sections.push(JEV_SECTION);
+  if (confirmOn) sections.push(CONFIRM_SECTION);
   return sections.join("\n\n");
 }
 
@@ -363,6 +382,19 @@ function intentParam(...examples: string[]): JSONSchemaProperty {
   };
 }
 
+/**
+ * The model's own word on whether this exact action cannot be taken back. It
+ * rides on the action, not the plan: a plan step says "submit the form", but
+ * only the action knows the page's button turned out to say "Pay $400". Read by
+ * the loop only when the user's auto-approve setting is on; otherwise the
+ * approved plan already was the yes.
+ */
+const commitsParam: JSONSchemaProperty = {
+  type: "boolean",
+  description:
+    "true only if this exact action completes something the user cannot take back: a payment or purchase, a message, post or review sent in their name, data deleted, a final submission such as an order or application. false for everything else, including searching, filtering, opening, adding to a cart, filling a field and moving to the next step. When true the user is asked before it runs.",
+};
+
 const TOOL_DEFS: ToolDef[] = [
   {
     name: "navigate",
@@ -499,8 +531,9 @@ const TOOL_DEFS: ToolDef[] = [
       properties: {
         ref: { type: "string", description: "Element ref id (e.g. 'e3')" },
         intent: intentParam("the account menu", "Add to cart", "the cookie banner"),
+        commits: commitsParam,
       },
-      required: ["ref"],
+      required: ["ref", "commits"],
     },
   },
   {
@@ -543,8 +576,9 @@ const TOOL_DEFS: ToolDef[] = [
             "The JavaScript to run: a bare expression, or statements wrapped so the last value is returned (top-level await works)",
         },
         intent: intentParam("the cart total", "the hidden order id", "the review count"),
+        commits: commitsParam,
       },
-      required: ["expression"],
+      required: ["expression", "commits"],
     },
   },
   {
@@ -593,8 +627,9 @@ const TOOL_DEFS: ToolDef[] = [
           description: `Held while the key presses: ${SUPPORTED_MODIFIERS.join(", ")}. Omit for a plain key.`,
           items: { type: "string" },
         },
+        commits: commitsParam,
       },
-      required: ["key"],
+      required: ["key", "commits"],
     },
   },
   {
@@ -682,6 +717,12 @@ const TOOL_DEFS: ToolDef[] = [
           type: "string",
           description:
             "One line naming the NEW cost this plan adds. Shown to the user on the approval card, so write it in their language and make it concrete: 'adds uploading the invoices to Dropbox', 'sends the reply now, not just drafts it'. Required whenever deviates_from_approved is true; omit when false. If you cannot name the cost, the flag should be false.",
+        },
+        confirm_steps: {
+          type: "array",
+          description:
+            "0-based indexes into `steps` of the steps that commit the user: paying or spending, sending or posting in their name, deleting data, a final submission. The card draws them apart so the user sees where the run will stop to ask. Omit when no step does. Not for searching, filtering, reading or filling a form.",
+          items: { type: "number" },
         },
       },
       required: ["steps", "current", "deviates_from_approved"],

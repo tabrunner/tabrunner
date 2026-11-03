@@ -1,5 +1,5 @@
-import { generateSnapshot, refClickPoint } from "./snapshot-script";
-import type { SnapshotOptions, SnapshotResult } from "./snapshot-script";
+import { describeTarget, generateSnapshot, pageHoldsDraft, refClickPoint } from "./snapshot-script";
+import type { RefTarget, SnapshotOptions, SnapshotResult } from "./snapshot-script";
 import { runInPage } from "./inject";
 import type { TabId } from "@/shared/types";
 import { i18n } from "@/i18n";
@@ -36,3 +36,19 @@ export async function resolveRefPoint(
 }
 
 export type { SnapshotOptions, SnapshotResult };
+
+/**
+ * What a ref (or, with none, the focused element) is named on the page — the
+ * input to the commit check. Null when the ref is gone or nothing has focus;
+ * the caller then has only the model's own word to go on.
+ */
+export async function resolveTarget(tabId: TabId, ref: string | null): Promise<RefTarget | null> {
+  return (await runInPage(tabId, describeTarget, [ref])) ?? null;
+}
+
+export type { RefTarget };
+
+/** Whether the tab holds typed-but-unsent text — see `pageHoldsDraft`. */
+export async function resolveDraft(tabId: TabId): Promise<boolean> {
+  return (await runInPage(tabId, pageHoldsDraft, [])) === true;
+}

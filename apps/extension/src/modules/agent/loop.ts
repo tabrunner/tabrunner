@@ -26,6 +26,7 @@ import { executeTool, formatDetail, formatSuccessSummary, landedHost } from "./t
 import type { RunGroup } from "./tools";
 import type { RunOwner } from "./active-runs";
 import { buildSystemPrompt, buildTaskMessage, buildToolDefs } from "./prompt";
+import { confirmAction } from "./confirm-step";
 import type { PreviousTab, RunMode, SubmitPage } from "./prompt";
 import { compactRunMessages } from "./compact";
 import { DEFAULT_CONTEXT_WINDOW, needsCompaction } from "@/modules/providers/context-window";
@@ -160,6 +161,22 @@ const PAGE_STATE_TOOLS = new Set(["click", "type", "fill", "press_key"]);
 const NEW_PAGE_TOOLS = new Set(["navigate", "go_back", "open_tab", "switch_tab", "delegate"]);
 
 /**
+ * Actions that change the page the run is driving, which is what a draft on an
+ * adopted tab needs protecting from. open_tab and switch_tab are absent: they
+ * leave the user's page as it was.
+ */
+const TOUCHES_PAGE = new Set([...PAGE_WORK_TOOLS, "navigate", "go_back"]);
+
+/** A page that cannot be read (restricted, mid-navigation) has no readable draft. */
+async function holdsDraft(driver: BrowserDriver): Promise<boolean> {
+  try {
+    return await driver.holdsDraft();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Whether the page is holding interactive elements no ref covers yet — a menu
  * that opened, a validation error, an autocomplete list. Deliberately the same
  * no-arguments walk the snapshot tool makes, because mint counts only compare
@@ -279,6 +296,13 @@ export interface LoopOptions {
   /** The saved Jev setup — present only while Jev is on, and then the
    *  `delegate` tool is offered. */
   jev?: JevConnection;
+  /**
+   * The user's first plan starts without a card (their `autoApprovePlan`
+   * setting). The gate then lives at the action instead: a step that commits
+   * them parks on `onPlanApproval` with `action` set. A later plan that adds
+   * cost asks exactly as before. Absent = the plan card is the yes, as ever.
+   */
+  autoApprovePlan?: boolean;
   /**
    * Remote MCP tools resolved once before turn one — defs appended to the
    * tool array, the handle executing them. Absent when no server is enabled.
@@ -451,6 +475,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
     startUrl,
     history,
     standingPlan,
+    autoApprovePlan = false,
     contextWindow = DEFAULT_CONTEXT_WINDOW,
     drainInjected,
     drainNotices,
@@ -512,6 +537,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         schedules,
         runSkills.applicable,
         delegateOn,
+        autoApprovePlan,
       ),
     },
     ...(history ?? []),
@@ -579,6 +605,10 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
   // replan answers their words, and their words already approved what they
   // asked for — parking there would be requesting permission to obey.
   let steeredSincePlan = false;
+  // Whether the adopted tab has been checked for a draft yet. Only an adopted
+  // run has one to check: its own tab starts empty, and a continuation already
+  // had its yes on the first message.
+  let draftChecked = mode !== "adopted";
   // The last list the user was SHOWN at a gate — what the next ask diffs
   // against. Not `approvedPlan`: a plan sent back for revision clears that one,
   // and "did it change what I asked it to?" is exactly the question the revised
@@ -807,6 +837,64 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
       // The plan is bookkeeping, not an action on the page: it replaces a card
       // rather than adding a row, so it gets no spinner and no step of its own.
       const bookkeeping = call.name === "plan";
+
+      // With auto-approve the plan opened without a card, so this is where the
+      // user's yes is spent: a step that commits them parks the run on the same
+      // approval channel, with the action named. Declined means it never runs;
+      // the model hears that, and the rest of the batch (written on the
+      // assumption it did) is held back like after any failed action.
+      if (autoApprovePlan && isGatedTool(call.name)) {
+        // The user's own tab, taken as-is: the first thing that would touch it
+        // is the moment to ask, once, if it holds a draft the plan card used to
+        // protect. A page with nothing typed on it never asks. A commit on that
+        // same call still gets its own card after it.
+        const actions: string[] = [];
+        if (!draftChecked && TOUCHES_PAGE.has(call.name)) {
+          draftChecked = true;
+          if (await holdsDraft(driver)) actions.push(i18n.t("plan.confirmDraft"));
+        }
+        const commit = await confirmAction(call, driver);
+        if (commit) actions.push(commit);
+
+        let declined: { action: string; note?: string } | null = null;
+        for (const action of actions) {
+          const base = approvedPlan ?? { steps: [], current: 0 };
+          const outcome = (await callbacks.onPlanApproval?.({
+            ...base,
+            reapproval: false,
+            action,
+          })) ?? { approved: true };
+          if (signal.aborted) {
+            callbacks.onDone?.();
+            return messages;
+          }
+          if (!outcome.approved) {
+            declined = { action, note: outcome.feedback?.trim() };
+            break;
+          }
+        }
+        if (declined) {
+          log.info(`${call.name} declined by user`);
+          callbacks.onStep?.({
+            tool: call.name,
+            summary: i18n.t("errors.stepDeclined"),
+            ok: false,
+            args: call.args,
+            detail: declined.action,
+          });
+          results.push({
+            id: call.id,
+            content: JSON.stringify({
+              error: i18n.t("errors.stepDeclinedModel", {
+                note: declined.note ? `Their note: ${declined.note} ` : "",
+              }),
+            }),
+          });
+          cancelled = cancelledAfterFailure(call.name);
+          continue;
+        }
+      }
+
       if (!bookkeeping) callbacks.onStepStart?.(call.name, call.args);
       // Documenting brackets the action, and both halves are awaited. The
       // capture shares this run's one CDP session, and a turn's tool calls
@@ -871,8 +959,13 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         // is the chosen failure direction.
         const standing = standingApproval;
         standingApproval = null;
-        const needsApproval =
-          (!approvedPlan && !standing) || (call.args.deviates_from_approved === true && !steered);
+        // Auto-approve skips only the FIRST card. With a baseline (this run's
+        // approved plan or the standing one) a flagged deviation still asks;
+        // without one there is nothing to deviate from, so the flag is moot.
+        const baseline = approvedPlan !== null || standing !== null;
+        const needsApproval = baseline
+          ? call.args.deviates_from_approved === true && !steered
+          : !autoApprovePlan;
         if (needsApproval) {
           // From the user's seat the standing approval is still "their plan":
           // a first-call deviation off it is a re-ask, not a fresh proposal.

@@ -1,6 +1,6 @@
 # TabRunner Privacy Policy
 
-_Last updated: 2026-10-31 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
+_Last updated: 2026-11-02 · Applies to TabRunner for Chromium browsers (Chrome, Brave, Edge, Arc,
 Opera, Vivaldi)._
 
 TabRunner also publishes this document in Portuguese and Spanish. If a translation and this
@@ -53,7 +53,8 @@ also **run a short script inside the page** (to set a stubborn field's value, or
 the tree omits) and read the tab's **network and console activity** (addresses and statuses,
 never response bodies). Script results are size-bounded and stripped of anything that looks like
 a credential before they join the chat, and, like every other action, they run only
-inside a task whose plan you approved.
+inside a task you started. A task shows its plan and starts at once, unless you turned off
+"Start tasks right away" in Settings.
 
 **TabRunner never uploads your data anywhere else.** The complete list of network recipients is:
 
@@ -86,8 +87,9 @@ inside a task whose plan you approved.
    them.
 6. **Remote MCP servers, only if you add one**: Settings → MCP → Connect to MCP servers. When a
    task starts, and when you press Test connection, TabRunner connects to each server you have
-   switched on to list its tools, sending the auth headers you saved for it. Once you approve the
-   plan, your model can call those tools: each call sends the server what your model wrote for
+   switched on to list its tools, sending the auth headers you saved for it. Your model can call
+   those tools only after you say yes: TabRunner asks before each call, or you approve the whole
+   plan first if you turned off "Start tasks right away" in Settings. Each call sends the server what your model wrote for
    it, which can include text from the page or the chat. If a server asks you something during a
    task, your answer goes to that server. What the server does with this data is up to whoever
    runs it. With no server added, or all of them switched off, TabRunner contacts none.
@@ -152,7 +154,7 @@ data.
 
 | Permission                            | What it's for                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `debugger`                            | Real trusted input: clicks and keystrokes are dispatched over the Chrome DevTools Protocol so sites can't ignore them. Also the channel for the in-page script tool and the network/console log, all inside the task you approved.                                                                                                                                                                                                |
+| `debugger`                            | Real trusted input: clicks and keystrokes are dispatched over the Chrome DevTools Protocol so sites can't ignore them. Also the channel for the in-page script tool and the network/console log, all inside a task you started.                                                                                                                                                                                                   |
 | `scripting`                           | Injects the accessibility-tree snapshot script into the tab TabRunner reads, and the one that sets a field's value when keystrokes don't land.                                                                                                                                                                                                                                                                                    |
 | `sidePanel`                           | Hosts the chat UI where you write tasks and watch the run.                                                                                                                                                                                                                                                                                                                                                                        |
 | `tabs`                                | Adopts your current tab or opens a task's own tab, reads URL/title, and switches tabs when a task references another open tab.                                                                                                                                                                                                                                                                                                    |

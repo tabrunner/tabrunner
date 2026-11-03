@@ -151,6 +151,9 @@ export interface PlanPayload {
   steps: string[];
   /** 0-based; equals steps.length once every step is finished. */
   current: number;
+  /** Indexes of steps the model expects to commit the user (pay, send, delete).
+   *  The card draws them apart; the run asks again at the action itself. */
+  confirm?: number[];
 }
 
 /**
@@ -169,6 +172,9 @@ export interface PlanApprovalPayload extends PlanPayload {
    *  flagged, so the card can say WHY instead of leaving the user to diff the
    *  two lists. Absent when the model sent none (the diff still carries it). */
   deviationReason?: string;
+  /** Set when the run is parked on one action that commits the user, not on a
+   *  plan. The card names it and asks for a yes to that action only. */
+  action?: string;
 }
 
 /**

@@ -32,8 +32,8 @@ goes straight from the extension to your provider.
 - **Page-internals tools**: when keystrokes won't land, the agent acts directly in the page
   (`fill`, `evaluate`); read-only network and console rings let it see a failing request or a
   script error itself.
-- **Guardrails that hold**: you approve the plan before anything happens, and consequential
-  actions (paying, sending, deleting) come back for confirmation. Automatic retry with backoff on
+- **Guardrails that hold**: a task shows its plan and starts, then stops to ask before it pays,
+  sends or deletes (turn off "Start tasks right away" in Settings to approve the plan first). Automatic retry with backoff on
   transient provider errors, a step budget, truncation detection, and a Stop button that actually
   stops.
 - **Live run status**: current action, elapsed time, and token spend while the agent works,

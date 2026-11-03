@@ -34,11 +34,14 @@ Two claims a neighboring product cannot copy:
 
 ## Operating Context
 
-- The run workflow: describe a task in the side panel → approve the plan it proposes → watch the
+- The run workflow: describe a task in the side panel → it shows its plan and starts (or waits for
+  your approval first, by setting) → watch the
   live plan, current action, token spend and elapsed time → stop with Esc or the Stop button. Runs
   survive panel close; a notification reports completion, failure, or a question.
-- Guardrails are the product, not a settings page: the plan gate blocks action tools until the
-  user approves; `ask_user` enforces the consequential-action policy (paying, sending, deleting);
+- Guardrails are the product, not a settings page: the plan gate blocks action tools until a plan
+  exists, and by default each step that commits the user (paying, sending, deleting) stops for a
+  yes; with plan approval switched on, the user approves the whole plan first; `ask_user`
+  enforces the consequential-action policy for acts the task never named;
   a user stop ends a run cleanly (`done`, never an error).
 - Distribution: the Chrome Web Store listing is the primary install (**approved 2026-08-15**);
   the GitHub Releases keyed zip (loaded unpacked) is now the fallback. Both install under one ID
@@ -109,7 +112,7 @@ button "Submit"`); `sanitize.ts` caps tool output and keeps passwords, one-time 
 
 ## Product Principles
 
-1. The user's browser is the product — act with their authority, never around it: plan approved
+1. The user's browser is the product — act with their authority, never around it: plan shown
    before action, asked before consequences, stoppable on the spot.
 2. Prove, don't claim — the run shows its plan, actions and spend live; the privacy answer comes
    first, not last.

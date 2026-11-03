@@ -248,7 +248,31 @@ would cancel every "scroll down, then click what I already saw" batch over a ref
 still good. The failure direction elsewhere is conservative: an autocomplete opening
 mid-form-fill costs one extra round trip, never a wrong click.
 
-The first `plan` call of a run parks the loop on `onPlanApproval`; the panel renders the
+**Auto-approve (`autoApprovePlan`, on by default, panel runs only).** The first plan opens
+without a card; the gate moves to the action. `runAgentLoop` asks `confirmAction`
+(`agent/confirm-step.ts`) before every gated call, and a yes parks the run on the same
+`onPlanApproval` channel with `PlanApprovalPayload.action` set, so the board, the
+notification and the answer command all work unchanged. Three independent reasons earn a
+card, any one is enough, and none costs a model call: the model's own `commits: true` on
+`click` / `press_key` / `evaluate`; the control's page-side name reading as a commit in the
+user's language (`commit-label.ts`, a folded word list over 17 languages) or a submit
+inside a form with card fields (`describeTarget` in `snapshot-script.ts`, language-free);
+and tools whose effect we cannot see, which always ask: remote MCP tools and
+`schedule_task`. The label check can only add a card, never drop one the model asked for. A
+decline never runs the action, does not end the run, and hands the model the user's typed
+note; `planRejected` stays false for it, so the tab is kept. The plan's `confirm_steps`
+indexes are display only (an outlined "asks first" tag on the checklist, never enforcement).
+`deviates_from_approved` re-asks exactly as before, but only against a baseline: with
+nothing approved yet there is nothing to deviate from. Bridge and schedule runs keep their
+unattended auto-approval and never see these cards. The plan card also used to protect a page
+the user did not want touched, so an **adopted** run (the user's own tab) checks once, before
+the first action that changes that page, whether it holds typed-but-unsent text
+(`pageHoldsDraft`: a non-empty textarea, rich editor or textbox, never a one-line input), and
+asks before touching it. It runs once per run, never on a tab the run opened or a continuation,
+and a commit on the same call still gets its own card. The ceiling: a commit the model does not
+flag and whose label is in no list slips through, so the settings copy says so.
+
+With auto-approve off, the first `plan` call of a run parks the loop on `onPlanApproval`; the panel renders the
 parked proposal as an approve/adjust/reject card (`plan_approval` event + command in
 `shared/protocol.ts`, resolver parked on the `ActiveRun` slot), and a stop answers "no"
 via the abort listener so the loop never hangs. The parked steps are kept on the slot

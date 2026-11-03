@@ -51,7 +51,7 @@ import {
 } from "@/modules/conversation/conversations";
 import type { Message } from "@/modules/conversation/types";
 import { hostnameOf } from "@/lib/format";
-import { defaultStartUrl, walkthroughsEnabled } from "@/lib/prefs";
+import { autoApprovePlan, defaultStartUrl, walkthroughsEnabled } from "@/lib/prefs";
 import { createLogger, truncate } from "@/lib/logger";
 import type { ElicitationAsk, Event, PlanApprovalPayload } from "@/shared/protocol";
 import { acquireRun, releaseRun } from "./active-runs";
@@ -550,6 +550,10 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // Read once per run, like every other per-run tool switch: the tool
       // array is frozen for the run's prompt cache.
       const jev = await jevForRun();
+      // Panel runs only: a bridge client is an AI carrying its own policy, and
+      // a schedule's yes was the creation. Neither has a person to put a card
+      // in front of, so they keep the plan auto-approval they always had.
+      const autoApprove = owner === "panel" && (await autoApprovePlan.get());
       const wire = await runAgentLoop({
         provider,
         driver,
@@ -557,6 +561,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         conversationId,
         runGroup,
         owner,
+        ...(autoApprove ? { autoApprovePlan: true } : {}),
         ...(mcp.tools.length > 0 ? { mcp } : {}),
         ...(recorder ? { recorder } : {}),
         ...(jev ? { jev } : {}),
@@ -621,7 +626,10 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
                   // revise: the run works again, so the working marks return;
                   // a plain reject ends it — its unwind clears the rest.
                   markRunningAwaiting(run.id, false);
-                  if (approved || revision) {
+                  // A declined action is not a rejected plan: the run goes on
+                  // and tells the model, so the working marks come back and the
+                  // tab is kept.
+                  if (approved || revision || ask.action !== undefined) {
                     trackIndicator(showAgentIndicator(drivenTabId));
                   } else {
                     planRejected = true;

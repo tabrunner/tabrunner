@@ -818,7 +818,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       case "plan": {
         flushReasoning();
         flushStreaming();
-        const plan = { steps: event.steps, current: event.current };
+        const plan = { steps: event.steps, current: event.current, confirm: event.confirm };
         // An adopted panel refetched the transcript before it ever adopted, so
         // the card is on screen while planMsgId is still null — rewrite THAT
         // one instead of appending a twin. Scoped to this run's card via the
@@ -870,6 +870,8 @@ export const useConversationStore = create<ConversationState>((set, get) => {
             reapproval: event.reapproval,
             previous: event.previous,
             deviationReason: event.deviationReason,
+            confirm: event.confirm,
+            action: event.action,
           },
           planApproved: false,
           replanning: false,
@@ -1746,11 +1748,14 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       if (!get().planApproval || !runId) return;
       const note = feedback.trim();
       if (!note) return;
+      // A note on a confirm card declines that one action: no plan comes back,
+      // so no "Revising the plan…" band to wait on.
+      const revising = get().planApproval?.action === undefined;
       post({ type: "plan_approval", runId, approved: false, feedback: note });
       // The gate re-arms: the REVISED plan must earn the walk-away back. And
       // the band switches to "Revising the plan…" until the new card arrives,
       // so the redraft minutes never read as a swallowed note.
-      set({ planApproval: null, planApproved: false, replanning: true });
+      set({ planApproval: null, planApproved: false, replanning: revising });
       // The note is a user message like any other: the transcript shows what
       // the plan was sent back with, and the next run reads it as history.
       // Persisted here, drawn from the plan_answered echo — every panel showing

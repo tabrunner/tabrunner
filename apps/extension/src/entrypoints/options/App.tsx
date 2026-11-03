@@ -21,7 +21,13 @@ import { useStoredItem } from "@/components/useStoredItem";
 import { ThemeToggle } from "@/components/ThemeControl";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ReportDialog } from "@/components/ReportDialog";
-import { defaultStartUrl, tipsEnabled, walkthroughsEnabled, widgetHidden } from "@/lib/prefs";
+import {
+  autoApprovePlan,
+  defaultStartUrl,
+  tipsEnabled,
+  walkthroughsEnabled,
+  widgetHidden,
+} from "@/lib/prefs";
 import { LINKS } from "@/lib/links";
 import { StatusStrip } from "./StatusStrip";
 import { McpPane } from "./McpPane";
@@ -178,6 +184,7 @@ function BehaviorPane() {
   const hidden = useStoredItem(widgetHidden);
   const tips = useStoredItem(tipsEnabled);
   const walkthroughs = useStoredItem(walkthroughsEnabled);
+  const autoApprove = useStoredItem(autoApprovePlan);
   const stored = useStoredItem(defaultStartUrl);
   // Edited locally, persisted on blur — a half-typed URL must never reach a run.
   const [startUrl, setStartUrl] = useState<string | null>(null);
@@ -244,6 +251,25 @@ function BehaviorPane() {
             aria-invalid={urlError || undefined}
           />
         </div>
+      </section>
+
+      {/* One control named after its own section, like walkthroughs below: the
+          switch rides the heading. It decides whether a task waits for a yes
+          before it starts, so it sits right under the start-page setting. */}
+      <section className="mt-8">
+        <div className="flex items-start justify-between gap-4">
+          <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+            {t("settings.autoApprovePlan")}
+          </h2>
+          <Switch
+            checked={autoApprove}
+            onChange={(v) => void autoApprovePlan.set(v)}
+            ariaLabel={t("settings.autoApprovePlan")}
+          />
+        </div>
+        <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+          {t("settings.autoApprovePlanHint")}
+        </p>
       </section>
 
       {/* What a run is allowed to keep. Its own section: this is the only

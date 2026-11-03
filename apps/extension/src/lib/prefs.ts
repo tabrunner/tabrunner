@@ -50,3 +50,9 @@ export const runModePref = defineItem<RunMode>("runMode", "foreground");
  *  walkthrough in their own words, and off is the switch for anyone who never
  *  wants screenshots of their browser written to disk. */
 export const walkthroughsEnabled = defineItem<boolean>("walkthroughsEnabled", true);
+
+/** A task's first plan starts without waiting for your yes. The plan still
+ *  shows as a checklist; the run stops to ask only before a step that commits
+ *  you (paying, sending, deleting) and when a later plan adds a cost. On by
+ *  default; off brings back the approval card before anything runs. */
+export const autoApprovePlan = defineItem<boolean>("autoApprovePlan", true);
