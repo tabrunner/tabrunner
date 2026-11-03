@@ -262,7 +262,7 @@ export class TranscriptWriter {
       case "plan": {
         this.flushReasoning();
         this.flushStreaming();
-        const plan = { steps: event.steps, current: event.current };
+        const plan = { steps: event.steps, current: event.current, confirm: event.confirm };
         if (this.planMsg) {
           // Rewritten in place — a new copy on every completed step would bury the card.
           this.planMsg = { ...this.planMsg, ...plan };

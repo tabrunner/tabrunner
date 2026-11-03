@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { runsHere, useConversationStore, retryTargetFrom } from "./store";
 import { Markdown } from "./Markdown";
-import { PlanMark } from "./PlanMark";
+import { AsksFirstTag, PlanMark } from "./PlanMark";
 import { ElicitationCard } from "./ElicitationCard";
 import { groupBursts, type Burst } from "./bursts";
 import { useEngine, useNow } from "./hooks";
@@ -321,6 +321,8 @@ function PlanApprovalCard({
   previous,
   reapproval,
   deviationReason,
+  confirm,
+  action,
   onApprove,
   onReject,
 }: {
@@ -331,6 +333,10 @@ function PlanApprovalCard({
   reapproval: boolean;
   /** The model's own line for why it's asking again — re-asks it flagged only. */
   deviationReason?: string;
+  /** Steps that stop and ask when the run reaches them. */
+  confirm?: number[];
+  /** Set when the run is parked on one action, not on a plan. */
+  action?: string;
   onApprove: () => void;
   onReject: () => void;
 }) {
@@ -340,6 +346,33 @@ function PlanApprovalCard({
   // parkedAtPlan), the same way an unanswered ask_user turns it into the
   // answer field — one input surface per wait, not two.
   const done = Math.min(current, steps.length);
+  if (action !== undefined) {
+    // One action, not a plan: the checklist stays in the footer, and the card
+    // holds what is about to happen and the step it belongs to. The sentence
+    // is the card; the verdicts name it ("Allow"), they don't re-ask the plan.
+    const step = steps[done];
+    return (
+      <div className="flex max-w-[85%] flex-col gap-2 self-start rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 dark:border-brand-900 dark:bg-brand-950/60">
+        <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+          {t("plan.confirmTitle")}
+        </div>
+        <p className="text-xs break-words text-neutral-800 dark:text-neutral-100">{action}</p>
+        {step && (
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            {t("plan.confirmStep", { step })}
+          </p>
+        )}
+        <div className="flex gap-2">
+          <Button size="sm" onClick={onApprove}>
+            {t("plan.confirmAllow")}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onReject}>
+            {t("plan.confirmDecline")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
   // A mid-run re-ask is about the rest of the route, not the whole trip: the
   // steps the run already finished carry the live card's own check and strike,
   // so the list reads as "here is what's left" instead of a restart. Before the
@@ -404,6 +437,7 @@ function PlanApprovalCard({
                     {t("plan.stepNew")}
                   </span>
                 )}
+                {confirm?.includes(i) && i >= done && <AsksFirstTag />}
               </span>
             </li>
           );
@@ -432,11 +466,14 @@ function PlanApprovalCard({
 function PlanCard({
   steps,
   current,
+  confirm,
   settled,
   plansOpen,
 }: {
   steps: string[];
   current: number;
+  /** Steps that stop and ask when the run reaches them. */
+  confirm?: number[];
   settled?: boolean;
   /** Global E-toggle — null leaves the card to its own default. */
   plansOpen: boolean | null;
@@ -490,6 +527,7 @@ function PlanCard({
               }
             >
               {step}
+              {confirm?.includes(i) && i >= current && <AsksFirstTag />}
             </span>
           </li>
         ))}
@@ -948,6 +986,7 @@ const MessageBubble = memo(function MessageBubble({
         <PlanCard
           steps={msg.steps}
           current={msg.current ?? 0}
+          confirm={msg.confirm}
           settled={planSettled}
           plansOpen={plansOpen}
         />
@@ -1434,6 +1473,8 @@ function Transcript() {
                 previous={planApproval.previous}
                 reapproval={planApproval.reapproval}
                 deviationReason={planApproval.deviationReason}
+                confirm={planApproval.confirm}
+                action={planApproval.action}
                 onApprove={approvePlan}
                 onReject={rejectPlan}
               />

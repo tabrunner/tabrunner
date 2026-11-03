@@ -235,7 +235,16 @@ export async function executeTool(
         const current = Number.isFinite(raw)
           ? Math.min(Math.max(0, Math.trunc(raw)), steps.length)
           : 0;
-        return { ok: true, data: { steps, current } };
+        // Same stance for the commit marks: indexes the model got wrong (a
+        // 1-based list, a step it later cut) are dropped, not an error.
+        const confirm = [
+          ...new Set(
+            (Array.isArray(call.args.confirm_steps) ? call.args.confirm_steps : [])
+              .map((n) => Number(n))
+              .filter((n) => Number.isInteger(n) && n >= 0 && n < steps.length),
+          ),
+        ].sort((a, b) => a - b);
+        return { ok: true, data: { steps, current, ...(confirm.length > 0 ? { confirm } : {}) } };
       }
 
       case "remember": {

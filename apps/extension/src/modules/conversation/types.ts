@@ -60,6 +60,8 @@ export interface Message {
   tab?: { title: string; url: string; favIconUrl?: string };
   /** For plan messages: the checklist, rewritten in place on every update */
   steps?: string[];
+  /** For plan messages: indexes of the steps that ask before they run (pay, send, delete) */
+  confirm?: number[];
   /** For plan messages: 0-based index of the step in progress */
   current?: number;
   /** For reasoning messages: how long the model thought, in ms */

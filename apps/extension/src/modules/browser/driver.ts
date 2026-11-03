@@ -1,4 +1,4 @@
-import { captureSnapshot, resolveRefPoint } from "./snapshot";
+import { captureSnapshot, resolveRefPoint, resolveTarget, type RefTarget } from "./snapshot";
 import type { SnapshotOptions, SnapshotResult } from "./snapshot";
 import { capturePageText } from "./page-text";
 import type { PageTextResult } from "./page-text";
@@ -61,6 +61,8 @@ export interface BrowserDriver {
   /** The snapshot, filtered to what matches — refs included, at a fraction of the tokens. */
   find(query: string, limit?: number): Promise<FindResult>;
   click(ref: string): Promise<{ x: number; y: number }>;
+  /** How the page names a ref, or the focused element with no ref — read before a click or Enter commits. */
+  describeTarget(ref: string | null): Promise<RefTarget | null>;
   type(text: string): Promise<void>;
   insert(text: string): Promise<void>;
   /**
@@ -193,6 +195,10 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions): BrowserD
         .filter((line) => line.toLowerCase().includes(needle));
       const cap = Math.min(Math.max(1, Math.trunc(limit)), MAX_FIND_MATCHES);
       return { query, url: snap.url, matches: hits.slice(0, cap), total: hits.length };
+    },
+
+    async describeTarget(ref) {
+      return resolveTarget(current, ref);
     },
 
     async click(ref) {

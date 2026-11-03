@@ -69,6 +69,8 @@ export function ChatInput() {
   // answer with no tool boundary ahead, so a queued steer could never land.
   // Typed text is the answer — it sends the plan back with the note.
   const parkedAtPlan = useConversationStore((s) => s.planApproval !== null);
+  // A card about one action, not a plan: a typed note declines it instead of revising.
+  const parkedAtAction = useConversationStore((s) => s.planApproval?.action !== undefined);
   const revisePlan = useConversationStore((s) => s.revisePlan);
   const queued = useConversationStore((s) => s.queued);
   const queueBusy = useQueueBusy();
@@ -540,7 +542,7 @@ export function ChatInput() {
           aria-activedescendant={slashActive ? `slash-menu-item-${slashActive.key}` : undefined}
           placeholder={
             parkedAtPlan
-              ? t("chat.planPlaceholder")
+              ? t(parkedAtAction ? "chat.confirmPlaceholder" : "chat.planPlaceholder")
               : steering
                 ? t("chat.queuePlaceholder")
                 : questionPending
@@ -584,13 +586,17 @@ export function ChatInput() {
               disabled={!text.trim()}
               title={
                 parkedAtPlan
-                  ? t("chat.planSendTitle")
+                  ? t(parkedAtAction ? "chat.confirmSendTitle" : "chat.planSendTitle")
                   : steering
                     ? t("chat.queueTitle")
                     : t("chat.sendTitle")
               }
               aria-label={
-                parkedAtPlan ? t("chat.planSendTitle") : steering ? t("chat.queue") : t("chat.send")
+                parkedAtPlan
+                  ? t(parkedAtAction ? "chat.confirmSendTitle" : "chat.planSendTitle")
+                  : steering
+                    ? t("chat.queue")
+                    : t("chat.send")
               }
             >
               <SendIcon />

@@ -1,4 +1,20 @@
+import { useTranslation } from "react-i18next";
 import { CheckIcon, ChevronRightIcon, DotIcon } from "@/components/Icon";
+
+/**
+ * Tag for a step the run will stop on and ask about (it pays, sends or
+ * deletes). Neutral on purpose: emerald is for action and gold for measuring,
+ * and a warning is neither. An outline sets it apart from the filled "new"
+ * chip the re-ask card uses.
+ */
+export function AsksFirstTag() {
+  const { t } = useTranslation();
+  return (
+    <span className="ml-1.5 rounded-sm border border-neutral-300 px-1 align-[1px] text-[10px] font-medium tracking-wide text-neutral-600 uppercase dark:border-neutral-600 dark:text-neutral-300">
+      {t("plan.stepAsks")}
+    </span>
+  );
+}
 
 /**
  * One visual language for plan steps — the transcript card and the footer peek

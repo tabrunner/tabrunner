@@ -31,6 +31,11 @@ export function RunStatus() {
   // the user; an ask_user ends it with the question still open. Both speak
   // "waiting", never the working shimmer/pulse.
   const awaitingApproval = useConversationStore((s) => s.planApproval !== null);
+  // Only a plan card carries the list. A confirm card names one action, so the
+  // footer keeps the checklist the user needs to see where that action sits.
+  const planInCard = useConversationStore(
+    (s) => s.planApproval !== null && s.planApproval.action === undefined,
+  );
   const elicitation = useConversationStore((s) => s.elicitation);
   const awaitingAnswer = useConversationStore(
     (s) =>
@@ -330,9 +335,7 @@ export function RunStatus() {
           carries the same steps WITH what's done and what changed, and a second
           copy of them 40px below is the clutter that made the ask hard to read.
           The band keeps what only it has — the amber status, the clock, Stop. */}
-      {plan?.steps && !awaitingApproval && (
-        <PlanPeek steps={plan.steps} current={plan.current ?? 0} />
-      )}
+      {plan?.steps && !planInCard && <PlanPeek steps={plan.steps} current={plan.current ?? 0} />}
       {/* What the run has spent (left) beside how full the chat is (right), one
           row, so the two numbers that look alike are read together: the spend
           counts the chat again on every step. Same corner as the settled

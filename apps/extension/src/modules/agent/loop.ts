@@ -26,6 +26,7 @@ import { executeTool, formatDetail, formatSuccessSummary, landedHost } from "./t
 import type { RunGroup } from "./tools";
 import type { RunOwner } from "./active-runs";
 import { buildSystemPrompt, buildTaskMessage, buildToolDefs } from "./prompt";
+import { confirmAction } from "./confirm-step";
 import type { PreviousTab, RunMode, SubmitPage } from "./prompt";
 import { compactRunMessages } from "./compact";
 import { DEFAULT_CONTEXT_WINDOW, needsCompaction } from "@/modules/providers/context-window";
@@ -280,6 +281,13 @@ export interface LoopOptions {
    *  `delegate` tool is offered. */
   jev?: JevConnection;
   /**
+   * The user's first plan starts without a card (their `autoApprovePlan`
+   * setting). The gate then lives at the action instead: a step that commits
+   * them parks on `onPlanApproval` with `action` set. A later plan that adds
+   * cost asks exactly as before. Absent = the plan card is the yes, as ever.
+   */
+  autoApprovePlan?: boolean;
+  /**
    * Remote MCP tools resolved once before turn one — defs appended to the
    * tool array, the handle executing them. Absent when no server is enabled.
    */
@@ -451,6 +459,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
     startUrl,
     history,
     standingPlan,
+    autoApprovePlan = false,
     contextWindow = DEFAULT_CONTEXT_WINDOW,
     drainInjected,
     drainNotices,
@@ -512,6 +521,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         schedules,
         runSkills.applicable,
         delegateOn,
+        autoApprovePlan,
       ),
     },
     ...(history ?? []),
@@ -807,6 +817,49 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
       // The plan is bookkeeping, not an action on the page: it replaces a card
       // rather than adding a row, so it gets no spinner and no step of its own.
       const bookkeeping = call.name === "plan";
+
+      // With auto-approve the plan opened without a card, so this is where the
+      // user's yes is spent: a step that commits them parks the run on the same
+      // approval channel, with the action named. Declined means it never runs;
+      // the model hears that, and the rest of the batch (written on the
+      // assumption it did) is held back like after any failed action.
+      if (autoApprovePlan && isGatedTool(call.name)) {
+        const action = await confirmAction(call, driver);
+        if (action) {
+          const base = approvedPlan ?? { steps: [], current: 0 };
+          const outcome = (await callbacks.onPlanApproval?.({
+            ...base,
+            reapproval: false,
+            action,
+          })) ?? { approved: true };
+          if (signal.aborted) {
+            callbacks.onDone?.();
+            return messages;
+          }
+          if (!outcome.approved) {
+            const note = outcome.feedback?.trim();
+            log.info(`${call.name} declined by user`);
+            callbacks.onStep?.({
+              tool: call.name,
+              summary: i18n.t("errors.stepDeclined"),
+              ok: false,
+              args: call.args,
+              detail: action,
+            });
+            results.push({
+              id: call.id,
+              content: JSON.stringify({
+                error: i18n.t("errors.stepDeclinedModel", {
+                  note: note ? `Their note: ${note} ` : "",
+                }),
+              }),
+            });
+            cancelled = cancelledAfterFailure(call.name);
+            continue;
+          }
+        }
+      }
+
       if (!bookkeeping) callbacks.onStepStart?.(call.name, call.args);
       // Documenting brackets the action, and both halves are awaited. The
       // capture shares this run's one CDP session, and a turn's tool calls
@@ -871,8 +924,13 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         // is the chosen failure direction.
         const standing = standingApproval;
         standingApproval = null;
-        const needsApproval =
-          (!approvedPlan && !standing) || (call.args.deviates_from_approved === true && !steered);
+        // Auto-approve skips only the FIRST card. With a baseline (this run's
+        // approved plan or the standing one) a flagged deviation still asks;
+        // without one there is nothing to deviate from, so the flag is moot.
+        const baseline = approvedPlan !== null || standing !== null;
+        const needsApproval = baseline
+          ? call.args.deviates_from_approved === true && !steered
+          : !autoApprovePlan;
         if (needsApproval) {
           // From the user's seat the standing approval is still "their plan":
           // a first-call deviation off it is a re-ask, not a fresh proposal.
