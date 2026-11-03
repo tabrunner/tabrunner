@@ -132,7 +132,7 @@ default; switch it off in Settings.
 
 Two-way MCP — TabRunner speaks MCP in both directions. An AI client on your machine can hand it
 tasks through the local bridge, and TabRunner connects out to remote MCP servers you add: their
-tools join every task behind plan approval, and when a server needs your input it asks right in
+tools join every task and TabRunner asks before each call, and when a server needs your input it asks right in
 the panel. Run events — started, finished, errors, questions — can also POST to your own webhook
 URL, so tasks plug into your automations.
 
@@ -140,7 +140,7 @@ HOW IT WORKS
 
 1. Describe a task in the side panel — e.g. "pull the invoice from my inbox into the expense
    report".
-2. Approve the plan it comes back with. TabRunner then works the tab like you would — reading the
+2. It shows its plan and starts. TabRunner then works the tab like you would — reading the
    page, clicking, typing, scrolling — with real user input.
 3. Watch it work step by step, or send it to the background and get a notification when it's done.
 
@@ -157,8 +157,8 @@ Works on Chrome and other Chromium-based browsers.
 
 GUARDRAILS
 
-You approve the plan — TabRunner cannot click, type or navigate until you've okayed what it
-intends to do.
+You can approve every plan first. Turn off "Start tasks right away" in Settings and TabRunner
+cannot click, type or navigate until you've okayed what it intends to do.
 
 Ask before acting — consequential actions (paying, sending, deleting) come back for your
 confirmation in the panel before they happen.
@@ -222,7 +222,7 @@ ficar incompleta, o guia diz isso na introdução. Vem ligado; desligue nas Conf
 
 MCP nos dois sentidos — o TabRunner fala MCP nas duas direções. Um cliente de IA na sua máquina
 pode passar tarefas pela ponte local, e o TabRunner também se conecta a servidores MCP remotos
-que você adiciona: as ferramentas deles entram em toda tarefa atrás da aprovação do plano, e
+que você adiciona: as ferramentas deles entram em toda tarefa e o TabRunner pergunta antes de cada chamada, e
 quando um servidor precisa da sua resposta ele pergunta ali mesmo no painel. Eventos de execução
 — início, término, erros, perguntas — também podem ir por POST para uma URL de webhook sua, então
 as tarefas se encaixam nas suas automações.
@@ -231,7 +231,7 @@ COMO FUNCIONA
 
 1. Descreva uma tarefa no painel lateral — por exemplo: "pegue a nota fiscal no meu e-mail e lance
    no relatório de despesas".
-2. Aprove o plano que ele propõe. O TabRunner então usa a aba como você faria — lendo a página,
+2. Ele mostra o plano e começa. O TabRunner então usa a aba como você faria — lendo a página,
    clicando, digitando, rolando — com entrada real do usuário.
 3. Acompanhe passo a passo, ou mande a tarefa para segundo plano e receba uma notificação quando
    terminar.
@@ -249,8 +249,8 @@ Funciona no Chrome e em outros navegadores baseados em Chromium.
 
 LIMITES E CONTROLE
 
-Você aprova o plano — o TabRunner não clica, não digita e não navega antes de você aprovar o que
-ele pretende fazer.
+Você pode aprovar cada plano antes. Desligue "Começar as tarefas na hora" em Configurações e o
+TabRunner não clica, não digita e não navega antes de você aprovar o que ele pretende fazer.
 
 Pergunta antes de agir — ações com consequência (pagar, enviar, excluir) voltam para você
 confirmar no painel antes de acontecerem.
@@ -316,7 +316,7 @@ Vienen activadas; apágalas en la Configuración.
 
 MCP en ambas direcciones — TabRunner habla MCP en los dos sentidos. Un cliente de IA en tu
 máquina le pasa tareas por el puente local, y TabRunner también se conecta a servidores MCP
-remotos que tú añades: sus herramientas entran en cada tarea tras la aprobación del plan, y
+remotos que tú añades: sus herramientas entran en cada tarea y TabRunner pregunta antes de cada llamada, y
 cuando un servidor necesita tu respuesta te pregunta allí mismo en el panel. Los eventos de
 ejecución — inicio, fin, errores, preguntas — también pueden llegar por POST a una URL de
 webhook tuya, así las tareas se enchufan a tus automatizaciones.
@@ -325,7 +325,7 @@ CÓMO FUNCIONA
 
 1. Describe una tarea en el panel lateral — por ejemplo: "pasa la factura de mi correo al informe
    de gastos".
-2. Aprueba el plan que propone. TabRunner entonces usa la pestaña como lo harías tú — leyendo la
+2. Muestra su plan y empieza. TabRunner entonces usa la pestaña como lo harías tú — leyendo la
    página, haciendo clic, escribiendo, desplazando — con entrada real del usuario.
 3. Míralo paso a paso, o envía la tarea al segundo plano y recibe una notificación cuando termine.
 
@@ -343,8 +343,8 @@ Funciona en Chrome y otros navegadores basados en Chromium.
 
 LÍMITES Y CONTROL
 
-Tú apruebas el plan — TabRunner no hace clic, no escribe ni navega antes de que apruebes lo que
-pretende hacer.
+Puedes aprobar cada plan antes. Desactiva "Empezar las tareas al momento" en Configuración y
+TabRunner no hace clic, no escribe ni navega antes de que apruebes lo que pretende hacer.
 
 Pregunta antes de actuar — las acciones con consecuencias (pagar, enviar, eliminar) vuelven a ti
 para confirmarlas en el panel antes de ocurrir.
@@ -419,7 +419,7 @@ works.
 TabRunner clicks and types on the user's behalf. Chrome only produces trusted input events through
 the DevTools Protocol; events dispatched from a content script are synthetic, and login forms,
 payment fields and most modern web apps ignore them. The same channel runs the agent's short
-in-page scripts (an approved plan covers every action) and reads the tab's network and console
+in-page scripts (every action belongs to the task the user started) and reads the tab's network and console
 activity — addresses and statuses, never response bodies. TabRunner attaches to the single tab the
 user's task is running in and detaches when the task ends. Chrome's "started debugging" banner
 stays visible for the whole task, so the user always knows.

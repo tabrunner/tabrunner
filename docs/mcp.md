@@ -286,9 +286,10 @@ What a server buys you:
 
 - **Its tools join every run**, namespaced `mcp__<server>__<tool>`, listed for the model alongside
   the built-ins, executed over the wire when the model calls them.
-- **Behind plan approval like everything else.** A remote tool never fires before you've approved
-  the run's plan. There is no read-only bypass, because a server's own claim about its tools is
-  not ours to trust.
+- **Asks first, like everything that could cost you.** A remote tool never fires without your
+  OK: TabRunner asks before each call, or you approve the run's plan first if you turned off
+  "Start tasks right away" in Settings. There is no read-only bypass, because a server's own
+  claim about its tools is not ours to trust.
 - **Elicitation reaches you.** A server that asks questions mid-task (`elicitation/create`) gets a
   card in the panel; answer it or decline. On runs nobody watches (scheduled, bridge) questions are
   declined automatically. Declining is the safe direction.
