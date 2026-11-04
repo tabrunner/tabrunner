@@ -375,6 +375,49 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * How long a turn may go without a single delta before the loop gives up on it.
+ * Nothing else times a silent model out: the extension builds core's bare
+ * adapters, and core's watchdog only wraps the ones its registry builds. So this
+ * covers both ways a turn goes quiet: a backend that accepts the request and
+ * never answers, and the awaits before the request exists (token refresh, the
+ * header rule, the connection). Six minutes is past any healthy silent prefill
+ * measured upstream (core's own progress clock is five).
+ */
+const STREAM_STALL_MS = 6 * 60_000;
+
+/**
+ * `promise`, unless Stop or the deadline gets there first. An `await` on I/O
+ * that takes no signal (a storage read, an OAuth refresh, a Chrome API call)
+ * is the one thing a Stop cannot reach: the abort fires, nothing listens, and
+ * the run sits on the board for good. Racing it here is what lets the loop
+ * unwind. The abandoned promise is left to settle on its own.
+ */
+function raceStall<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+  ms: number,
+  stalled: () => Error,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      done();
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      done();
+      reject(stalled());
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    promise.then(resolve, reject).finally(done);
+  });
+}
+
 /** Full-jitter exponential backoff: random delay in [0, min(cap, base·2^(attempt-1))]. */
 function backoffMs(attempt: number): number {
   const ceiling = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** (attempt - 1));
@@ -408,25 +451,47 @@ async function streamTurn(
     let emitted = false;
     let truncated = false;
 
+    // Our own abort on top of Stop's, so a stalled turn can cancel the request it
+    // left behind instead of only walking away from it.
+    const turn = new AbortController();
     try {
-      for await (const delta of provider.stream(messages, tools, signal)) {
-        const handled = handleDelta(delta, callbacks, toolCalls);
-        if (handled) {
-          text += handled;
-          emitted = true;
+      const stream = provider.stream(messages, tools, AbortSignal.any([signal, turn.signal]));
+      const iterator = stream[Symbol.asyncIterator]();
+      const stalled = () =>
+        new ProviderError(
+          i18n.t("errors.streamStalled", { minutes: STREAM_STALL_MS / 60_000 }),
+          0,
+          "timeout",
+          undefined,
+          false,
+        );
+      try {
+        for (;;) {
+          const next = await raceStall(iterator.next(), signal, STREAM_STALL_MS, stalled);
+          if (next.done) break;
+          const delta = next.value;
+          const handled = handleDelta(delta, callbacks, toolCalls);
+          if (handled) {
+            text += handled;
+            emitted = true;
+          }
+          // Committed for provider echo (ChatMessage.reasoning) — display happens in handleDelta.
+          if (delta.type === "reasoning") reasoning += delta.text;
+          if (delta.type === "tool_use") emitted = true;
+          if (delta.type === "usage")
+            callbacks.onUsage?.({
+              input: delta.input,
+              output: delta.output,
+              cacheRead: delta.cacheRead,
+              cacheWrite: delta.cacheWrite,
+              cost: delta.cost,
+            });
+          if (delta.type === "finish" && delta.reason === "length") truncated = true;
         }
-        // Committed for provider echo (ChatMessage.reasoning) — display happens in handleDelta.
-        if (delta.type === "reasoning") reasoning += delta.text;
-        if (delta.type === "tool_use") emitted = true;
-        if (delta.type === "usage")
-          callbacks.onUsage?.({
-            input: delta.input,
-            output: delta.output,
-            cacheRead: delta.cacheRead,
-            cacheWrite: delta.cacheWrite,
-            cost: delta.cost,
-          });
-        if (delta.type === "finish" && delta.reason === "length") truncated = true;
+      } finally {
+        turn.abort();
+        // What `for await` did for us: let the generator run its own cleanup.
+        iterator.return?.().catch(() => {});
       }
       return { text, reasoning, toolCalls, truncated };
     } catch (e) {

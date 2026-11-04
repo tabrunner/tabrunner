@@ -1192,6 +1192,7 @@
     "kindOverload": "{{provider}} está sobrecarregado agora. Tente de novo em alguns minutos",
     "kindContext": "Esta conversa é maior do que {{provider}} consegue ler em uma requisição. Use /compact para resumir e continuar",
     "kindTimeout": "{{provider}} parou de responder. Nada chegou a tempo. Tente de novo ou escolha outro modelo se continuar acontecendo",
+    "streamStalled": "O modelo parou de responder. Nada voltou em {{minutes}} minutos, então a tarefa parou. Tente de novo ou escolha outro modelo se continuar acontecendo",
     "kindContent": "O filtro de segurança de {{provider}} bloqueou esta mensagem. Reescreva ou tente outro modelo",
     "kindNetworkOffline": "Você está sem conexão. A requisição para {{provider}} nem saiu desta máquina. Reconecte e tente de novo",
     "kindNetworkHost": "Não foi possível conectar a {{provider}} ({{host}}). A requisição nem saiu desta máquina. Confira a conexão, alguma VPN ou bloqueador no caminho e a URL base",

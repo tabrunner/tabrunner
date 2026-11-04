@@ -1192,6 +1192,7 @@
     "kindOverload": "{{provider}} is overloaded right now. Try again in a few minutes",
     "kindContext": "This chat is longer than {{provider}} can read in one request. Use /compact to summarize it and continue",
     "kindTimeout": "{{provider}} stopped responding. Nothing came back in time. Retry, or pick another model if it keeps happening",
+    "streamStalled": "The model stopped responding. Nothing came back for {{minutes}} minutes, so the task stopped. Retry, or pick another model if it keeps happening",
     "kindContent": "{{provider}}'s safety filter blocked this message. Rewrite it or try another model",
     "kindNetworkOffline": "You're offline. The request to {{provider}} never left this machine. Reconnect, then Retry",
     "kindNetworkHost": "Couldn't reach {{provider}} at {{host}}. The request never left this machine. Check your connection, any VPN or blocker in the way, and the base URL",
