@@ -174,11 +174,12 @@ is detailed in [bridge.md](bridge.md).
 
 An abort is only a request, so the loop must also be able to stop WAITING. `streamTurn` races
 every `next()` on the provider against Stop and a six-minute no-delta deadline (`raceStall`,
-`STREAM_STALL_MS`), and aborts the request it leaves behind. A signed-in provider's generator
-awaits storage, an OAuth refresh and a Chrome API call before core's own request (and core's
-five-minute watchdog) even exists; a stall in any of them used to ignore Stop, hold the run on
-the board forever, and queue every later message behind it. Core's clock is the first line, so
-its precise error wins whenever it can; ours is the net, and it ends the run with a plain
+`STREAM_STALL_MS`), and aborts the request it leaves behind. Two things used to hang a run for
+good. A backend that accepts the request and never answers: the extension builds core's bare
+adapters, and core's watchdog only wraps the ones its registry builds, so no clock ran at all.
+And the awaits before the request exists (a signed-in provider's storage read, OAuth refresh and
+Chrome API call), none of which take the abort signal, so Stop fired into nothing, the run stayed
+on the board, and every later message queued behind it. The deadline ends the run with a plain
 `timeout` error that is not replayed (a replay would pay for the same silence again).
 
 **Runs survive the panel closing.** Port disconnect never aborts; persistence lives in the

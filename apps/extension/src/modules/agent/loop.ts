@@ -377,11 +377,12 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * How long a turn may go without a single delta before the loop gives up on it.
- * @providerkit/core already cuts a silent stream at five minutes with a precise
- * error; this is the net under what core cannot see: the awaits before its
- * request exists (token refresh, the header rule, the connection) and any
- * generator that stops yielding for a reason nobody foresaw. One minute past
- * core's clock, so core's own message wins whenever it can.
+ * Nothing else times a silent model out: the extension builds core's bare
+ * adapters, and core's watchdog only wraps the ones its registry builds. So this
+ * covers both ways a turn goes quiet: a backend that accepts the request and
+ * never answers, and the awaits before the request exists (token refresh, the
+ * header rule, the connection). Six minutes is past any healthy silent prefill
+ * measured upstream (core's own progress clock is five).
  */
 const STREAM_STALL_MS = 6 * 60_000;
 
