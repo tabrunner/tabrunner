@@ -7,7 +7,10 @@
  * slips through, and the model's flag is what catches it. The other direction
  * costs one extra card, so a term earns its place by being specific: bare
  * "submit" and "confirm" are out (search forms and dialogs use them), "pay" and
- * "delete" are in.
+ * "delete" are in. Bare "buy" and "purchase" are out too: a shop puts them on
+ * the steps that lead to the order (a domain's "Buy", then its "Purchase"), and
+ * a checkout of ten items asked ten times. The act itself still matches by
+ * "buy now", "place order", "pay" or "confirm order", or by the model's flag.
  *
  * Terms are written with their accents; both sides pass through `fold`, so a
  * page that drops them ("Envio" for "Envío") still matches.
@@ -16,9 +19,7 @@ const TERMS: Record<string, string[]> = {
   en: [
     "pay",
     "pay now",
-    "buy",
     "buy now",
-    "purchase",
     "place order",
     "place your order",
     "complete order",
@@ -41,7 +42,6 @@ const TERMS: Record<string, string[]> = {
   "pt-BR": [
     "pagar",
     "pagar agora",
-    "comprar",
     "comprar agora",
     "finalizar compra",
     "finalizar pedido",
@@ -64,7 +64,6 @@ const TERMS: Record<string, string[]> = {
   es: [
     "pagar",
     "pagar ahora",
-    "comprar",
     "comprar ahora",
     "finalizar compra",
     "realizar pedido",
@@ -83,7 +82,6 @@ const TERMS: Record<string, string[]> = {
   ],
   fr: [
     "payer",
-    "acheter",
     "commander",
     "passer la commande",
     "valider la commande",
@@ -102,7 +100,6 @@ const TERMS: Record<string, string[]> = {
   de: [
     "bezahlen",
     "jetzt bezahlen",
-    "kaufen",
     "jetzt kaufen",
     "bestellen",
     "zahlungspflichtig bestellen",
@@ -120,7 +117,6 @@ const TERMS: Record<string, string[]> = {
     "paga",
     "paga ora",
     "pagare",
-    "acquista",
     "acquista ora",
     "compra ora",
     "ordina",
@@ -138,7 +134,6 @@ const TERMS: Record<string, string[]> = {
   nl: [
     "betalen",
     "nu betalen",
-    "kopen",
     "bestellen",
     "bestelling plaatsen",
     "versturen",
@@ -152,7 +147,6 @@ const TERMS: Record<string, string[]> = {
   ],
   pl: [
     "zapłać",
-    "kup",
     "kup teraz",
     "zamawiam",
     "złóż zamówienie",
@@ -166,7 +160,6 @@ const TERMS: Record<string, string[]> = {
   tr: [
     "öde",
     "şimdi öde",
-    "satın al",
     "sipariş ver",
     "siparişi onayla",
     "gönder",
@@ -179,7 +172,6 @@ const TERMS: Record<string, string[]> = {
   id: [
     "bayar",
     "bayar sekarang",
-    "beli",
     "beli sekarang",
     "pesan sekarang",
     "kirim",
@@ -190,7 +182,6 @@ const TERMS: Record<string, string[]> = {
   ],
   ru: [
     "оплатить",
-    "купить",
     "заказать",
     "оформить заказ",
     "подтвердить заказ",
@@ -205,7 +196,6 @@ const TERMS: Record<string, string[]> = {
   uk: [
     "сплатити",
     "оплатити",
-    "купити",
     "замовити",
     "підтвердити замовлення",
     "надіслати",
@@ -217,8 +207,6 @@ const TERMS: Record<string, string[]> = {
   ar: [
     "ادفع",
     "الدفع",
-    "اشتر",
-    "شراء",
     "اطلب",
     "تأكيد الطلب",
     "إرسال",
@@ -230,12 +218,11 @@ const TERMS: Record<string, string[]> = {
     "تحويل",
     "احجز",
   ],
-  he: ["שלם", "לתשלום", "קנה", "הזמן", "שלח", "פרסם", "מחק", "הירשם", "תרום"],
-  hi: ["भुगतान करें", "खरीदें", "ऑर्डर करें", "भेजें", "प्रकाशित करें", "हटाएं", "दान करें"],
+  he: ["שלם", "לתשלום", "הזמן", "שלח", "פרסם", "מחק", "הירשם", "תרום"],
+  hi: ["भुगतान करें", "ऑर्डर करें", "भेजें", "प्रकाशित करें", "हटाएं", "दान करें"],
   ja: [
     "支払う",
     "支払い",
-    "購入",
     "注文を確定",
     "注文する",
     "送信",
@@ -249,8 +236,6 @@ const TERMS: Record<string, string[]> = {
   zh: [
     "支付",
     "付款",
-    "购买",
-    "購買",
     "立即购买",
     "提交订单",
     "提交訂單",
@@ -272,7 +257,6 @@ const TERMS: Record<string, string[]> = {
   ],
   ko: [
     "결제",
-    "구매",
     "주문하기",
     "주문 확정",
     "보내기",

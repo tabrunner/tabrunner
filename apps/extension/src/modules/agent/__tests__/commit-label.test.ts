@@ -4,6 +4,7 @@ import { labelCommits } from "../commit-label";
 describe("labelCommits", () => {
   it.each([
     ["Place order", "en"],
+    ["Buy now", "en"],
     ["Pay now", "en"],
     ["Delete account", "en"],
     ["Finalizar compra", "pt-BR"],
@@ -17,7 +18,7 @@ describe("labelCommits", () => {
     ["Conferma ordine", "it"],
     ["Bestelling plaatsen", "nl"],
     ["Zapłać", "pl"],
-    ["Satın al", "tr"],
+    ["Sipariş ver", "tr"],
     ["Bayar sekarang", "id"],
     ["Оформить заказ", "ru"],
     ["Надіслати", "uk"],
@@ -43,6 +44,12 @@ describe("labelCommits", () => {
     "Add to cart",
     "Adicionar ao carrinho",
     "Proceed to checkout",
+    // A bare "buy" sits on the steps that lead to the order, not on the order.
+    "Buy",
+    "Purchase",
+    "Comprar",
+    "Kaufen",
+    "购买",
     "Postal code",
     "Payment history",
     "Posts",
