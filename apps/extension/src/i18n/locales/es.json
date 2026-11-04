@@ -1192,6 +1192,7 @@
     "kindOverload": "{{provider}} está saturado ahora mismo. Inténtalo de nuevo en unos minutos",
     "kindContext": "Este chat es más largo de lo que {{provider}} puede leer en una petición. Usa /compact para resumirlo y continuar",
     "kindTimeout": "{{provider}} ha dejado de responder. No ha llegado nada a tiempo. Reintenta o elige otro modelo si sigue pasando",
+    "streamStalled": "El modelo dejó de responder. No llegó nada en {{minutes}} minutos, así que la tarea se detuvo. Reintenta o elige otro modelo si sigue pasando",
     "kindContent": "El filtro de seguridad de {{provider}} ha bloqueado este mensaje. Reescríbelo o prueba con otro modelo",
     "kindNetworkOffline": "Estás sin conexión. La petición a {{provider}} ni salió de este equipo. Reconéctate y reintenta",
     "kindNetworkHost": "No se pudo conectar con {{provider}} ({{host}}). La petición ni salió de este equipo. Revisa la conexión, alguna VPN o bloqueador de por medio y la URL base",

@@ -172,6 +172,15 @@ sessions and clears its tab claims, then `releaseRun` frees admission. An old fi
 control cannot release, steer or answer a newer run. The bridge's client/session lifecycle
 is detailed in [bridge.md](bridge.md).
 
+An abort is only a request, so the loop must also be able to stop WAITING. `streamTurn` races
+every `next()` on the provider against Stop and a six-minute no-delta deadline (`raceStall`,
+`STREAM_STALL_MS`), and aborts the request it leaves behind. A signed-in provider's generator
+awaits storage, an OAuth refresh and a Chrome API call before core's own request (and core's
+five-minute watchdog) even exists; a stall in any of them used to ignore Stop, hold the run on
+the board forever, and queue every later message behind it. Core's clock is the first line, so
+its precise error wins whenever it can; ours is the net, and it ends the run with a plain
+`timeout` error that is not replayed (a replay would pay for the same silence again).
+
 **Runs survive the panel closing.** Port disconnect never aborts; persistence lives in the
 worker (one `TranscriptWriter` per run), and a keepalive alarm holds
 the worker through long provider silences while no panel pings. Done/error/question fire
