@@ -329,7 +329,7 @@ export default defineBackground(() => {
           // settled it.
           if (
             answering?.owner === "panel" &&
-            answerPlanApproval(msg.runId, msg.approved, msg.feedback)
+            answerPlanApproval(msg.runId, msg.approved, msg.feedback, msg.allowSite)
           ) {
             // Every panel showing the thread has the card up, so every one of
             // them has to learn it was answered — the panel that clicked

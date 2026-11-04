@@ -910,6 +910,7 @@
     "confirmClick": "Click “{{target}}”",
     "confirmDecline": "Don't allow",
     "confirmAllow": "Allow",
+    "confirmAllowSite": "Allow on {{site}} for this task",
     "confirmStep": "Step: {{step}}",
     "confirmTitle": "Allow this step?",
     "approvalTitle": "Approve this plan?",

@@ -9,6 +9,12 @@ const log = createLogger("confirm-step");
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
+/** What a card says, and the site it can be allowed on (clicks and Enter only). */
+export interface ConfirmAsk {
+  action: string;
+  site?: string;
+}
+
 /**
  * Whether this call must wait for the user's yes, and the line the card shows
  * for it. Called before the action runs, so it can only look: one page read for
@@ -22,19 +28,26 @@ const text = (value: unknown): string => (typeof value === "string" ? value.trim
  *   (self-reported annotations) or `schedule_task` (unattended future work).
  *
  * The label check can only add a card, never remove one the model asked for.
+ * Only a click or Enter on a readable page carries a `site`: a remote tool or a
+ * schedule has no page to scope an allowance to, so those always ask.
  */
-export async function confirmAction(call: ToolCall, driver: BrowserDriver): Promise<string | null> {
+export async function confirmAction(
+  call: ToolCall,
+  driver: BrowserDriver,
+): Promise<ConfirmAsk | null> {
   const { name, args } = call;
   const said = args.commits === true;
   const intent = text(args.intent);
 
   if (name.startsWith(MCP_TOOL_PREFIX)) {
     const [server = "", ...tool] = name.slice(MCP_TOOL_PREFIX.length).split("__");
-    return i18n.t("plan.confirmMcp", { tool: tool.join("__") || name, server });
+    return { action: i18n.t("plan.confirmMcp", { tool: tool.join("__") || name, server }) };
   }
-  if (name === "schedule_task") return i18n.t("plan.confirmSchedule", { task: text(args.task) });
+  if (name === "schedule_task") {
+    return { action: i18n.t("plan.confirmSchedule", { task: text(args.task) }) };
+  }
   if (name === "evaluate") {
-    return said ? i18n.t("plan.confirmEvaluate") + (intent ? `: ${intent}` : "") : null;
+    return said ? { action: i18n.t("plan.confirmEvaluate") + (intent ? `: ${intent}` : "") } : null;
   }
   if (name !== "click" && name !== "press_key") return null;
 
@@ -57,7 +70,9 @@ export async function confirmAction(call: ToolCall, driver: BrowserDriver): Prom
   const readsAsCommit = name === "click" ? targetCommits : enter && target?.paysByCard === true;
   if (!said && !readsAsCommit) return null;
 
-  return name === "click"
-    ? i18n.t("plan.confirmClick", { target: target?.name || intent || text(args.ref) })
-    : i18n.t("plan.confirmKey", { key: text(args.key) });
+  const action =
+    name === "click"
+      ? i18n.t("plan.confirmClick", { target: target?.name || intent || text(args.ref) })
+      : i18n.t("plan.confirmKey", { key: text(args.key) });
+  return { action, site: target?.host || undefined };
 }

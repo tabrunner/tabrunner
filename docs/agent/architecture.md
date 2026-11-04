@@ -279,7 +279,12 @@ the user did not want touched, so an **adopted** run (the user's own tab) checks
 the first action that changes that page, whether it holds typed-but-unsent text
 (`pageHoldsDraft`: a non-empty textarea, rich editor or textbox, never a one-line input), and
 asks before touching it. It runs once per run, never on a tab the run opened or a continuation,
-and a commit on the same call still gets its own card. The ceiling: a commit the model does not
+and a commit on the same call still gets its own card. A click or Enter card also carries the
+page's host (`PlanApprovalPayload.site`, from `describeTarget`) and a second button, "Allow on
+this site for this task": the yes comes back with `allowSite`, the loop remembers the host for
+the rest of the run, and that host's commit cards stop (a checkout that takes five "Buy" clicks
+per item asks once). It is per run and per host; MCP tools, `schedule_task` and the draft
+guard never get it, and a different site asks again. The ceiling: a commit the model does not
 flag and whose label is in no list slips through, so the settings copy says so.
 
 With auto-approve off, the first `plan` call of a run parks the loop on `onPlanApproval`; the panel renders the

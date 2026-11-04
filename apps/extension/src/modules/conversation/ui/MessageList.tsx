@@ -323,6 +323,7 @@ function PlanApprovalCard({
   deviationReason,
   confirm,
   action,
+  site,
   onApprove,
   onReject,
 }: {
@@ -337,7 +338,9 @@ function PlanApprovalCard({
   confirm?: number[];
   /** Set when the run is parked on one action, not on a plan. */
   action?: string;
-  onApprove: () => void;
+  /** Set on a click or Enter card: the site "allow for this task" would cover. */
+  site?: string;
+  onApprove: (allowSite?: boolean) => void;
   onReject: () => void;
 }) {
   const { t } = useTranslation();
@@ -363,9 +366,14 @@ function PlanApprovalCard({
           </p>
         )}
         <div className="flex gap-2">
-          <Button size="sm" onClick={onApprove}>
+          <Button size="sm" onClick={() => onApprove()}>
             {t("plan.confirmAllow")}
           </Button>
+          {site && (
+            <Button size="sm" variant="outline" onClick={() => onApprove(true)}>
+              {t("plan.confirmAllowSite", { site })}
+            </Button>
+          )}
           <Button size="sm" variant="ghost" onClick={onReject}>
             {t("plan.confirmDecline")}
           </Button>
@@ -444,7 +452,7 @@ function PlanApprovalCard({
         })}
       </ol>
       <div className="flex gap-2">
-        <Button size="sm" onClick={onApprove}>
+        <Button size="sm" onClick={() => onApprove()}>
           {t("plan.approve")}
         </Button>
         <Button size="sm" variant="ghost" onClick={onReject}>
@@ -1475,6 +1483,7 @@ function Transcript() {
                 deviationReason={planApproval.deviationReason}
                 confirm={planApproval.confirm}
                 action={planApproval.action}
+                site={planApproval.site}
                 onApprove={approvePlan}
                 onReject={rejectPlan}
               />

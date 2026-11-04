@@ -23,7 +23,7 @@ export interface ActiveRun {
   usage: { input: number; output: number; contextTokens: number; cost?: number };
   planApproval?: {
     ask: PlanApprovalPayload;
-    resolve: (approved: boolean, feedback?: string) => void;
+    resolve: (approved: boolean, feedback?: string, allowSite?: boolean) => void;
   };
   elicitation?: {
     requestId: string;
@@ -101,12 +101,17 @@ export function releaseRun(run: ActiveRun): void {
   for (const cb of releaseListeners) cb(run);
 }
 
-export function answerPlanApproval(runId: string, approved: boolean, feedback?: string): boolean {
+export function answerPlanApproval(
+  runId: string,
+  approved: boolean,
+  feedback?: string,
+  allowSite?: boolean,
+): boolean {
   const run = active.get(runId);
   if (run?.owner !== "panel" || run.controller.signal.aborted || !run.planApproval) return false;
   const approval = run.planApproval;
   run.planApproval = undefined;
-  approval.resolve(approved, feedback);
+  approval.resolve(approved, feedback, allowSite);
   return true;
 }
 

@@ -554,6 +554,8 @@ export interface RefTarget {
   name: string;
   /** A submit control in a form that takes a card — the one signal that needs no language. */
   paysByCard: boolean;
+  /** The page's host, `www.` dropped: what "allow on this site" is keyed by. */
+  host: string;
 }
 
 /**
@@ -589,7 +591,7 @@ export function describeTarget(refId: string | null): RefTarget | null {
     !!form?.querySelector(
       'input[autocomplete^="cc-"], input[name*="cvv" i], input[name*="cvc" i], input[name*="cardnumber" i]',
     );
-  return { name, paysByCard };
+  return { name, paysByCard, host: location.hostname.replace(/^www\./, "") };
 }
 
 /**

@@ -92,7 +92,7 @@ describe("run-scoped answers", () => {
     expect(answerPlanApproval("missing", true)).toBe(false);
     expect(answerPlanApproval(a.conversationId, true)).toBe(false);
     expect(answerPlanApproval(a.id, false, "Use the work account")).toBe(true);
-    expect(answerA).toHaveBeenCalledExactlyOnceWith(false, "Use the work account");
+    expect(answerA).toHaveBeenCalledExactlyOnceWith(false, "Use the work account", undefined);
     expect(answerB).not.toHaveBeenCalled();
     expect(answerPlanApproval(a.id, true)).toBe(false);
     expect(b.planApproval).toBeDefined();
