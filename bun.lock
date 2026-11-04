@@ -19,7 +19,7 @@
     },
     "apps/extension": {
       "name": "tabrunner",
-      "version": "0.17.2",
+      "version": "0.17.3",
       "dependencies": {
         "@base-ui-components/react": "catalog:",
         "@providerkit/core": "catalog:",
@@ -76,7 +76,7 @@
     },
     "packages/mcp": {
       "name": "tabrunner-mcp",
-      "version": "0.17.2",
+      "version": "0.17.3",
       "bin": {
         "tabrunner-mcp": "dist/tabrunner-mcp.js",
       },

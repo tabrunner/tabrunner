@@ -2,7 +2,7 @@
   "mcpServers": {
     "tabrunner": {
       "command": "bunx",
-      "args": ["tabrunner-mcp@0.17.2"]
+      "args": ["tabrunner-mcp@0.17.3"]
     }
   }
 }
