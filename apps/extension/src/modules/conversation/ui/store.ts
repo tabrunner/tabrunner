@@ -192,7 +192,8 @@ export interface ConversationState {
   stop: () => void;
   stopRunById: (runId: string) => void;
   /** Answer a parked plan prompt — the loop resumes on approve, unwinds on reject. */
-  approvePlan: () => void;
+  /** `allowSite` also stops asking about the card's site for the rest of the task. */
+  approvePlan: (allowSite?: boolean) => void;
   rejectPlan: () => void;
   /** Answer a parked elicitation — accept with the form's values, or decline. */
   answerElicitation: (action: "accept" | "decline", value?: Record<string, unknown>) => void;
@@ -872,6 +873,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
             deviationReason: event.deviationReason,
             confirm: event.confirm,
             action: event.action,
+            site: event.site,
           },
           planApproved: false,
           replanning: false,
@@ -1702,10 +1704,10 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       }));
     },
 
-    approvePlan: () => {
+    approvePlan: (allowSite) => {
       const runId = currentRunId();
       if (!get().planApproval || !runId) return;
-      post({ type: "plan_approval", runId, approved: true });
+      post({ type: "plan_approval", runId, approved: true, ...(allowSite ? { allowSite } : {}) });
       // Approval is the handover: the gate is behind the run, so a dispatched
       // background run auto-closes.
       set({ planApproval: null, planApproved: true });

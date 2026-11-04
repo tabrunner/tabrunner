@@ -51,7 +51,14 @@ export type Command =
    * `feedback` turns a "no" into a revision request: the run stays alive, the
    * model replans with the changes, and the revised plan is asked about again.
    */
-  | { type: "plan_approval"; runId: string; approved: boolean; feedback?: string }
+  | {
+      type: "plan_approval";
+      runId: string;
+      approved: boolean;
+      feedback?: string;
+      /** On a yes to a confirm card: stop asking about this site for the rest of the task. */
+      allowSite?: boolean;
+    }
   /**
    * The user answered a remote server's elicitation request mid-tool-call —
    * `value` carries the form fields it asked for, or a bare decline. Resolves
@@ -175,6 +182,8 @@ export interface PlanApprovalPayload extends PlanPayload {
   /** Set when the run is parked on one action that commits the user, not on a
    *  plan. The card names it and asks for a yes to that action only. */
   action?: string;
+  /** The site the action is on, when "allow on this site" is on offer. */
+  site?: string;
 }
 
 /**

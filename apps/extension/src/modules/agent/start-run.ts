@@ -617,7 +617,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             return new Promise<PlanApprovalOutcome>((resolve) => {
               run.planApproval = {
                 ask,
-                resolve: (approved, feedback) => {
+                resolve: (approved, feedback, allowSite) => {
                   const revision = approved ? undefined : feedback?.trim() || undefined;
                   // The gate is answered the moment it resolves — approve,
                   // revise, or reject. The board's ask comes down with it, so
@@ -634,7 +634,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
                   } else {
                     planRejected = true;
                   }
-                  resolve(revision ? { approved: false, feedback: revision } : { approved });
+                  resolve(
+                    revision ? { approved: false, feedback: revision } : { approved, allowSite },
+                  );
                 },
               };
               // Abort answers "no" — the run-level listener installed at the top.

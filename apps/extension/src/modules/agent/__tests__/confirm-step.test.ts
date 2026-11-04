@@ -16,10 +16,15 @@ const snapshot = async (): Promise<SnapshotResult> => ({
 });
 
 /** A page whose one button is named `label`; clicks are recorded. */
-function makeDriver(label: string, calls: string[], draft = false): BrowserDriver {
+function makeDriver(
+  label: string,
+  calls: string[],
+  draft = false,
+  host: () => string = () => "shop.example.com",
+): BrowserDriver {
   return {
     snapshot,
-    describeTarget: async () => ({ name: label, paysByCard: false }),
+    describeTarget: async () => ({ name: label, paysByCard: false, host: host() }),
     holdsDraft: async () => draft,
     click: async () => {
       calls.push("click");
@@ -153,5 +158,53 @@ describe("auto-approved plan", () => {
     const results = wire.flatMap((m) => (m.role === "tool_results" ? (m.toolResults ?? []) : []));
     const declined = results.find((r) => r.content.includes("declined"));
     expect(declined?.content).toContain("use my other card");
+  });
+});
+
+describe("allow on this site", () => {
+  /** One "Buy" click per entry in `hosts`, each on that host; every card is answered `answer`. */
+  async function buy(answer: { approved: boolean; allowSite?: boolean }, hosts: string[]) {
+    const clicks: string[] = [];
+    const asks: PlanApprovalPayload[] = [];
+    let at = 0;
+    const click = call("click", { ref: "e1", commits: true });
+    await runAgentLoop({
+      provider: scriptedProvider([[plan], ...hosts.map(() => [click])]),
+      driver: makeDriver("Buy", clicks, false, () => hosts[at++] ?? ""),
+      task: "buy them",
+      autoApprovePlan: true,
+      signal: new AbortController().signal,
+      callbacks: {
+        onPlanApproval: async (ask) => {
+          asks.push(ask);
+          return answer;
+        },
+      },
+    });
+    return { clicks, asks };
+  }
+
+  it("offers the site on a click card", async () => {
+    const { asks } = await buy({ approved: true }, ["dash.example.com"]);
+    expect(asks[0]?.site).toBe("dash.example.com");
+  });
+
+  it("asks once per site after the user allows it, then stops", async () => {
+    const hosts = ["dash.example.com", "dash.example.com", "dash.example.com"];
+    const { asks, clicks } = await buy({ approved: true, allowSite: true }, hosts);
+    expect(asks).toHaveLength(1);
+    expect(clicks).toHaveLength(3);
+  });
+
+  it("keeps asking when the user only allowed that one click", async () => {
+    const hosts = ["dash.example.com", "dash.example.com"];
+    const { asks } = await buy({ approved: true }, hosts);
+    expect(asks).toHaveLength(2);
+  });
+
+  it("still asks on a different site", async () => {
+    const hosts = ["dash.example.com", "other.example.org", "dash.example.com"];
+    const { asks } = await buy({ approved: true, allowSite: true }, hosts);
+    expect(asks.map((a) => a.site)).toEqual(["dash.example.com", "other.example.org"]);
   });
 });

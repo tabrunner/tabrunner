@@ -910,6 +910,7 @@
     "confirmClick": "Hacer clic en “{{target}}”",
     "confirmDecline": "No permitir",
     "confirmAllow": "Permitir",
+    "confirmAllowSite": "Permitir en {{site}} durante esta tarea",
     "confirmStep": "Paso: {{step}}",
     "confirmTitle": "¿Permitir este paso?",
     "approvalTitle": "¿Aprobar este plan?",

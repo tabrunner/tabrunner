@@ -27,6 +27,7 @@ import type { RunGroup } from "./tools";
 import type { RunOwner } from "./active-runs";
 import { buildSystemPrompt, buildTaskMessage, buildToolDefs } from "./prompt";
 import { confirmAction } from "./confirm-step";
+import type { ConfirmAsk } from "./confirm-step";
 import type { PreviousTab, RunMode, SubmitPage } from "./prompt";
 import { compactRunMessages } from "./compact";
 import { DEFAULT_CONTEXT_WINDOW, needsCompaction } from "@/modules/providers/context-window";
@@ -230,6 +231,8 @@ export interface PlanApprovalOutcome {
    * result, and the REVISED plan is parked for approval again.
    */
   feedback?: string;
+  /** A yes to a confirm card that also covers the same site for the rest of the run. */
+  allowSite?: boolean;
 }
 
 export interface LoopCallbacks {
@@ -674,6 +677,10 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
   // run has one to check: its own tab starts empty, and a continuation already
   // had its yes on the first message.
   let draftChecked = mode !== "adopted";
+  // Sites the user said "allow on this site" to: their commit cards stop for the
+  // rest of this run. Keyed by host, never by action, so a checkout that takes
+  // five "Buy" clicks per item asks once and a different site still asks.
+  const allowedSites = new Set<string>();
   // The last list the user was SHOWN at a gate — what the next ask diffs
   // against. Not `approvedPlan`: a plan sent back for revision clears that one,
   // and "did it change what I asked it to?" is exactly the question the revised
@@ -913,21 +920,22 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         // is the moment to ask, once, if it holds a draft the plan card used to
         // protect. A page with nothing typed on it never asks. A commit on that
         // same call still gets its own card after it.
-        const actions: string[] = [];
+        const asks: ConfirmAsk[] = [];
         if (!draftChecked && TOUCHES_PAGE.has(call.name)) {
           draftChecked = true;
-          if (await holdsDraft(driver)) actions.push(i18n.t("plan.confirmDraft"));
+          if (await holdsDraft(driver)) asks.push({ action: i18n.t("plan.confirmDraft") });
         }
         const commit = await confirmAction(call, driver);
-        if (commit) actions.push(commit);
+        if (commit && !(commit.site && allowedSites.has(commit.site))) asks.push(commit);
 
         let declined: { action: string; note?: string } | null = null;
-        for (const action of actions) {
+        for (const { action, site } of asks) {
           const base = approvedPlan ?? { steps: [], current: 0 };
           const outcome = (await callbacks.onPlanApproval?.({
             ...base,
             reapproval: false,
             action,
+            ...(site ? { site } : {}),
           })) ?? { approved: true };
           if (signal.aborted) {
             callbacks.onDone?.();
@@ -937,6 +945,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
             declined = { action, note: outcome.feedback?.trim() };
             break;
           }
+          if (site && outcome.allowSite) allowedSites.add(site);
         }
         if (declined) {
           log.info(`${call.name} declined by user`);
