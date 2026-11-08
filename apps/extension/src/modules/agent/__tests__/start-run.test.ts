@@ -6,8 +6,12 @@ import {
   labelRunTab,
   liveThreadGroup,
   reopenTargetFor,
+  resolveRunTab,
   settleRunTab,
 } from "../start-run";
+import { releaseBrowserOwner, tabOwner } from "@/modules/browser";
+import * as browser from "@/modules/browser";
+import { defaultStartUrl } from "@/lib/prefs";
 import type { LastTab } from "@/modules/conversation/conversations";
 import type { Message } from "@/modules/conversation/types";
 
@@ -55,6 +59,167 @@ describe("continuesThreadTab", () => {
   it("a schedule run returns only for a parked answer", () => {
     expect(continuesThreadTab("schedule", false)).toBe(false);
     expect(continuesThreadTab("schedule", true)).toBe(true);
+  });
+});
+
+describe("resolveRunTab", () => {
+  const runId = "tab-recovery";
+  const opts = {
+    runId,
+    ownerId: "panel",
+    owner: "panel" as const,
+    conversationId: "chat",
+    task: "Continue",
+    emit: vi.fn(),
+  };
+  const page = (id: number, url: string): chrome.tabs.Tab => ({
+    id,
+    url,
+    title: `tab ${id}`,
+    windowId: 1,
+    groupId: -1,
+    index: 0,
+    active: false,
+    highlighted: false,
+    pinned: false,
+    incognito: false,
+    discarded: false,
+    frozen: false,
+    lastAccessed: 0,
+    autoDiscardable: true,
+    selected: false,
+    status: "complete",
+  });
+  const primary = page(41, "https://console.test/account");
+  const current = page(42, "https://www.instagram.com/api/v1/web/fxcal/ig_sso_users/");
+  const starter = page(43, "https://start.test/");
+  const last: LastTab = { tabId: primary.id, url: primary.url!, title: primary.title! };
+  let get: ReturnType<typeof vi.fn>;
+  let create: ReturnType<typeof vi.fn>;
+  let executeScript: ReturnType<typeof vi.fn>;
+  let waitForLoad: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    get = vi.fn(async (id: number) => {
+      const tab = [primary, current, starter].find((t) => t.id === id);
+      if (!tab) throw new Error("No tab with id");
+      return tab;
+    });
+    create = vi.fn().mockResolvedValue(starter);
+    executeScript = vi.fn().mockResolvedValue([{ result: true }]);
+    waitForLoad = vi.spyOn(browser, "waitForLoad").mockResolvedValue(undefined);
+    vi.stubGlobal("chrome", {
+      ...chrome,
+      tabs: {
+        ...chrome.tabs,
+        get,
+        query: vi.fn(async (query: chrome.tabs.QueryInfo) => (query.active ? [current] : [])),
+        create,
+      },
+      scripting: { executeScript },
+    });
+    await defaultStartUrl.set(starter.url!);
+  });
+
+  afterEach(async () => {
+    await releaseBrowserOwner(runId);
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const resolve = (continuation?: LastTab) =>
+    resolveRunTab(
+      opts,
+      continuation,
+      thread(continuation ? [continuation] : []),
+      new AbortController().signal,
+    );
+
+  it("keeps the primary when the follow-up is sent from an error page", async () => {
+    executeScript.mockImplementation(async ({ target }: { target: { tabId: number } }) => {
+      if (target.tabId === current.id) throw new Error("Frame with ID 0 is showing error page");
+      return [{ result: true }];
+    });
+    await expect(resolve(last)).resolves.toMatchObject({ tab: primary, resumed: true });
+    expect(create).not.toHaveBeenCalled();
+    expect(executeScript).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ target: { tabId: primary.id } }),
+    );
+  });
+
+  it("opens a new tab when the current page is a browser error with an HTTPS URL", async () => {
+    executeScript.mockRejectedValue(new Error("Frame with ID 0 is showing error page"));
+    await expect(resolve()).resolves.toMatchObject({ tab: starter, opened: true, starter: true });
+    expect(create).toHaveBeenCalledExactlyOnceWith({ active: false, url: starter.url });
+    expect(tabOwner(starter.id!)).toBe(runId);
+  });
+
+  it("does not reopen an unusable primary's failing URL", async () => {
+    executeScript.mockRejectedValue(new Error("Frame with ID 0 is showing error page"));
+    await expect(resolve(last)).resolves.toMatchObject({
+      tab: starter,
+      opened: true,
+      starter: true,
+    });
+    expect(create).toHaveBeenCalledExactlyOnceWith({ active: false, url: starter.url });
+  });
+
+  it("reopens a closed primary's URL rather than treating it as a live error page", async () => {
+    get.mockRejectedValueOnce(new Error("No tab with id"));
+    executeScript.mockRejectedValue(new Error("Frame with ID 0 is showing error page"));
+    await expect(resolve(last)).resolves.toMatchObject({
+      tab: starter,
+      opened: true,
+      starter: false,
+    });
+    expect(create).toHaveBeenCalledExactlyOnceWith({ active: false, url: last.url });
+  });
+
+  it.each(["about:blank", "chrome://settings/"])(
+    "opens a fresh start tab when the primary moved to %s and the current page is unusable",
+    async (url) => {
+      get.mockResolvedValueOnce({ ...primary, url });
+      executeScript.mockRejectedValue(new Error("Frame with ID 0 is showing error page"));
+      await expect(resolve(last)).resolves.toMatchObject({
+        tab: starter,
+        opened: true,
+        starter: true,
+      });
+      expect(create).toHaveBeenCalledExactlyOnceWith({ active: false, url: starter.url });
+      expect(executeScript).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ target: { tabId: current.id } }),
+      );
+    },
+  );
+
+  it("uses the current page when the primary is unusable but the current page works", async () => {
+    executeScript.mockImplementation(async ({ target }: { target: { tabId: number } }) => {
+      if (target.tabId === primary.id) throw new Error("Frame with ID 0 is showing error page");
+      return [{ result: true }];
+    });
+    await expect(resolve(last)).resolves.toMatchObject({ tab: current, adopted: true });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("waits for a loading primary before checking it", async () => {
+    get.mockResolvedValueOnce({ ...primary, status: "loading" });
+    await expect(resolve(last)).resolves.toMatchObject({ tab: { id: primary.id }, resumed: true });
+    expect(waitForLoad).toHaveBeenCalledWith(primary.id, 10_000);
+    expect(waitForLoad.mock.invocationCallOrder[0]).toBeLessThan(
+      executeScript.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("does not hide a primary claimed by another run behind a fallback", async () => {
+    browser.claimTab("other-owner", primary.id!);
+    try {
+      await expect(resolve(last)).rejects.toThrow(/another task/i);
+      expect(executeScript).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+      expect(tabOwner(primary.id!)).toBe("other-owner");
+    } finally {
+      await releaseBrowserOwner("other-owner");
+    }
   });
 });
 

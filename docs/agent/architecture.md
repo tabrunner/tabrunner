@@ -33,6 +33,12 @@ before acting on it (`openTab` navigates the starter tab in place), or ends with
 acting on the default start page, the unused starter tab is closed so no dead start-page tab
 is left behind.
 
+A saved tab takes priority only while its page is usable. Chrome error pages can retain a
+normal HTTPS URL, so run start checks that a page script can run before reusing or adopting
+one. It waits for an in-progress load first, without attaching the debugger. If neither the
+saved tab nor the current page works, the run opens its start page. A live error page never
+seeds that new tab with the same failing URL; a closed tab still supplies its saved URL.
+
 **A closed tab ends the run, and hands back the page — unless nobody was there.** Closing
 the driven tab is fatal by design — every later tool call would fail on the same dead id.
 Whether the run may undo it is a question about who was in its loop (`reopenTargetFor`):
