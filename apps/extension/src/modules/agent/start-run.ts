@@ -21,6 +21,7 @@ import {
   waitAgentIndicator,
   waitForLoad,
 } from "@/modules/browser";
+import { runInPage } from "@/modules/browser/inject";
 import { settleStatusWidgets, type SettleOutcome } from "@/modules/browser/status-widget";
 import {
   createProvider,
@@ -374,7 +375,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       ...(target.threadGroupId !== undefined ? { seedGroupId: target.threadGroupId } : {}),
       drivenTabId: () => drivenTabId,
     });
-    const starterTab = opened === true && !opts.url && !continuation?.url;
+    const starterTab = target.starter === true;
     const driver = createDriver(tab.id, {
       ownerId: run.id,
       openedTab: opened === true,
@@ -950,6 +951,8 @@ interface RunTab {
   resumed?: boolean;
   /** This run opened the tab, so a rejected plan can take it back. */
   opened?: boolean;
+  /** An unused default start page can be closed when the run ends. */
+  starter?: boolean;
   /** This run took over the user's current tab — drive it, never close it. */
   adopted?: boolean;
   /** Where the user was sitting when they sent this, when the run did not
@@ -1043,7 +1046,7 @@ function isBlankPage(url: string | undefined): boolean {
  * browser, and reaching over to raise Chrome over the editor they ARE looking
  * at is the hijack this all avoids.
  */
-async function resolveRunTab(
+export async function resolveRunTab(
   opts: StartRunOptions,
   continuation: LastTab | undefined,
   thread: ThreadTabs,
@@ -1051,8 +1054,8 @@ async function resolveRunTab(
 ): Promise<RunTab | { error: string }> {
   signal.throwIfAborted();
   const reused = await reuseContinuationTab(continuation, thread);
-  if (reused?.tab.id !== undefined) claimTab(opts.runId, reused.tab.id);
-  if (reused) {
+  if (reused && (await canUseRunTab(opts.runId, reused.tab))) {
+    signal.throwIfAborted();
     // Context, not a target: where the user sat when they sent this. The run
     // starts on the thread's tab; the model hears about theirs.
     const submitPage = await submitTabPage(opts, reused.tab);
@@ -1069,13 +1072,8 @@ async function resolveRunTab(
   const adopt = !opts.url && (opts.owner === "panel" || opts.adoptCurrentTab === true);
   if (adopt) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id && tab.url && !isBlankPage(tab.url) && !isRestrictedUrl(tab.url)) {
-      claimTab(opts.runId, tab.id);
-      try {
-        if (tab.status === "loading") await waitForLoad(tab.id, 10_000);
-      } catch (e) {
-        return { error: e instanceof Error ? e.message : String(e) };
-      }
+    if (tab && tab.id !== reused?.tab.id && (await canUseRunTab(opts.runId, tab))) {
+      signal.throwIfAborted();
       const threadGroupId = await liveThreadGroup(thread, tab);
       return {
         tab,
@@ -1085,7 +1083,9 @@ async function resolveRunTab(
     }
   }
 
-  const start = await resolveStartUrl(opts, continuation?.url);
+  // A missing tab can be reopened; a live error page must not seed the same failure.
+  const continuationUrl = reused ? undefined : continuation?.url;
+  const start = await resolveStartUrl(opts, continuationUrl);
   if (isRestrictedUrl(start.url)) return { error: i18n.t("errors.restrictedPage") };
   signal.throwIfAborted();
   let tab: chrome.tabs.Tab;
@@ -1109,12 +1109,26 @@ async function resolveRunTab(
     return {
       tab: loaded,
       opened: true,
+      starter: !opts.url && !continuationUrl,
       ...(threadGroupId !== undefined ? { threadGroupId } : {}),
     };
   } catch (e) {
     await discardRunTab(tab.id);
     if (signal.aborted) throw e;
     return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Browser error pages retain their HTTPS URL, but Chrome refuses page scripts. */
+async function canUseRunTab(runId: string, tab: chrome.tabs.Tab): Promise<boolean> {
+  if (!tab.id || isBlankPage(tab.url) || isRestrictedUrl(tab.url)) return false;
+  // Ownership conflicts are not page failures and must not silently pick another tab.
+  claimTab(runId, tab.id);
+  try {
+    if (tab.status === "loading") await waitForLoad(tab.id, 10_000);
+    return (await runInPage(tab.id, () => true, [])) === true;
+  } catch {
+    return false;
   }
 }
 
@@ -1136,7 +1150,6 @@ async function reuseContinuationTab(
   if (last?.tabId === undefined) return undefined;
   try {
     const tab = await chrome.tabs.get(last.tabId);
-    if (isRestrictedUrl(tab.url)) return undefined;
     const threadGroupId = await liveThreadGroup(thread, tab);
     // The run continues where the question arose — the very tab it was driving,
     // which under adoption IS the user's tab. The model must hear that, or it
