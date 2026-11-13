@@ -21,7 +21,7 @@ const root = resolve(import.meta.dir, "..");
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
 
 assert.deepEqual(rootPackage.workspaces.packages, ["apps/*", "packages/*"]);
-assert.equal(rootPackage.packageManager, "bun@1.4.2");
+assert.equal(rootPackage.packageManager, "bun@1.4.4");
 assert.equal(extension.name, "tabrunner", "WXT uses the package name in the release ZIP filename.");
 assert.equal(site.name, "tabrunner-site");
 assert.equal(mcp.name, "tabrunner-mcp");
