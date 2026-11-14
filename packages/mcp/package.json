@@ -30,7 +30,7 @@
     "start": "bun src/index.ts",
     "prepack": "bun run build",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src smoke.ts",
+    "lint": "oxlint -c ../../.oxlintrc.json src smoke.ts",
     "build": "bun build --target=bun src/index.ts --outfile dist/tabrunner-mcp.js"
   },
   "devDependencies": {

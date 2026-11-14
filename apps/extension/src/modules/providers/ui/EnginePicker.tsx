@@ -104,7 +104,7 @@ function useModels(provider: ProviderConfig | null) {
       cancelled = true;
     };
     // target identity is captured by key
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [key, attempt]);
 
   // Cache hits resolve during render (switching back to a provider never waits

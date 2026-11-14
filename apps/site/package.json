@@ -16,7 +16,7 @@
     "sync:legal": "bun run scripts/sync-legal.ts",
     "og": "bun run scripts/gen-og.ts",
     "shoot": "bun run scripts/shoot.ts",
-    "lint": "eslint src vite.config.ts"
+    "lint": "oxlint -c ../../.oxlintrc.json src vite.config.ts"
   },
   "dependencies": {
     "i18next": "catalog:",

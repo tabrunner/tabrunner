@@ -9,7 +9,7 @@
  * priority, so on a busy machine that was minutes of the browser's empty gray,
  * with the boot cover never drawn once.
  *
- * So this file imports nothing (ESLint holds the line). Its load finishes on the
+ * So this file imports nothing (oxlint holds the line). Its load finishes on the
  * static cover in index.html, the browser shows the panel, and the app starts
  * one task later — visible, at foreground priority, under a cover already on
  * screen. The extra task keeps the import from ever counting toward the load.
@@ -67,6 +67,7 @@ addEventListener(
   "load",
   () =>
     setTimeout(() =>
+      // oxlint-disable-next-line no-restricted-imports -- the one sanctioned import: dynamic, after load
       import("./main").catch((e: unknown) => {
         say("failed");
         reportError(e);

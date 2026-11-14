@@ -46,8 +46,10 @@ The full `bun run test` is manual and requires an explicit request.
 
 - Dependency ranges live in the root `workspaces.catalog`; workspaces use `catalog:`. Keep one
   root lockfile. The extension's `tabrunner` name controls WXT's public ZIP filename.
-- Shared TypeScript, ESLint and formatting config stays at the root. Browser, service-worker and
-  Bun types stay separate. Never weaken the extension's UI-only import boundary.
+- Shared TypeScript, oxlint and formatting config stays at the root (`.oxlintrc.json`; each
+  workspace's `lint` passes `-c ../../.oxlintrc.json`). TypeScript is 7, the native compiler: `types`
+  defaults to `[]`, so each tsconfig lists its own. Browser, service-worker and Bun types stay
+  separate. Never weaken the extension's UI-only import boundary.
 - The extension's `apps/extension/package.json` version owns the release. Root
   `scripts/release.ts` keeps the MCP package, registry entry, plugin manifests and launchers in step.
 - `docs/website-brief.md` is the product/site contract. Keep claims and screenshot captions in step.

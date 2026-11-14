@@ -50,10 +50,10 @@ Domain-first `src/modules/<domain>/`. Each module has an `index.ts` barrel and c
 `__tests__/`.
 
 **Runtime boundary — one rule, no exemptions.** Within a domain, everything under `ui/` is
-UI-only (including its zustand `store.ts`); everything else is background-safe. ESLint
-`no-restricted-imports` forbids any file outside a `ui/` folder (plus `src/components/**`,
-entrypoints, tests) from importing `react`, `react-dom`, `zustand`, or `*/ui/*` — so React can
-never reach the service-worker bundle.
+UI-only (including its zustand `store.ts`); everything else is background-safe. oxlint's
+`no-restricted-imports` (`.oxlintrc.json`) forbids any file outside a `ui/` folder (plus
+`src/components/**`, entrypoints, tests) from importing `react`, `react-dom`, `zustand`, or
+`*/ui/*` — so React can never reach the service-worker bundle.
 
 ### Modules
 
@@ -286,9 +286,10 @@ Quick invariants that bite often:
   (`wireSession` in `cdp-driver.ts`); `browser/__tests__/module-scope.test.ts` holds the line.
 - **The side panel's first load is the shell, never the app**: Chromium keeps an extension side
   panel hidden until its document's first load finishes, and a hidden renderer runs at background
-  priority. `sidepanel/shell.ts` imports nothing (ESLint-enforced) and `import()`s the app after
-  `load`. Put app code back on that load and a busy machine shows minutes of empty gray. The
-  boot log's `shown` stamp is the check.
+  priority. `sidepanel/shell.ts` imports nothing (oxlint-enforced) and `import()`s the app after
+  `load`. oxlint also counts a dynamic import, so that one line carries a scoped disable. Put app
+  code back on that load and a busy machine shows minutes of empty gray. The boot log's `shown`
+  stamp is the check.
 - **Stop is not an error**: user abort ends a run with `done`, never a red bubble.
 - **No sampling params** (temperature/topP) on any provider — the only knob is `reasoningEffort`.
 - **A question in plain prose does not pause a run** — only the `ask_user` tool does.
@@ -296,8 +297,8 @@ Quick invariants that bite often:
 ## Conventions
 
 - TypeScript strict, `noUncheckedIndexedAccess`, `verbatimModuleSyntax` — `import type` for
-  type-only imports (ESLint-enforced).
-- No `any` in production code (ESLint-enforced). Fix the underlying type mismatch instead.
+  type-only imports (oxlint-enforced).
+- No `any` in production code (oxlint-enforced). Fix the underlying type mismatch instead.
 - No deprecated aliases or compatibility shims — clean breaks, fix the real problem.
 - Prettier: 2-space, double quotes, semicolons, width 100.
 - `@/*` alias → `src/*` (via `srcDir: "src"` in wxt.config.ts — WXT owns the `@` default).
