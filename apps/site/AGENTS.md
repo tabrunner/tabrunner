@@ -72,7 +72,7 @@ Downloads keep the existing releases/latest aliases and never name a version.
   (`scripts/gen-og.ts` ↔ `apps/extension/scripts/gen-icons.ts`).
 - Fonts: Unbounded (display) / Figtree (body) / JetBrains Mono (telemetry), via
   `@fontsource-variable/*`; OFL TTFs for resvg in `assets/fonts/`.
-- Prettier: 2-space, double quotes, semicolons, width 100.
+- oxfmt: 2-space, double quotes, semicolons, width 100.
 
 ## Product screenshots
 

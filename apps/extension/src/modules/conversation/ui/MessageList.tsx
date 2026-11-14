@@ -43,7 +43,13 @@ import { ArtifactCard } from "@/modules/walkthrough/ui";
 import { useStoredItem } from "@/components/useStoredItem";
 
 type HintKey =
-  "badKey" | "signedOut" | "quota" | "rateLimited" | "rejected" | "network" | "noProvider";
+  | "badKey"
+  | "signedOut"
+  | "quota"
+  | "rateLimited"
+  | "rejected"
+  | "network"
+  | "noProvider";
 type CtaKey = "updateKey" | "signIn" | "checkUrl" | "addProvider" | "compact";
 
 const HINT_KEYS = {
@@ -632,7 +638,8 @@ const BURST_COUNT_KEYS = {
 } as const;
 
 type BurstCountKey =
-  (typeof BURST_COUNT_KEYS)[keyof typeof BURST_COUNT_KEYS] | "chat.burstCount.action";
+  | (typeof BURST_COUNT_KEYS)[keyof typeof BURST_COUNT_KEYS]
+  | "chat.burstCount.action";
 
 function burstCountKey(tool: string | undefined): BurstCountKey {
   return BURST_COUNT_KEYS[tool as keyof typeof BURST_COUNT_KEYS] ?? "chat.burstCount.action";

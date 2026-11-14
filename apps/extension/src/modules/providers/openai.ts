@@ -268,7 +268,8 @@ function mapFinishReason(
 }
 
 type OpenAIPart =
-  { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";

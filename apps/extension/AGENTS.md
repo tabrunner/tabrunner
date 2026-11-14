@@ -53,7 +53,7 @@ Domain-first `src/modules/<domain>/`. Each module has an `index.ts` barrel and c
 UI-only (including its zustand `store.ts`); everything else is background-safe. oxlint's
 `no-restricted-imports` (`.oxlintrc.json`) forbids any file outside a `ui/` folder (plus
 `src/components/**`, entrypoints, tests) from importing `react`, `react-dom`, `zustand`, or
-`*/ui/*` — so React can never reach the service-worker bundle.
+`*/ui/*`, so React can never reach the service-worker bundle.
 
 ### Modules
 
@@ -300,7 +300,7 @@ Quick invariants that bite often:
   type-only imports (oxlint-enforced).
 - No `any` in production code (oxlint-enforced). Fix the underlying type mismatch instead.
 - No deprecated aliases or compatibility shims — clean breaks, fix the real problem.
-- Prettier: 2-space, double quotes, semicolons, width 100.
+- oxfmt: 2-space, double quotes, semicolons, width 100.
 - `@/*` alias → `src/*` (via `srcDir: "src"` in wxt.config.ts — WXT owns the `@` default).
 - Base UI for interactive primitives — go through `src/components/`, don't hand-roll buttons,
   selects, inputs, or dialogs.

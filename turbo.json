@@ -6,7 +6,7 @@
     "tsconfig.react.json",
     "tsconfig.scripts.json",
     "knip.json",
-    "prettier.config.mjs",
+    ".oxfmtrc.json",
     "patches/**",
     "PRIVACY*.md",
     "TERMS*.md",

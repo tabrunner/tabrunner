@@ -20,7 +20,8 @@ import { useNow } from "@/modules/conversation/ui/hooks";
 const TTL_MS = 60_000;
 
 type Snapshot =
-  { state: "ok"; usage: ProviderUsage } | { state: "error"; message: string; authFailed: boolean };
+  | { state: "ok"; usage: ProviderUsage }
+  | { state: "error"; message: string; authFailed: boolean };
 
 const cache = new Map<string, { snapshot: Snapshot; at: number }>();
 

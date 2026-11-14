@@ -422,7 +422,8 @@ function filterCopilotEntries(raws: Record<string, unknown>[]): Record<string, u
   const usable = raws.filter((record) => {
     const supports = (
       (record.capabilities as Record<string, unknown> | undefined)?.supports as
-        Record<string, unknown> | undefined
+        | Record<string, unknown>
+        | undefined
     )?.tool_calls;
     return supports !== false;
   });

@@ -104,7 +104,8 @@ export function toCoreMessages(messages: ChatMessage[]): CoreMessage[] {
     }
     if (msg.role === "user" && msg.images?.length) {
       const parts: (
-        { type: "text"; text: string } | { type: "image"; mimeType: ImageMimeType; data: string }
+        | { type: "text"; text: string }
+        | { type: "image"; mimeType: ImageMimeType; data: string }
       )[] = [{ type: "text", text: msg.content }];
       for (const url of msg.images) {
         const part = toImagePart(url);

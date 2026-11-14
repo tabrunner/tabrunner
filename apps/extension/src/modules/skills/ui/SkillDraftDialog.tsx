@@ -14,7 +14,9 @@ import { seedFromParsed, SkillForm, type SkillSeed } from "./SkillForm";
 import { setSkillDraftOpen, useSkillDraftOpen } from "./draft-open";
 
 type Stage =
-  { kind: "working" } | { kind: "review"; seed: SkillSeed } | { kind: "error"; message: string };
+  | { kind: "working" }
+  | { kind: "review"; seed: SkillSeed }
+  | { kind: "error"; message: string };
 
 /** The whole pipeline, component-free: transcript → provider → SKILL.md draft → form seed. */
 async function distillFor(conversationId: string | null, signal: AbortSignal): Promise<SkillSeed> {

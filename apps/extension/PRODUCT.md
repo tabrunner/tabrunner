@@ -57,7 +57,7 @@ Two claims a neighboring product cannot copy:
 ## Capabilities and Constraints
 
 - The model never receives raw HTML — it works from a compact accessibility tree (`[ref=e12]
-button "Submit"`); `sanitize.ts` caps tool output and keeps passwords, one-time codes and card
+  button "Submit"`); `sanitize.ts` caps tool output and keeps passwords, one-time codes and card
   numbers from leaving the page.
 - Trusted input, network/console rings, page-side `fill`/`evaluate` (CSP-exempt) — all over the
   debugger channel, attach-scoped to the tab being worked.
