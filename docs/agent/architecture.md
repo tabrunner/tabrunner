@@ -248,8 +248,14 @@ that works the page in place (`PAGE_WORK_TOOLS`) gets `driver.settle()`: a 400ms
 a load starting, then `waitForLoad` if one did. Nothing waited after a click before this,
 so a batched second call met a page still assembling. A tab that closes under either half
 ends the wait at once — a click can close its own tab, and `waitForLoad` watches
-`onRemoved` for exactly that, because a tab that is gone never reaches `complete` and the
-batch behind it would otherwise stall for the full 30s timeout. Then, before a turn's
+`onRemoved` for exactly that, because a tab that is gone never gets ready and the
+batch behind it would otherwise stall for the full 30s timeout. Ready means the tab's
+current document is parsed: a probe page script at `document_idle` (the point every
+snapshot already waits for, at most 200ms after DOMContentLoaded) answers from a real url
+with no navigation pending, or the tab reports `complete`, whichever comes first.
+`complete` alone waits for every frame, font and beacon, and a heavy app in a background
+tab on a busy computer can take past 30s to get there while its page is long usable.
+Then, before a turn's
 second-and-later ref actions (`PAGE_STATE_TOOLS`), a census asks whether the page grew — `generateSnapshot`
 mints a ref exactly for an interactive element its registry has never seen, so `newRefs > 0`
 IS the change signal, and there is no second DOM walker to keep in sync with the first.

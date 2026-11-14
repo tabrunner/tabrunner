@@ -31,8 +31,30 @@ let closed = false;
 
 const runtime = { lastError: undefined as { message: string } | undefined };
 
+/**
+ * A page script waits for document_idle, as chrome.scripting does by default:
+ * a call made while the document is still parsing answers once it is ready.
+ * It answers with the url of the document it ran in.
+ */
+let documentReady = false;
+const idleWaiters: Array<() => void> = [];
+function executeScript() {
+  return new Promise<Array<{ result: string }>>((resolve) => {
+    const answer = () => resolve([{ result: tab.url }]);
+    if (documentReady) answer();
+    else idleWaiters.push(answer);
+  });
+}
+/** The document finished parsing; scripts waiting on it run. */
+async function ready() {
+  documentReady = true;
+  for (const answer of idleWaiters.splice(0)) answer();
+  await flush();
+}
+
 (globalThis as Record<string, unknown>).chrome = {
   runtime,
+  scripting: { executeScript },
   tabs: {
     onRemoved: {
       addListener: (fn: RemovedListener) => removedListeners.add(fn),
@@ -89,6 +111,8 @@ describe("settleIfLoading", () => {
     removedListeners.clear();
     tab.status = "complete";
     closed = false;
+    documentReady = false;
+    idleWaiters.length = 0;
   });
 
   it("reports no load when the window passes quietly — the common click", async () => {
@@ -159,6 +183,8 @@ describe("waitForLoad errors", () => {
     removedListeners.clear();
     tab.status = "loading";
     closed = false;
+    documentReady = false;
+    idleWaiters.length = 0;
   });
 
   it("says how long it waited and what to do, in the catalog's words", async () => {
@@ -179,5 +205,43 @@ describe("waitForLoad errors", () => {
   it("names a tab that is already gone", async () => {
     closed = true;
     await expect(waitForLoad(1)).rejects.toThrow("That tab is gone.");
+  });
+});
+
+// A heavy app (a developer console, a store dashboard) keeps loading frames,
+// fonts and beacons long after its page can be read and used, so the tab's own
+// "complete" can come well past the timeout, most of all in a background tab on
+// a busy computer. The run only needs the page to be there.
+describe("waitForLoad readiness", () => {
+  beforeEach(() => {
+    listeners.clear();
+    removedListeners.clear();
+    tab.url = "https://example.com";
+    tab.status = "loading";
+    closed = false;
+    documentReady = false;
+    idleWaiters.length = 0;
+  });
+
+  it("resolves once the document is ready, while the tab still says loading", async () => {
+    const loading = waitForLoad(1, 1_000);
+    await flush();
+    await ready();
+    await expect(loading).resolves.toBeUndefined();
+    expect(subscribed()).toBe(0);
+  });
+
+  it("does not count the blank page a new tab starts on", async () => {
+    tab.url = "about:blank";
+    let loaded = false;
+    const loading = waitForLoad(1, 5_000).then(() => (loaded = true));
+    await ready();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(loaded).toBe(false);
+
+    tab.url = "https://example.com";
+    await emit("complete");
+    await loading;
+    expect(subscribed()).toBe(0);
   });
 });
