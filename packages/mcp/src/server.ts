@@ -1,7 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { BridgeError, type ClientBridgeLink, NOT_CONNECTED, QUICK_TIMEOUT_MS } from "./link";
+import {
+  BridgeError,
+  type ClientBridgeLink,
+  NOT_CONNECTED,
+  PAGE_TIMEOUT_MS,
+  QUICK_TIMEOUT_MS,
+} from "./link";
 import type { BridgeProviderInfo, BridgeStatus, CaptureResult } from "./protocol";
 // One source of truth for the version, exactly as the extension does it.
 import pkg from "../package.json" with { type: "json" };
@@ -488,6 +494,7 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
       const result = await link.request<{ ok?: boolean; data?: unknown; error?: string }>(
         "browserAct",
         { tool, args: toolArgs, ...(snapshot === false ? { snapshot } : {}) },
+        PAGE_TIMEOUT_MS,
       );
       return text(renderToolResult(tool, result));
     });
@@ -554,12 +561,16 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
           data?: unknown;
           runId: string;
           conversationId: string;
-        }>("browserStart", {
-          goal,
-          agent: clientName(),
-          ...(url ? { url } : {}),
-          ...(background === false ? { background } : {}),
-        });
+        }>(
+          "browserStart",
+          {
+            goal,
+            agent: clientName(),
+            ...(url ? { url } : {}),
+            ...(background === false ? { background } : {}),
+          },
+          PAGE_TIMEOUT_MS,
+        );
         link.startRun(result.runId, result.conversationId);
         return text(
           `Driving directly. The user sees this as "${goal}" in TabRunner's history, with every action under it.\n\n${renderToolResult("snapshot", result)}`,
