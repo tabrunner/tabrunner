@@ -15,7 +15,8 @@ import { truncateTo } from "@/lib/format";
  * uses. Errors come back as strings the tool returns verbatim.
  */
 export type SaveSkillOutcome =
-  { ok: true; saved: { name: string; description: string } } | { ok: false; error: string };
+  | { ok: true; saved: { name: string; description: string } }
+  | { ok: false; error: string };
 
 export async function handleSaveSkill(args: {
   url?: unknown;

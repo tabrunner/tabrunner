@@ -19,7 +19,7 @@ const driver = { snapshot } as unknown as BrowserDriver;
 /** A provider stuck before its request exists: a refresh that never answers, a Chrome call that never returns. */
 function hungProvider(started: () => void): ChatProvider {
   return {
-    // eslint-disable-next-line require-yield -- never yields: that is the point
+    // oxlint-disable-next-line require-yield -- never yields: that is the point
     async *stream() {
       started();
       await new Promise<never>(() => {});

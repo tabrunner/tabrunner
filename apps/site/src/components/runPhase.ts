@@ -14,7 +14,10 @@ export const DONE_AT = 9_200;
 export const TOTAL_TOKENS = 3_840;
 
 export type RunPhase =
-  { kind: "planning" } | { kind: "step"; index: number } | { kind: "composing" } | { kind: "done" };
+  | { kind: "planning" }
+  | { kind: "step"; index: number }
+  | { kind: "composing" }
+  | { kind: "done" };
 
 /** Which state the run is in at `tick` ms into the cycle. */
 export function phaseAt(tick: number): RunPhase {

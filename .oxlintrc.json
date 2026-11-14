@@ -1,0 +1,92 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": ["./node_modules/@gusnips/oxlint/base.json"],
+  "plugins": [],
+  "ignorePatterns": [".claude/**", ".agents/**"],
+  "rules": {
+    "typescript/consistent-type-imports": "error",
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "no-useless-assignment": "error",
+    "preserve-caught-error": "error"
+  },
+  "overrides": [
+    {
+      "files": ["apps/extension/**/*.ts", "apps/extension/**/*.tsx"],
+      "plugins": ["typescript", "react"],
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "warn",
+        "react/static-components": "error",
+        "react/use-memo": "error",
+        "react/void-use-memo": "error",
+        "react/preserve-manual-memoization": "error",
+        "react/incompatible-library": "warn",
+        "react/immutability": "error",
+        "react/globals": "error",
+        "react/refs": "error",
+        "react/set-state-in-effect": "error",
+        "react/error-boundaries": "error",
+        "react/purity": "error",
+        "react/set-state-in-render": "error",
+        "react/unsupported-syntax": "warn"
+      }
+    },
+    {
+      "files": ["apps/site/**/*.ts", "apps/site/**/*.tsx"],
+      "plugins": ["typescript", "react"],
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "warn"
+      }
+    },
+    {
+      "files": ["apps/extension/**/*.ts", "apps/extension/**/*.tsx"],
+      "excludeFiles": [
+        "apps/extension/**/ui/**",
+        "apps/extension/src/components/**",
+        "apps/extension/**/entrypoints/**",
+        "apps/extension/src/i18n/ui.ts",
+        "apps/extension/**/__tests__/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              { "name": "react", "message": "React is UI-only. Import it from a ui/ folder." },
+              { "name": "react-dom", "message": "React is UI-only. Import it from a ui/ folder." },
+              { "name": "zustand", "message": "zustand is UI-only. Import it from a ui/ folder." },
+              {
+                "name": "react-i18next",
+                "message": "react-i18next is UI-only. Import it from a ui/ folder."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["react/*", "react-dom/*"],
+                "message": "React is UI-only. Import it from a ui/ folder."
+              },
+              { "group": ["*/ui/*"], "message": "Import UI modules from a ui/ folder." }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/extension/src/entrypoints/sidepanel/shell.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": ".",
+                "message": "The panel stays hidden until this file loads. Use import() afterward (see shell.ts)."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

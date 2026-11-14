@@ -363,7 +363,8 @@ export function googleRetryAfterMs(text: string): number | undefined {
     const items = Array.isArray(roots) ? roots : [roots];
     for (const item of items) {
       const error = (item as { error?: unknown } | null)?.error as
-        { details?: unknown } | undefined;
+        | { details?: unknown }
+        | undefined;
       if (!error || !Array.isArray(error.details)) continue;
       for (const detail of error.details) {
         const delay = (detail as { retryDelay?: unknown })?.retryDelay;

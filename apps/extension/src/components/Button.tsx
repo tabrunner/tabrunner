@@ -2,7 +2,14 @@ import { Button as BaseButton } from "@base-ui-components/react";
 import type { ComponentProps } from "react";
 
 type Variant =
-  "primary" | "danger" | "ghost" | "ghost-danger" | "outline" | "choice" | "nav" | "quiet-brand";
+  | "primary"
+  | "danger"
+  | "ghost"
+  | "ghost-danger"
+  | "outline"
+  | "choice"
+  | "nav"
+  | "quiet-brand";
 type Size = "sm" | "md" | "icon";
 
 const VARIANTS: Record<Variant, string> = {

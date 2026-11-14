@@ -107,7 +107,9 @@ describe("gemini bridge stream", () => {
     expect(url).toBe(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:streamGenerateContent?alt=sse",
     );
-    expect((init?.headers as Record<string, string>)["x-goog-api-key"]).toBe("sk-test");
+    expect((init?.headers as Record<string, string> | undefined)?.["x-goog-api-key"]).toBe(
+      "sk-test",
+    );
     const body = JSON.parse(init?.body as string) as {
       contents: unknown[];
       tools: { functionDeclarations: { name: string }[] }[];
@@ -332,7 +334,9 @@ describe("gemini listing", () => {
     });
     const [url, init] = spy.mock.calls[0]!;
     expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models");
-    expect((init?.headers as Record<string, string>)["x-goog-api-key"]).toBe("sk-test");
+    expect((init?.headers as Record<string, string> | undefined)?.["x-goog-api-key"]).toBe(
+      "sk-test",
+    );
     expect(models).toEqual([{ id: "gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite" }]);
   });
 });
@@ -392,7 +396,9 @@ describe("gemini bridge on Antigravity", () => {
     expect(url).toBe(
       "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
     );
-    expect((init?.headers as Record<string, string>).authorization).toBe("Bearer at-1");
+    expect((init?.headers as Record<string, string> | undefined)?.authorization).toBe(
+      "Bearer at-1",
+    );
     const body = JSON.parse(init?.body as string) as {
       model: string;
       project: string;
@@ -431,7 +437,9 @@ describe("gemini bridge on Antigravity", () => {
     await drain(antigravity(expired));
 
     const init = spy.mock.calls[0]![1];
-    expect((init?.headers as Record<string, string>).authorization).toBe("Bearer at-2");
+    expect((init?.headers as Record<string, string> | undefined)?.authorization).toBe(
+      "Bearer at-2",
+    );
   });
 
   it("keeps one Antigravity session across turns of the same conversation", async () => {

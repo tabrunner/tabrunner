@@ -24,8 +24,10 @@ beforeEach(() => {
 
 type Rule = chrome.declarativeNetRequest.Rule;
 
-const addedRules = (call = 0): Rule[] =>
-  (updateSessionRules.mock.calls[call]?.[0] as { addRules: Rule[] }).addRules;
+const addedRules = (call = 0): Rule[] => {
+  const [arg] = updateSessionRules.mock.calls[call] ?? [];
+  return (arg as { addRules: Rule[] }).addRules;
+};
 
 const lastRule = (): Rule => addedRules()[0]!;
 
