@@ -136,6 +136,10 @@ the agent loop uses. Direct actions, start and end are ordered within their clie
 - Direct control has no TabRunner model or `ask_user` policy. The external client must get
   permission before consequential actions. On-page marks and the stored transcript still
   make the work visible.
+- The broker waits 50s for start and each action, longer than the extension's own 30s page
+  load and script deadlines plus the snapshot after them. A slow page then reaches the
+  client as the extension's own result or error. A shorter wait answered with a generic
+  timeout and dropped the late start, so the next call named a run that was already gone.
 - A session expires after five idle minutes, not during an in-flight action. Closing its
   driven tab also ends that session. End aborts, drains, removes an unused starter tab and
   releases only this session's browser resources. The same MCP client can then start another

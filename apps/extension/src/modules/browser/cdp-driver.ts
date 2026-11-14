@@ -1,6 +1,7 @@
 import type { TabId } from "@/shared/types";
 import { i18n } from "@/i18n";
 import { refreshAgentIndicator } from "./indicator";
+import { runInPage } from "./inject";
 import { startInspecting } from "./inspect";
 
 /**
@@ -505,26 +506,66 @@ export async function settleIfLoading(tabId: TabId, watchMs = SETTLE_WATCH_MS): 
   return true;
 }
 
+/** How soon to ask again when the tab holds no usable document yet. */
+const READY_RETRY_MS = 250;
+
 /**
- * Resolves when the tab's page has finished loading, and rejects rather than
- * holding on when it never will: a tab closed under the wait can no longer
- * reach "complete", so without `onRemoved` the caller waits the full timeout on
- * a page that stopped existing. The mid-batch settle is what made that ordinary
- * — a click can close its own tab, and the batch behind it should hear about it
- * in milliseconds, not in half a minute.
+ * Whether the tab's current document can be read and acted on. A page script
+ * without injectImmediately runs at document_idle, which Chrome reaches at most
+ * 200ms after DOMContentLoaded: the same point every snapshot and ref lookup
+ * (`runInPage`) already waits for. It answers no for the blank page a new tab
+ * starts on, for a document a pending navigation is about to replace, and for
+ * pages Chrome keeps scripts off (error pages, restricted urls), where the
+ * tab's own "complete" still ends the wait.
+ */
+async function documentReady(tabId: TabId): Promise<boolean> {
+  try {
+    const href = await runInPage(tabId, () => location.href, []);
+    if (!href || href === "about:blank") return false;
+    const tab = await chrome.tabs.get(tabId);
+    return !tab.pendingUrl && tab.url === href;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolves when the tab's page is ready to work: its document is parsed
+ * (`documentReady`) or the tab reports "complete", whichever comes first.
+ * "complete" alone waits for every frame, font and beacon on the page, which a
+ * heavy app in a background tab on a busy computer can take past the timeout
+ * while its page has long been usable.
+ *
+ * Rejects rather than holding on when it never will: a tab closed under the
+ * wait can no longer get ready, so without `onRemoved` the caller waits the
+ * full timeout on a page that stopped existing. The mid-batch settle is what
+ * made that ordinary: a click can close its own tab, and the batch behind it
+ * should hear about it in milliseconds, not in half a minute.
  */
 export function waitForLoad(tabId: TabId, timeoutMs = 30_000): Promise<void> {
   return new Promise((resolve, reject) => {
     const check = (tab: chrome.tabs.Tab) =>
       tab.status === "complete" && !!tab.url && tab.url !== "about:blank";
 
-    // One exit for all four endings — the listeners always come back off.
+    let settled = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    // One exit for every ending: the listeners and the readiness probe stop.
     const done = (err?: Error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      clearTimeout(retry);
       chrome.tabs.onUpdated.removeListener(listener);
       chrome.tabs.onRemoved.removeListener(removed);
       if (err) reject(err);
       else resolve();
+    };
+    const probe = () => {
+      void documentReady(tabId).then((isReady) => {
+        if (settled) return;
+        if (isReady) done();
+        else retry = setTimeout(probe, READY_RETRY_MS);
+      });
     };
 
     const timer = setTimeout(
@@ -549,5 +590,6 @@ export function waitForLoad(tabId: TabId, timeoutMs = 30_000): Promise<void> {
       if (!tab) done(new Error(i18n.t("errors.tabGone")));
       else if (check(tab)) done();
     });
+    probe();
   });
 }

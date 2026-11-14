@@ -40,6 +40,15 @@ const SYNC_PENDING =
   "Fix: the bridge retries automatically. Call get_status or health again before repeating a task or browser action.";
 const REQUEST_TIMEOUT_MS = 30_000;
 export const QUICK_TIMEOUT_MS = 4_000;
+/**
+ * For requests that load or work a page (browser_start and the browser_* verbs).
+ * The extension gives a page load and a page script 30s each, then reads the
+ * page for its answer. Waiting only 30s here lost that race on every slow page:
+ * the client heard a generic timeout instead of the result or the real error,
+ * and dropped the late start, so its next call named a run that was gone.
+ * Stays under a client's own tool timeout.
+ */
+export const PAGE_TIMEOUT_MS = 50_000;
 
 const queueSchema = z.array(
   z.object({
