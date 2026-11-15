@@ -2,6 +2,7 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "extends": ["./node_modules/@gusnips/oxlint/base.json"],
   "plugins": [],
+  "jsPlugins": [{ "name": "react-hooks-js", "specifier": "@gusnips/oxlint/react-hooks" }],
   "ignorePatterns": [".claude/**", ".agents/**"],
   "rules": {
     "typescript/consistent-type-imports": "error",
@@ -26,7 +27,10 @@
         "react/refs": "error",
         "react/set-state-in-effect": "error",
         "react/error-boundaries": "error",
-        "react/purity": "error",
+        "react/purity": "off",
+        "react-hooks-js/purity": "error",
+        "react-hooks-js/config": "error",
+        "react-hooks-js/gating": "error",
         "react/set-state-in-render": "error",
         "react/unsupported-syntax": "warn"
       }
