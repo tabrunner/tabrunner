@@ -16,7 +16,7 @@
       "@fontsource-variable/figtree": "^5.2.5",
       "@fontsource-variable/jetbrains-mono": "^5.2.5",
       "@fontsource-variable/unbounded": "^5.2.5",
-      "@gusnips/oxlint": "^0.2.0",
+      "@gusnips/oxlint": "^0.2.2",
       "@gusnips/vite": "^0.8.44",
       "@modelcontextprotocol/sdk": "^1.22.0",
       "@providerkit/core": "0.27.0",
