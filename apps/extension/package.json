@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@base-ui-components/react": "catalog:",
+    "@providerkit/agents": "catalog:",
     "@providerkit/core": "catalog:",
     "@shadcn/react": "catalog:",
     "i18next": "catalog:",
