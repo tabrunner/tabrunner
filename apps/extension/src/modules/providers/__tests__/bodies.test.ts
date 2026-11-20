@@ -309,7 +309,7 @@ describe("Anthropic API-key request bodies via @providerkit/core", () => {
     expect(high.output_config).toEqual({ effort: "high" });
   });
 
-  it("turns thinking off on Z.ai when effort is none", async () => {
+  it("turns thinking off on Z.ai when effort is none, and leaves default unset", async () => {
     const zai: ResolvedProviderConfig = {
       ...anthropicBase,
       id: "zai",
@@ -318,6 +318,9 @@ describe("Anthropic API-key request bodies via @providerkit/core", () => {
     };
     const none = await captureBody({ ...zai, reasoningEffort: "none" }, messages);
     expect(none.thinking).toEqual({ type: "disabled" });
+
+    const unset = await captureBody(zai, messages);
+    expect(unset).not.toHaveProperty("thinking");
   });
 
   it("merges back-to-back user messages (tool_results + injected mid-run note)", async () => {

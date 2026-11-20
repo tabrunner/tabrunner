@@ -246,7 +246,7 @@ function buildCoreShapeProvider(
         bearer: Boolean(config.auth),
         maxTokens: anthropicMaxTokens(config.model),
         ...(effort ? { effort } : {}),
-        ...(preset?.explicitNone ? { explicitNone: true } : {}),
+        ...(effort === "none" && preset?.explicitNone ? { explicitNone: true } : {}),
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
       });
     }
@@ -393,6 +393,17 @@ async function* streamFromCore(
     number,
     { id: string; name: string; args: string; thoughtSignature?: string }
   >();
+  // Hold non-visible usage deltas until the stream commits on visible output
+  // (text, reasoning, finish, or clean completion), so an early usage frame
+  // before an in-band failure never commits withStreamRetry.
+  let committed = false;
+  const heldUsage: Delta[] = [];
+  function* flushUsage(): Generator<Delta> {
+    if (committed) return;
+    committed = true;
+    yield* heldUsage;
+    heldUsage.length = 0;
+  }
 
   try {
     for await (const chunk of core.createStream(coreMessages, coreTools, { signal })) {
@@ -400,7 +411,7 @@ async function* streamFromCore(
         const input = chunk.usage.inputTokens ?? 0;
         const cached = chunk.usage.cachedInputTokens ?? 0;
         logCacheUsage(input, cached, chunk.usage.cacheWriteTokens ?? 0);
-        yield {
+        const usageDelta: Delta = {
           type: "usage",
           input,
           output: chunk.usage.outputTokens ?? 0,
@@ -412,15 +423,24 @@ async function* streamFromCore(
             ? { cost: chunk.usage.reportedCostUsd }
             : {}),
         };
+        if (committed) yield usageDelta;
+        else heldUsage.push(usageDelta);
         continue;
       }
       if (chunk.type === "finish" && chunk.finishReason) {
+        yield* flushUsage();
         yield { type: "finish", reason: mapFinishReason(chunk.finishReason) };
         continue;
       }
       if (chunk.type !== "delta") continue;
-      if (chunk.reasoning) yield { type: "reasoning", text: chunk.reasoning };
-      if (chunk.content) yield { type: "text", text: chunk.content };
+      if (chunk.reasoning) {
+        yield* flushUsage();
+        yield { type: "reasoning", text: chunk.reasoning };
+      }
+      if (chunk.content) {
+        yield* flushUsage();
+        yield { type: "text", text: chunk.content };
+      }
       for (const tc of chunk.toolCalls ?? []) {
         const idx = tc.index ?? 0;
         const acc = toolAcc.get(idx);
@@ -433,7 +453,7 @@ async function* streamFromCore(
           }
         } else {
           toolAcc.set(idx, {
-            id: tc.id ?? `call_${idx}`,
+            id: tc.id ?? "",
             name: tc.name ?? "",
             args: tc.arguments ?? "",
             ...(tc.thoughtSignature ? { thoughtSignature: tc.thoughtSignature } : {}),
@@ -446,10 +466,11 @@ async function* streamFromCore(
     throw normalizeCoreError(config, e, STREAM_STALL_MS / 60_000);
   }
 
-  for (const acc of toolAcc.values()) {
+  yield* flushUsage();
+  for (const [idx, acc] of toolAcc.entries()) {
     yield {
       type: "tool_use",
-      id: acc.id,
+      id: acc.id || `call_${idx}`,
       name: acc.name,
       args: parseToolArgs(acc.args),
       ...(acc.thoughtSignature ? { thoughtSignature: acc.thoughtSignature } : {}),

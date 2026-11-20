@@ -273,6 +273,53 @@ describe("ChatGPT provider SSE parsing", () => {
     expect(deltas).toContainEqual({ type: "finish", reason: "tool_use" });
   });
 
+  it("keeps the real call_id when output_item.added omits it and output_item.done supplies it", async () => {
+    const provider = createProvider(makeConfig());
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          frame({
+            type: "response.output_item.added",
+            item: {
+              type: "function_call",
+              id: "fc_1",
+              name: "click",
+              arguments: "",
+            },
+          }),
+          frame({
+            type: "response.function_call_arguments.delta",
+            item_id: "fc_1",
+            delta: '{"ref":"e1"}',
+          }),
+          frame({
+            type: "response.output_item.done",
+            item: {
+              type: "function_call",
+              id: "fc_1",
+              call_id: "call_real_99",
+              name: "click",
+              arguments: '{"ref":"e1"}',
+            },
+          }),
+          frame({ type: "response.completed", response: {} }),
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const deltas = [];
+    for await (const d of provider.stream([], [], new AbortController().signal)) deltas.push(d);
+
+    const toolUse = deltas.find((d) => d.type === "tool_use");
+    expect(toolUse).toEqual({
+      type: "tool_use",
+      id: "call_real_99",
+      name: "click",
+      args: { ref: "e1" },
+    });
+  });
+
   it("flushes a pending tool call whose done event was omitted by the terminal frame", async () => {
     const provider = createProvider(makeConfig());
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(

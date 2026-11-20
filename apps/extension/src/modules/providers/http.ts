@@ -364,10 +364,10 @@ export function normalizeCoreError(
       ? networkError(config, config.baseUrl)
       : streamCutError(config);
   }
-  // Core's watchdog timeout before response headers carries `shouldRetry: false`
-  // and no HTTP status: surface TabRunner's stall wording with the exact minute
-  // budget rather than the generic timeout line.
-  if (e.kind === "timeout" && e.status === undefined && e.shouldRetry === false && stallMinutes) {
+  // Core's watchdog timeout (pre-header or post-header stall) carries no HTTP
+  // status and no response body: surface TabRunner's stall wording with the
+  // exact minute budget and never replay a 6-minute stall.
+  if (e.kind === "timeout" && e.status === undefined && !e.body && stallMinutes) {
     log.warn(`stream stalled from ${config.baseUrl}: ${truncate(e.message)}`);
     return new ProviderError(
       i18n.t("errors.streamStalled", { minutes: stallMinutes }),
