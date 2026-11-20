@@ -13,11 +13,29 @@ import { cancelSchedule, scheduleTask } from "@/modules/schedule/agent-tools";
 import { i18n } from "@/i18n";
 import { scopeHostOf } from "@/lib/host";
 import { truncate } from "@/lib/logger";
+import type { PlanPayload } from "@/shared/protocol";
 import { readStepLog } from "./read-history";
 import type { RunOwner } from "./active-runs";
 
 /** Longer than this and the plan card stops being scannable in a side panel. */
 const MAX_PLAN_STEPS = 20;
+
+export function parsePlanPayload(args: Record<string, unknown>): PlanPayload | null {
+  const steps = (Array.isArray(args.steps) ? args.steps : [])
+    .filter((s): s is string => typeof s === "string" && s.trim() !== "")
+    .slice(0, MAX_PLAN_STEPS);
+  if (steps.length === 0) return null;
+  const raw = Number(args.current);
+  const current = Number.isFinite(raw) ? Math.min(Math.max(0, Math.trunc(raw)), steps.length) : 0;
+  const confirm = [
+    ...new Set(
+      (Array.isArray(args.confirm_steps) ? args.confirm_steps : [])
+        .map((n) => Number(n))
+        .filter((n) => Number.isInteger(n) && n >= 0 && n < steps.length),
+    ),
+  ].sort((a, b) => a - b);
+  return { steps, current, ...(confirm.length > 0 ? { confirm } : {}) };
+}
 /** Result payloads are a drill-down, never a whole page inlined into the row. */
 const MAX_DETAIL = 2000;
 
@@ -222,29 +240,9 @@ export async function executeTool(
       }
 
       case "plan": {
-        // ponytail: a flat list plus a cursor, not per-step statuses — weaker
-        // models get nested enums wrong far more often than they get an index
-        // wrong. The ceiling is that no step can be marked skipped or failed.
-        const steps = (Array.isArray(call.args.steps) ? call.args.steps : [])
-          .filter((s): s is string => typeof s === "string" && s.trim() !== "")
-          .slice(0, MAX_PLAN_STEPS);
-        if (steps.length === 0) return { ok: false, error: i18n.t("errors.planEmpty") };
-        // Models routinely send a 1-based or already-past-the-end index; clamping
-        // beats rejecting, since the plan is a display aid and never control flow.
-        const raw = Number(call.args.current);
-        const current = Number.isFinite(raw)
-          ? Math.min(Math.max(0, Math.trunc(raw)), steps.length)
-          : 0;
-        // Same stance for the commit marks: indexes the model got wrong (a
-        // 1-based list, a step it later cut) are dropped, not an error.
-        const confirm = [
-          ...new Set(
-            (Array.isArray(call.args.confirm_steps) ? call.args.confirm_steps : [])
-              .map((n) => Number(n))
-              .filter((n) => Number.isInteger(n) && n >= 0 && n < steps.length),
-          ),
-        ].sort((a, b) => a - b);
-        return { ok: true, data: { steps, current, ...(confirm.length > 0 ? { confirm } : {}) } };
+        const plan = parsePlanPayload(call.args);
+        if (!plan) return { ok: false, error: i18n.t("errors.planEmpty") };
+        return { ok: true, data: plan };
       }
 
       case "remember": {
