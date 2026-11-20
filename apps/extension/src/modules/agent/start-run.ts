@@ -24,7 +24,7 @@ import {
 import { runInPage } from "@/modules/browser/inject";
 import { settleStatusWidgets, type SettleOutcome } from "@/modules/browser/status-widget";
 import {
-  createProvider,
+  createCoreProvider,
   engineOf,
   getProviderFor,
   resolveProviderModel,
@@ -246,7 +246,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // OpenCode's Zen rows send it as `x-opencode-session`. Set here, at the
       // one place that knows which conversation the run answers in.
       resolvedProvider = { ...resolvedProvider, sessionId: conversationId };
-      provider = createProvider(resolvedProvider);
+      provider = createCoreProvider(resolvedProvider);
       // Name the engine before anything else can end the run: the writer stamps
       // it on the run's summary, so the settled band (and a reopened panel) can
       // say what answered — a tab or provider failure from here on still carries it.
@@ -559,7 +559,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
         provider,
         driver,
         task,
+        runId: run.id,
         conversationId,
+        modelId: resolvedProvider.model,
         runGroup,
         owner,
         ...(autoApprove ? { autoApprovePlan: true } : {}),

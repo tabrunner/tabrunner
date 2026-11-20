@@ -7,32 +7,27 @@ import {
   noteContextFreed,
   renderTranscriptMessage,
 } from "@/modules/conversation";
-import { createLogger, truncate } from "@/lib/logger";
+import { createLogger } from "@/lib/logger";
 import { i18n } from "@/i18n";
 
 const log = createLogger("compact");
 
 /**
- * Compaction — trade a stretch of conversation for a summary of it.
+ * Compaction - trade a stretch of conversation for a summary of it.
  *
- * Two callers, one summarizer:
- * - **In-run** (`compactRunMessages`): the wire conversation grew past what the
- *   model's window can hold. Older turns fold into a progress note attached to
- *   the task, and the run continues on the same step budget.
- * - **Across runs** (`summarizeTranscript`): asked for — `/compact`, the
- *   context-error's fix button, or the MCP `compact` tool. The transcript keeps
- *   every message — the summary is appended, never a replacement — and only
- *   what gets REPLAYED to the model changes.
- *   That is the whole reason to prefer appending: scrollback is the user's, the
- *   replay is the model's, and compaction is a fact about the replay.
+ * In-run compaction is owned by `@providerkit/agents` (`compaction.retryOnContextLimit`)
+ * using `COMPACT_SYSTEM` as its summary instructions. This module keeps across-run
+ * transcript compaction (`/compact`, the context-error fix button, and the MCP
+ * `compact` tool): the transcript keeps every message, the summary is appended,
+ * and `buildConversationHistory` replays from it.
  *
  * A browser agent's summary is not a code agent's. What has to survive is what
  * was found on which page, what was already done to the world (a form
- * submitted, a message sent — actions that must not be repeated), and what is
+ * submitted, a message sent - actions that must not be repeated), and what is
  * left. Reasoning about the DOM is worthless a page later; a confirmation
  * number is worth the whole summary.
  */
-const COMPACT_SYSTEM = `You are compacting the record of a browser-automation session so the agent can keep working with a smaller context.
+export const COMPACT_SYSTEM = `You are compacting the record of a browser-automation session so the agent can keep working with a smaller context.
 
 Write a dense factual summary under these headings, omitting any that have no content:
 
@@ -66,74 +61,6 @@ async function summarize(
   const summary = text.trim();
   if (!summary) throw new Error(i18n.t("errors.compactEmpty"));
   return summary;
-}
-
-/** A wire turn as plain text for the summarizer — tool calls named, results included. */
-function renderTurn(m: ChatMessage): string {
-  if (m.role === "tool_results") {
-    return (m.toolResults ?? []).map((r) => `RESULT: ${truncate(r.content, 4_000)}`).join("\n");
-  }
-  const calls = (m.toolCalls ?? [])
-    .map((c) => `CALL ${c.name}(${truncate(JSON.stringify(c.args), 400)})`)
-    .join("\n");
-  return [m.role.toUpperCase() + ":", m.content, calls].filter(Boolean).join("\n");
-}
-
-/**
- * The tail kept verbatim, in assistant turns. The model needs the last few
- * exchanges in full — a summary of "you just clicked Submit and got an error"
- * is not enough to recover from it — but every turn before that is what the
- * summary is for.
- */
-const KEEP_TAIL_TURNS = 4;
-
-/**
- * Fold the middle of a live run into the task message. Returns how many wire
- * messages were dropped, or 0 when there was nothing safe to fold.
- *
- * The summary rides ON the task message rather than arriving as a turn of its
- * own, because the wire alternates strictly (a tool_results block serializes as
- * a user turn) and any inserted message would land two same-role turns
- * back-to-back — which Anthropic rejects outright. Attaching it to the task
- * also puts it where the model already looks for what it is doing.
- *
- * Cuts land only on an assistant turn: an assistant's tool calls and the
- * tool_results answering them are one indivisible unit on the wire, and a cut
- * between them orphans a tool_use id the provider then refuses.
- */
-export async function compactRunMessages(
-  provider: ChatProvider,
-  messages: ChatMessage[],
-  taskIndex: number,
-  originalTask: string,
-  signal: AbortSignal,
-): Promise<number> {
-  const first = taskIndex + 1;
-  // Walk back from the end over whole assistant-led turns, keeping the newest few.
-  let cut = messages.length;
-  let kept = 0;
-  for (let i = messages.length - 1; i > first; i--) {
-    if (messages[i]?.role !== "assistant") continue;
-    cut = i;
-    if (++kept >= KEEP_TAIL_TURNS) break;
-  }
-  // Not even a full tail's worth of turns yet: everything here is still recent,
-  // and folding one of three turns spends a model call to save nothing.
-  if (kept < KEEP_TAIL_TURNS || cut <= first) return 0;
-
-  const body = messages.slice(first, cut).map(renderTurn).filter(Boolean).join("\n\n");
-  if (!body.trim()) return 0;
-
-  const summary = await summarize(provider, `Task: ${originalTask}\n\n${body}`, signal);
-  const task = messages[taskIndex];
-  if (!task) return 0;
-  // Rebuilt from the original text every time, so a second compaction replaces
-  // the first note instead of stacking summaries of summaries.
-  task.content = `${originalTask}\n\n<progress_so_far>\n${summary}\n</progress_so_far>`;
-  const removed = cut - first;
-  messages.splice(first, removed);
-  log.info(`folded ${removed} wire messages into the task note`);
-  return removed;
 }
 
 /**

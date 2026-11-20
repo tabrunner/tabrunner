@@ -28,18 +28,25 @@ const driver = {
  * That count is what a provider's cache actually sees: one changed byte
  * anywhere in the prefix and everything from there on re-bills at full price.
  */
-function prefixWatcher(turns: number): { provider: ChatProvider; breaks: () => number } {
+function prefixWatcher(turns: number): {
+  provider: ChatProvider;
+  breaks: () => number;
+  lastSeen: () => ChatMessage[];
+} {
   let seen: string | null = null;
+  let lastMessages: ChatMessage[] = [];
   let broken = 0;
   let turn = 0;
   return {
     breaks: () => broken,
+    lastSeen: () => lastMessages,
     provider: {
       async *stream(messages) {
         if (seen !== null) {
           const prior = JSON.parse(seen) as ChatMessage[];
           if (JSON.stringify(messages.slice(0, prior.length)) !== seen) broken++;
         }
+        lastMessages = structuredClone(messages);
         seen = JSON.stringify(messages);
         turn++;
         yield turn > turns
@@ -77,11 +84,13 @@ describe("keeping the prompt prefix cacheable", () => {
   it("still bounds the body — the cliff drops context, it does not keep it", async () => {
     // The cliff is a caching concession, not a retreat from the reason the
     // pruner exists: a long run must not grow its own request into a
-    // context-length 400.
-    const messages = await run(prefixWatcher(20).provider);
-    const results = messages.flatMap((m) => m.toolResults ?? []);
+    // context-length 400. The SDK keeps the full journal in outcome.history and
+    // applies pruning to the model view sent to the provider.
+    const watcher = prefixWatcher(20);
+    await run(watcher.provider);
+    const results = watcher.lastSeen().flatMap((m) => m.toolResults ?? []);
     const kept = results.reduce((n, r) => n + r.content.length, 0);
-    expect(results.some((r) => r.content.includes("trimmed"))).toBe(true);
+    expect(results.some((r) => r.content.includes("omitted"))).toBe(true);
     expect(kept).toBeLessThan(120_000);
   });
 });

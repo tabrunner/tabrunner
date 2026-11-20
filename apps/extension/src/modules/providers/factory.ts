@@ -4,7 +4,9 @@ import {
   createGeminiProvider as createCoreGeminiProvider,
   createOpenAIProvider as createCoreOpenAIProvider,
   createResponsesProvider as createCoreResponsesProvider,
+  EMPTY_USAGE,
   parseToolArgs,
+  ProviderError as CoreProviderError,
   streamWatch,
   toGeminiToolSchema,
   withGate,
@@ -15,6 +17,7 @@ import {
   type ImageMimeType,
   type ImagePart,
   type Provider as CoreProvider,
+  type ProviderChunk,
   type StreamOptions,
   type ToolDefinition as CoreTool,
 } from "@providerkit/core";
@@ -26,6 +29,7 @@ import type {
   ResolvedProviderConfig,
   ToolDef,
 } from "./types";
+import { ProviderError } from "./types";
 import { createAnthropicProvider as createClaudeOAuthProvider } from "./anthropic";
 import { ensureProviderCredential } from "./credential";
 import { logCacheUsage, normalizeCoreError, sessionHeaders } from "./http";
@@ -79,13 +83,17 @@ function bareGeminiModelId(model: string): string {
 }
 
 /** `data:image/png;base64,...` -> core's image part; anything else is dropped. */
-function toImagePart(url: string): ImagePart | undefined {
+export function toImagePart(url: string): ImagePart | undefined {
   const match = /^data:(image\/[a-z+]+);base64,(.+)$/.exec(url.trim());
   if (!match) return undefined;
   const mime = match[1];
   const data = match[2];
   if (!isImageMime(mime) || !data) return undefined;
   return { type: "image", mimeType: mime, data };
+}
+
+function fromImagePart(part: ImagePart): string {
+  return `data:${part.mimeType};base64,${part.data}`;
 }
 
 function isImageMime(mime: string | undefined): mime is ImageMimeType {
@@ -393,9 +401,6 @@ async function* streamFromCore(
     number,
     { id: string; name: string; args: string; thoughtSignature?: string }
   >();
-  // Hold non-visible usage deltas until the stream commits on visible output
-  // (text, reasoning, finish, or clean completion), so an early usage frame
-  // before an in-band failure never commits withStreamRetry.
   let committed = false;
   const heldUsage: Delta[] = [];
   function* flushUsage(): Generator<Delta> {
@@ -448,9 +453,8 @@ async function* streamFromCore(
           if (tc.arguments) acc.args += tc.arguments;
           if (!acc.id && tc.id) acc.id = tc.id;
           if (!acc.name && tc.name) acc.name = tc.name;
-          if (!acc.thoughtSignature && tc.thoughtSignature) {
+          if (!acc.thoughtSignature && tc.thoughtSignature)
             acc.thoughtSignature = tc.thoughtSignature;
-          }
         } else {
           toolAcc.set(idx, {
             id: tc.id ?? "",
@@ -477,6 +481,193 @@ async function* streamFromCore(
     };
   }
   yield { type: "done" };
+}
+
+/** Core messages -> TabRunner wire messages (retained Claude OAuth adapter + memory extraction). */
+export function fromCoreMessages(messages: readonly CoreMessage[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const msg of messages) {
+    if (msg.role === "tool") {
+      const result = {
+        id: msg.toolCallId,
+        content: msg.content,
+        ...(msg.images?.length ? { images: msg.images.map(fromImagePart) } : {}),
+      };
+      const prev = out[out.length - 1];
+      if (prev?.role === "tool_results") prev.toolResults = [...(prev.toolResults ?? []), result];
+      else out.push({ role: "tool_results", content: "", toolResults: [result] });
+      continue;
+    }
+    if (msg.role === "user") {
+      if (typeof msg.content === "string") {
+        out.push({ role: "user", content: msg.content });
+      } else {
+        const text = msg.content
+          .filter((p): p is { type: "text"; text: string } => p.type === "text")
+          .map((p) => p.text)
+          .join("\n");
+        const images = msg.content
+          .filter((p): p is ImagePart => p.type === "image")
+          .map(fromImagePart);
+        out.push({ role: "user", content: text, ...(images.length ? { images } : {}) });
+      }
+      continue;
+    }
+    if (msg.role === "assistant") {
+      out.push({
+        role: "assistant",
+        content: msg.content,
+        ...(msg.reasoning ? { reasoning: msg.reasoning } : {}),
+        ...(msg.toolCalls?.length
+          ? {
+              toolCalls: msg.toolCalls.map((tc) => ({
+                id: tc.id,
+                name: tc.name,
+                args: parseToolArgs(tc.arguments),
+                ...(tc.thoughtSignature ? { thoughtSignature: tc.thoughtSignature } : {}),
+              })),
+            }
+          : {}),
+      });
+      continue;
+    }
+    out.push({ role: "system", content: msg.content });
+  }
+  return out;
+}
+
+/** Wrap a TabRunner ProviderError back in CoreProviderError so agents preserves metadata. */
+function wrapAsCoreProviderError(
+  id: string,
+  normalized: ProviderError,
+  raw?: CoreProviderError,
+): CoreProviderError {
+  return new CoreProviderError(id, normalized.kind ?? raw?.kind ?? "unknown", normalized.message, {
+    status: normalized.status || raw?.status,
+    retryAfterMs: normalized.retryAfterMs ?? raw?.retryAfterMs,
+    resetAtMs: raw?.resetAtMs,
+    window: raw?.window,
+    shouldRetry: normalized.shouldRetry ?? raw?.shouldRetry,
+    body: raw?.body,
+    cause: normalized,
+  });
+}
+
+/** Wrap a TabRunner ChatProvider (retained Claude OAuth or test stand-in) as a core Provider. */
+export function asCoreProvider(
+  provider: ChatProvider,
+  id = "tabrunner",
+  model = "chat",
+): CoreProvider {
+  return {
+    id,
+    model,
+    async *createStream(messages, tools, opts: StreamOptions = {}): AsyncGenerator<ProviderChunk> {
+      const signal = opts.signal ?? new AbortController().signal;
+      const legacyTools: ToolDef[] = tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        params: t.inputSchema,
+      }));
+      let sawToolCall = false;
+      let finishReason: CoreFinishReason | undefined;
+      let toolIndex = 0;
+      try {
+        for await (const delta of provider.stream(
+          fromCoreMessages(messages),
+          legacyTools,
+          signal,
+        )) {
+          if (delta.type === "text") yield { type: "delta", content: delta.text };
+          else if (delta.type === "reasoning") yield { type: "delta", reasoning: delta.text };
+          else if (delta.type === "tool_use") {
+            sawToolCall = true;
+            yield {
+              type: "delta",
+              toolCalls: [
+                {
+                  index: toolIndex++,
+                  id: delta.id,
+                  name: delta.name,
+                  arguments: JSON.stringify(delta.args),
+                  ...(delta.thoughtSignature ? { thoughtSignature: delta.thoughtSignature } : {}),
+                },
+              ],
+            };
+          } else if (delta.type === "usage") {
+            yield {
+              type: "usage",
+              usage: {
+                ...EMPTY_USAGE,
+                inputTokens: delta.input,
+                outputTokens: delta.output,
+                cachedInputTokens: delta.cacheRead ?? 0,
+                ...(delta.cacheWrite !== undefined ? { cacheWriteTokens: delta.cacheWrite } : {}),
+                ...(delta.cost !== undefined ? { reportedCostUsd: delta.cost } : {}),
+              },
+            };
+          } else if (delta.type === "finish") {
+            finishReason = delta.reason === "tool_use" ? "tool_calls" : delta.reason;
+          }
+        }
+      } catch (e) {
+        if (signal.aborted) throw e;
+        if (e instanceof ProviderError) throw wrapAsCoreProviderError(id, e);
+        throw e;
+      }
+      yield { type: "finish", finishReason: finishReason ?? (sawToolCall ? "tool_calls" : "stop") };
+    },
+  };
+}
+
+/** Factory: builds a gated, watchdog-guarded core Provider for @providerkit/agents. */
+export function createCoreProvider(config: ResolvedProviderConfig): CoreProvider {
+  assertChatProviderSupported(config);
+  if (usesRetainedClaudePlanAdapter(config)) {
+    return asCoreProvider(
+      wrapRetainedProvider(config, createClaudeOAuthProvider(config)),
+      config.id,
+      config.model,
+    );
+  }
+  const core = buildCoreProvider(config);
+  const stallMinutes = STREAM_STALL_MS / 60_000;
+  return {
+    id: config.id,
+    model: config.model,
+    async *createStream(messages, tools, opts: StreamOptions = {}) {
+      const shapedTools = toCoreTools(
+        offerZenRead(
+          config,
+          tools.map((t) => ({ name: t.name, description: t.description, params: t.inputSchema })),
+        ),
+        config.shape,
+      );
+      try {
+        for await (const chunk of core.createStream(messages, shapedTools, opts)) {
+          if (chunk.type === "usage" && chunk.usage) {
+            logCacheUsage(
+              chunk.usage.inputTokens ?? 0,
+              chunk.usage.cachedInputTokens ?? 0,
+              chunk.usage.cacheWriteTokens ?? 0,
+            );
+          }
+          yield chunk;
+        }
+      } catch (e) {
+        if (opts.signal?.aborted) throw e;
+        const normalized = normalizeCoreError(config, e, stallMinutes);
+        if (normalized instanceof ProviderError) {
+          throw wrapAsCoreProviderError(
+            config.id,
+            normalized,
+            e instanceof CoreProviderError ? e : undefined,
+          );
+        }
+        throw normalized;
+      }
+    },
+  };
 }
 
 /** Factory: builds a gated, watchdog-guarded provider on @providerkit/core. */

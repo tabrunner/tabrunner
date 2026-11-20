@@ -19,6 +19,7 @@
       "@gusnips/oxlint": "^0.2.2",
       "@gusnips/vite": "^0.8.44",
       "@modelcontextprotocol/sdk": "^1.22.0",
+      "@providerkit/agents": "0.4.0",
       "@providerkit/core": "0.35.1",
       "@resvg/resvg-js": "^2.6.2",
       "@shadcn/react": "^0.3.0",
