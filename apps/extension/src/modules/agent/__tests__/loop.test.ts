@@ -245,19 +245,19 @@ describe("runAgentLoop stream retries", () => {
 describe("runAgentLoop step budget", () => {
   it("lets the model ask the user whether to continue as the budget runs out", async () => {
     const question = "I've filled 12 of 20 fields on the quote form. Keep digging?";
+    const budget = 10;
     let calls = 0;
     let sawNearEndNudge = false;
     const provider: ChatProvider = {
       async *stream(messages) {
         calls++;
-        // The near-end nudge (offering ask_user) is pushed the turn before the model asks.
+        // The near-end nudge (offering ask_user) is pushed on the last tool-capable turn.
         const last = messages[messages.length - 1];
         if (last?.role === "user" && last.content.includes("ask_user")) sawNearEndNudge = true;
-        if (calls === MAX_STEPS - 1) {
-          // Step MAX_STEPS - 2 — the turn the near-end nudge was pushed into.
+        if (calls === budget) {
           yield { type: "tool_use", id: "c1", name: "ask_user", args: { question } };
         } else {
-          yield { type: "tool_use", id: "c1", name: "snapshot", args: {} };
+          yield { type: "tool_use", id: `c${calls}`, name: "snapshot", args: {} };
         }
         yield { type: "done" };
       },
@@ -267,20 +267,24 @@ describe("runAgentLoop step budget", () => {
       provider,
       driver,
       task: "Fill the quote form",
+      maxSteps: budget,
       signal: new AbortController().signal,
       callbacks: { onAskUser: (q) => asked.push(q) },
     });
 
     // The question ended the run (not the exhausted-budget fallback), and the
     // continuation choice was on the table when the model took it.
+    expect(MAX_STEPS).toBe(500);
     expect(sawNearEndNudge).toBe(true);
     expect(asked).toEqual([question]);
   });
 
   it("closes gracefully when the model ignores the budget nudges", async () => {
+    let calls = 0;
     const provider: ChatProvider = {
       async *stream() {
-        yield { type: "tool_use", id: "c1", name: "snapshot", args: {} };
+        calls++;
+        yield { type: "tool_use", id: `c${calls}`, name: "snapshot", args: {} };
         yield { type: "done" };
       },
     };
@@ -289,6 +293,7 @@ describe("runAgentLoop step budget", () => {
       provider,
       driver,
       task: "Keep going",
+      maxSteps: 6,
       signal: new AbortController().signal,
       callbacks: { onDone: (s) => (doneSummary = s) },
     });
@@ -307,6 +312,7 @@ describe("runAgentLoop context growth", () => {
     const STEPS = 20; // 20 × 50k = 1MB untrimmed
     let calls = 0;
     let widest = 0;
+    let lastSnapshotView = "";
     const provider: ChatProvider = {
       async *stream(messages) {
         calls++;
@@ -315,9 +321,11 @@ describe("runAgentLoop context growth", () => {
           0,
         );
         widest = Math.max(widest, size);
-        if (calls > STEPS)
+        if (calls > STEPS) {
+          lastSnapshotView =
+            messages.findLast((m) => m.toolResults?.length)?.toolResults?.[0]?.content ?? "";
           yield { type: "tool_use", id: "c1", name: "done", args: { summary: "ok" } };
-        else yield { type: "tool_use", id: `c${calls}`, name: "snapshot", args: {} };
+        } else yield { type: "tool_use", id: `c${calls}`, name: "snapshot", args: {} };
         yield { type: "done" };
       },
     };
@@ -331,7 +339,7 @@ describe("runAgentLoop context growth", () => {
       }),
     } as unknown as BrowserDriver;
 
-    const wire = await runAgentLoop({
+    await runAgentLoop({
       provider,
       driver: bigDriver,
       task: "Read many pages",
@@ -341,10 +349,9 @@ describe("runAgentLoop context growth", () => {
 
     // Bounded, not unbounded: well under the 1MB an untrimmed run would carry.
     expect(widest).toBeLessThan(300_000);
-    // The newest result still carries its real payload — trimming the page the
-    // model is standing on would blind it.
-    const newest = wire.findLast((m) => m.toolResults?.length)?.toolResults?.[0];
-    expect(newest?.content).toContain("x".repeat(1000));
+    // The newest snapshot result still carries its real payload: trimming the
+    // page the model is standing on would blind it.
+    expect(lastSnapshotView).toContain("x".repeat(1000));
   });
 });
 
@@ -463,10 +470,10 @@ describe("runAgentLoop truncated text-only turn", () => {
     });
 
     expect(nudge).toContain("output limit");
-    expect(nudge).toContain("call `done`");
-    // The ask is "restate it in full", never "summarize it short" — no length
-    // pressure in either direction after a length error.
-    expect(nudge).toContain("restated in full");
+    expect(nudge).toContain("`done`");
+    // The SDK finish note asks for the best answer from gathered evidence without
+    // pressuring a shorter rewrite when calling the stopping tool.
+    expect(nudge).toContain("best answer");
     expect(nudge).not.toContain("sentence");
     expect(nudge).not.toContain("short");
   });

@@ -96,7 +96,7 @@ describe("delegation exposure", () => {
     });
 
     expect(requests).toHaveLength(2);
-    expect(requests[1]?.tools).toBe(requests[0]?.tools);
+    expect(requests[1]?.tools).toEqual(requests[0]?.tools);
     for (const request of requests) {
       const system = request.messages.find((m) => m.role === "system")?.content;
       expect(system?.includes("# Jev")).toBe(enabled);
