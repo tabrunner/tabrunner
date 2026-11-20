@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { parseUsageLimitBody } from "@providerkit/core";
 import {
   dataPolicyConsentUrl,
   envelopeProviderError,
-  googleRetryAfterMs,
   providerHeaders,
   sessionHeaders,
 } from "../http";
@@ -16,7 +16,6 @@ describe("sessionHeaders", () => {
   });
 
   it("sends Zen the full OpenCode client set, with the id forged into the ses_ shape", async () => {
-    // The free tier checks the shape: a plain conversation id gets FreeTierError.
     const headers = await sessionHeaders("opencode", "conv-1");
     const ses = headers["x-opencode-session"]!;
     expect(ses).toMatch(/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
@@ -28,7 +27,6 @@ describe("sessionHeaders", () => {
       "x-opencode-project": "global",
       "x-opencode-client": "cli",
     });
-    // One conversation, one id — the gateway's affinity depends on it.
     expect(await sessionHeaders("opencode", "conv-1")).toEqual(headers);
     expect((await sessionHeaders("opencode", "conv-2"))["x-opencode-session"]).not.toBe(ses);
   });
@@ -37,7 +35,7 @@ describe("sessionHeaders", () => {
     expect(await sessionHeaders("chatgpt", "conv-1")).toEqual({ "session-id": "conv-1" });
   });
 
-  it("sends nothing without a conversation — a probe outside any chat", async () => {
+  it("sends nothing without a conversation (a probe outside any chat)", async () => {
     expect(await sessionHeaders("opencode", undefined)).toEqual({});
   });
 
@@ -68,7 +66,7 @@ describe("dataPolicyConsentUrl", () => {
   });
 });
 
-describe("googleRetryAfterMs", () => {
+describe("Google retry delays via @providerkit/core parseUsageLimitBody", () => {
   it("reads RetryInfo out of Google's array-wrapped quota body", () => {
     const body = JSON.stringify([
       {
@@ -80,17 +78,19 @@ describe("googleRetryAfterMs", () => {
         },
       },
     ]);
-    expect(googleRetryAfterMs(body)).toBe(3000);
+    expect(parseUsageLimitBody(body).retryAfterMs).toBe(3000);
   });
 
   it("reads fractional seconds and the prose fallback", () => {
-    expect(googleRetryAfterMs('{"error":{"details":[{"retryDelay":"1.5s"}]}}')).toBe(1500);
-    expect(googleRetryAfterMs("Please retry in 3.365734019s.")).toBe(3366);
+    expect(parseUsageLimitBody('{"error":{"details":[{"retryDelay":"1.5s"}]}}').retryAfterMs).toBe(
+      1500,
+    );
+    expect(parseUsageLimitBody("Please retry in 3.365734019s.").retryAfterMs).toBe(3366);
   });
 
   it("names no wait when the body carries none", () => {
-    expect(googleRetryAfterMs('{"error":{"message":"boom"}}')).toBeUndefined();
-    expect(googleRetryAfterMs("not json")).toBeUndefined();
+    expect(parseUsageLimitBody('{"error":{"message":"boom"}}').retryAfterMs).toBeUndefined();
+    expect(parseUsageLimitBody("not json").retryAfterMs).toBeUndefined();
   });
 });
 
@@ -110,9 +110,6 @@ describe("envelopeProviderError", () => {
   });
 
   it("tells a spent ChatGPT window when it resets, now that it reads as quota", () => {
-    // The codex backend's 429 for a spent plan window. @providerkit/core 0.16
-    // names it `quota` (it was `rate` by status before), and the generic quota
-    // line has no reset time — the one thing a subscriber needs to hear.
     const body = JSON.stringify({
       error: {
         type: "usage_limit_reached",
@@ -138,7 +135,6 @@ describe("envelopeProviderError", () => {
 
 describe("providerHeaders", () => {
   it("bills a typed turn to the user and a tool-result turn to the agent on Copilot", () => {
-    // One premium request per user turn; the run's own follow-ups ride free.
     const typed: ChatMessage[] = [{ role: "user", content: "hi" }];
     const followUp: ChatMessage[] = [
       ...typed,

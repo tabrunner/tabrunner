@@ -1,7 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import { createOpenAIProvider } from "../openai";
-import { createAnthropicProvider } from "../anthropic";
+import { createProvider } from "../factory";
+import { PRESETS } from "../presets";
 import { ProviderError, isRetryable, type ResolvedProviderConfig } from "../types";
+
+function createOpenAIProvider(config: ResolvedProviderConfig) {
+  return createProvider(config);
+}
+
+function createAnthropicProvider(config: ResolvedProviderConfig) {
+  return createProvider(config);
+}
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
@@ -234,6 +242,9 @@ describe("OpenAI provider SSE parsing", () => {
   });
 
   it("sends the OpenCode session on Zen turns carrying a conversation", async () => {
+    const preset = PRESETS.find((p) => p.id === "opencode");
+    const wasDisabled = preset?.disabled;
+    if (preset) delete preset.disabled;
     const config: ResolvedProviderConfig = {
       ...makeConfig("openai", "https://opencode.ai/zen/v1"),
       id: "opencode",
@@ -245,17 +256,21 @@ describe("OpenAI provider SSE parsing", () => {
         headers: { "content-type": "text/event-stream" },
       }),
     );
-    for await (const d of createOpenAIProvider(config).stream(
-      [],
-      [],
-      new AbortController().signal,
-    )) {
-      void d;
+    try {
+      for await (const d of createOpenAIProvider(config).stream(
+        [],
+        [],
+        new AbortController().signal,
+      )) {
+        void d;
+      }
+      const headers = spy.mock.calls[0]![1]?.headers as Record<string, string>;
+      // The free tier checks the id's shape, so the conversation id is forged into it.
+      expect(headers["x-opencode-session"]).toMatch(/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
+    } finally {
+      if (preset && wasDisabled) preset.disabled = true;
+      vi.restoreAllMocks();
     }
-    const headers = spy.mock.calls[0]![1]?.headers as Record<string, string>;
-    // The free tier checks the id's shape, so the conversation id is forged into it.
-    expect(headers["x-opencode-session"]).toMatch(/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
-    vi.restoreAllMocks();
   });
 
   it("words the data-policy gate as consent, never as a rejected key", async () => {
@@ -408,36 +423,44 @@ describe("OpenAI provider SSE parsing", () => {
   });
 
   it("omits the session header without a conversation or off Zen", async () => {
-    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(sseStream(["data: [DONE]"]), {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-      }),
+    const preset = PRESETS.find((p) => p.id === "opencode");
+    const wasDisabled = preset?.disabled;
+    if (preset) delete preset.disabled;
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(sseStream(["data: [DONE]"]), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
     );
-    const noSession: ResolvedProviderConfig = {
-      ...makeConfig("openai", "https://opencode.ai/zen/v1"),
-      id: "opencode",
-    };
-    for await (const d of createOpenAIProvider(noSession).stream(
-      [],
-      [],
-      new AbortController().signal,
-    )) {
-      void d;
+    try {
+      const noSession: ResolvedProviderConfig = {
+        ...makeConfig("openai", "https://opencode.ai/zen/v1"),
+        id: "opencode",
+      };
+      for await (const d of createOpenAIProvider(noSession).stream(
+        [],
+        [],
+        new AbortController().signal,
+      )) {
+        void d;
+      }
+      const plain = makeConfig("openai", "https://api.openai.com/v1");
+      for await (const d of createOpenAIProvider({ ...plain, sessionId: "conv-1" }).stream(
+        [],
+        [],
+        new AbortController().signal,
+      )) {
+        void d;
+      }
+      for (const call of spy.mock.calls) {
+        const headers = call[1]?.headers as Record<string, string>;
+        expect(headers["x-opencode-session"]).toBeUndefined();
+      }
+    } finally {
+      if (preset && wasDisabled) preset.disabled = true;
+      vi.restoreAllMocks();
     }
-    const plain = makeConfig("openai", "https://api.openai.com/v1");
-    for await (const d of createOpenAIProvider({ ...plain, sessionId: "conv-1" }).stream(
-      [],
-      [],
-      new AbortController().signal,
-    )) {
-      void d;
-    }
-    for (const call of spy.mock.calls) {
-      const headers = call[1]?.headers as Record<string, string>;
-      expect(headers["x-opencode-session"]).toBeUndefined();
-    }
-    vi.restoreAllMocks();
   });
 });
 

@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runAgentLoop } from "../loop";
 import type { BrowserDriver } from "@/modules/browser";
 import type { SnapshotResult } from "@/modules/browser/snapshot";
-import type { ChatProvider } from "@/modules/providers/types";
+import { createProvider, STREAM_STALL_MS } from "@/modules/providers/factory";
+import type { ResolvedProviderConfig } from "@/modules/providers/types";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
@@ -16,21 +17,25 @@ const snapshot = async (): Promise<SnapshotResult> => ({
 
 const driver = { snapshot } as unknown as BrowserDriver;
 
-/** A provider stuck before its request exists: a refresh that never answers, a Chrome call that never returns. */
-function hungProvider(started: () => void): ChatProvider {
-  return {
-    // oxlint-disable-next-line require-yield -- never yields: that is the point
-    async *stream() {
-      started();
-      await new Promise<never>(() => {});
-    },
-  };
-}
+const config: ResolvedProviderConfig = {
+  id: "test",
+  name: "Test",
+  shape: "openai",
+  baseUrl: "https://example.com/v1",
+  apiKey: "sk-test",
+  model: "test-model",
+  createdAt: 0,
+};
 
-function run(provider: ChatProvider, signal: AbortSignal) {
+let credentialWait: Promise<ResolvedProviderConfig> | null = null;
+vi.mock("@/modules/providers/credential", () => ({
+  ensureProviderCredential: (cfg: ResolvedProviderConfig) => credentialWait ?? Promise.resolve(cfg),
+}));
+
+function run(signal: AbortSignal) {
   const events = { done: 0, errors: [] as string[] };
   const finished = runAgentLoop({
-    provider,
+    provider: createProvider(config),
     driver,
     task: "do it",
     signal,
@@ -42,17 +47,19 @@ function run(provider: ChatProvider, signal: AbortSignal) {
   return { events, finished };
 }
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  credentialWait = null;
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("a model turn that never answers", () => {
-  it("unwinds the moment Stop is pressed, even when nothing listens to the signal", async () => {
+  it("unwinds the moment Stop is pressed, even when a pre-request await ignores the signal", async () => {
+    credentialWait = new Promise<ResolvedProviderConfig>(() => {});
     const controller = new AbortController();
-    let started = false;
-    const { events, finished } = run(
-      hungProvider(() => (started = true)),
-      controller.signal,
-    );
-    await vi.waitFor(() => expect(started).toBe(true));
+    const { events, finished } = run(controller.signal);
+    await Promise.resolve();
+    await Promise.resolve();
 
     controller.abort();
     await finished;
@@ -61,20 +68,28 @@ describe("a model turn that never answers", () => {
     expect(events.errors).toEqual([]);
   });
 
-  it("gives up after the stall deadline with a plain error, and does not replay the prompt", async () => {
+  it("gives up after the 6-minute stall deadline with a plain error, and does not replay the prompt", async () => {
     vi.useFakeTimers();
-    let streams = 0;
-    const { events, finished } = run(
-      hungProvider(() => streams++),
-      new AbortController().signal,
-    );
-    await vi.advanceTimersByTimeAsync(0);
-    expect(streams).toBe(1);
+    let fetches = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      fetches++;
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(init.signal?.reason ?? new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    });
 
-    await vi.advanceTimersByTimeAsync(6 * 60_000);
+    const { events, finished } = run(new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetches).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(STREAM_STALL_MS);
     await finished;
 
-    expect(streams).toBe(1);
+    expect(fetches).toBe(1);
     expect(events.errors).toHaveLength(1);
     expect(events.errors[0]).toContain("6 minutes");
   });

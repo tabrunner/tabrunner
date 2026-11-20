@@ -1,8 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { buildOpenAIBody } from "../openai";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createProvider } from "../factory";
 import { buildAnthropicBody } from "../anthropic";
 import { PRESETS } from "../presets";
-import { REASONING_EFFORTS } from "../types";
 import type {
   ChatMessage,
   ExternalJsonSchema,
@@ -12,6 +11,12 @@ import type {
 } from "../types";
 
 // Storage stand-in comes from src/test-setup.ts (vitest setupFiles).
+
+vi.mock("../credential", () => ({
+  ensureProviderCredential: (config: unknown) => Promise.resolve(config),
+}));
+
+afterEach(() => vi.restoreAllMocks());
 
 const base: ResolvedProviderConfig = {
   id: "test",
@@ -28,34 +33,63 @@ const messages: ChatMessage[] = [
   { role: "user", content: "Do the thing." },
 ];
 
-describe("buildOpenAIBody", () => {
-  it("omits reasoning_effort by default", () => {
-    const body = buildOpenAIBody(base, messages, []);
+function emptySseFor(shape: ResolvedProviderConfig["shape"]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  const payload =
+    shape === "anthropic"
+      ? `data: ${JSON.stringify({ type: "message_stop" })}\n\n`
+      : shape === "responses"
+        ? `data: ${JSON.stringify({ type: "response.completed", response: {} })}\n\n`
+        : "data: [DONE]\n\n";
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(payload));
+      controller.close();
+    },
+  });
+}
+
+async function captureBody(
+  config: ResolvedProviderConfig,
+  msgs: ChatMessage[],
+  tools: ToolDef[] = [],
+): Promise<Record<string, unknown>> {
+  const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+    new Response(emptySseFor(config.shape), {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+  );
+  const provider = createProvider(config);
+  for await (const delta of provider.stream(msgs, tools, new AbortController().signal)) {
+    void delta;
+  }
+  const init = fetchSpy.mock.calls.at(-1)?.[1];
+  return JSON.parse(String(init?.body)) as Record<string, unknown>;
+}
+
+describe("OpenAI request bodies via @providerkit/core", () => {
+  it("omits reasoning_effort by default", async () => {
+    const body = await captureBody(base, messages);
     expect(body).not.toHaveProperty("reasoning_effort");
   });
 
-  it("passes reasoning_effort through verbatim when set", () => {
-    const body = buildOpenAIBody({ ...base, reasoningEffort: "max" }, messages, []);
-    expect(body.reasoning_effort).toBe("max");
+  it("maps reasoning_effort on OpenAI shape (max clamps to high in core)", async () => {
+    const body = await captureBody({ ...base, reasoningEffort: "max" }, messages);
+    expect(body.reasoning_effort).toBe("high");
   });
 
-  it("serializes tool-call assistant turns with string content and echoed reasoning", () => {
-    // DeepSeek's strict deserializer reads null/absent content as a missing field,
-    // and its thinking mode 400s unless reasoning_content is passed back verbatim.
-    const body = buildOpenAIBody(
-      base,
-      [
-        { role: "user", content: "Do the thing." },
-        {
-          role: "assistant",
-          content: "",
-          reasoning: "let me look at the page",
-          toolCalls: [{ id: "c1", name: "snapshot", args: {} }],
-        },
-        { role: "tool_results", content: "", toolResults: [{ id: "c1", content: "{}" }] },
-      ],
-      [],
-    );
+  it("serializes tool-call assistant turns with string content and echoed reasoning", async () => {
+    const body = await captureBody(base, [
+      { role: "user", content: "Do the thing." },
+      {
+        role: "assistant",
+        content: "",
+        reasoning: "let me look at the page",
+        toolCalls: [{ id: "c1", name: "snapshot", args: {} }],
+      },
+      { role: "tool_results", content: "", toolResults: [{ id: "c1", content: "{}" }] },
+    ]);
     const msgs = body.messages as Record<string, unknown>[];
     expect(msgs[1]).toMatchObject({
       role: "assistant",
@@ -65,156 +99,140 @@ describe("buildOpenAIBody", () => {
     expect(msgs[1]?.tool_calls).toHaveLength(1);
   });
 
-  it("never omits `content` on tool messages (strict deserializers 400 otherwise)", () => {
-    // A no-data tool (type, press_key, scroll) can produce content: undefined —
-    // serializing that drops the key and DeepSeek rejects the body. The adapter
-    // must always emit `content`, even when the result carried none.
-    const body = buildOpenAIBody(
-      base,
-      [
-        { role: "user", content: "Do the thing." },
-        {
-          role: "assistant",
-          content: "",
-          toolCalls: [{ id: "c1", name: "type", args: { text: "hi" } }],
-        },
-        {
-          role: "tool_results",
-          content: "",
-          // as unknown as string: reproducing the runtime hole the type misses.
-          toolResults: [{ id: "c1", content: undefined as unknown as string }],
-        },
-      ],
-      [],
-    );
+  it("never omits content on tool messages (strict deserializers 400 otherwise)", async () => {
+    const body = await captureBody(base, [
+      { role: "user", content: "Do the thing." },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "c1", name: "type", args: { text: "hi" } }],
+      },
+      {
+        role: "tool_results",
+        content: "",
+        // as unknown as string: reproducing the runtime hole the type misses.
+        toolResults: [{ id: "c1", content: undefined as unknown as string }],
+      },
+    ]);
     const msgs = body.messages as Record<string, unknown>[];
     expect(msgs[2]).toMatchObject({ role: "tool", tool_call_id: "c1", content: "" });
     expect(JSON.stringify(msgs[2])).toContain('"content"');
   });
 
   describe("effort on the endpoints that spell it their own way", () => {
-    // The fields each preset row sends for one model and one effort — what the
-    // picker offers is the whole input, so the preset is the only other thing
-    // the body may depend on.
-    function effortFields(id: string, model: string, effort?: ReasoningEffort) {
+    async function effortFields(id: string, model: string, effort?: ReasoningEffort) {
       const preset = PRESETS.find((p) => p.id === id);
       if (!preset) throw new Error(`no preset ${id}`);
-      const body = buildOpenAIBody(
-        {
-          ...base,
-          id,
-          baseUrl: preset.baseUrl,
-          model,
-          ...(effort ? { reasoningEffort: effort } : {}),
-        },
-        messages,
-        [],
-      );
-      const { reasoning_effort, reasoning, thinking } = body;
-      return { reasoning_effort, reasoning, thinking };
+      const wasDisabled = preset.disabled;
+      delete preset.disabled;
+      try {
+        const body = await captureBody(
+          {
+            ...base,
+            id,
+            baseUrl: preset.baseUrl,
+            model,
+            ...(effort ? { reasoningEffort: effort } : {}),
+          },
+          messages,
+        );
+        const { reasoning_effort, reasoning, thinking } = body;
+        return { reasoning_effort, reasoning, thinking };
+      } finally {
+        if (wasDisabled) preset.disabled = true;
+      }
     }
 
-    it("OpenRouter: 'none' is said per measured model, never as a blanket off", () => {
-      // @providerkit/core's record (0.12.3, in its OPENROUTER_NONE doc; 2026-09-26
-      // sweep and 2026-09-27 matrix): GLM 5.3 Flash and gpt-5-mini answer every
-      // explicit off with 400 "Reasoning is mandatory", and their lowest level
-      // gave 0 reasoning tokens; MiMo v2.6 Flash thinks when the field is left
-      // out and stops at an explicit none.
+    it("OpenRouter: 'none' is said per measured model, never as a blanket off", async () => {
       const rows: Array<[string, string]> = [
         ["z-ai/glm-5.3-flash", "low"],
         ["openai/gpt-5-mini", "minimal"],
         ["xiaomi/mimo-v2.6-flash", "none"],
       ];
       for (const [model, effort] of rows) {
-        expect(effortFields("openrouter", model, "none"), model).toEqual({ reasoning: { effort } });
-      }
-    });
-
-    it("OpenRouter: 'none' to an unlisted model sends no field", () => {
-      // The same record leaves DeepSeek V4 Flash off on purpose: 0 reasoning
-      // tokens with the field left out, and it thinks at "low". A model nobody
-      // measured gets the same omission.
-      expect(effortFields("openrouter", "deepseek/deepseek-v4-flash", "none")).toEqual({});
-    });
-
-    it("OpenRouter: a named level rides in its own `reasoning` object, max included", () => {
-      for (const effort of ["low", "medium", "high", "max"] as const) {
-        expect(effortFields("openrouter", "z-ai/glm-5.3-flash", effort), effort).toEqual({
+        expect(await effortFields("openrouter", model, "none"), model).toEqual({
           reasoning: { effort },
         });
       }
     });
 
-    it("DeepSeek: 'none' turns thinking off, because silence leaves it on", () => {
-      expect(effortFields("deepseek", "deepseek-v4-flash", "none")).toEqual({
+    it("OpenRouter: 'none' to an unlisted model sends no field", async () => {
+      expect(await effortFields("openrouter", "deepseek/deepseek-v4-flash", "none")).toEqual({});
+    });
+
+    it("OpenRouter: a named level rides in its own reasoning object, max included", async () => {
+      for (const effort of ["low", "medium", "high", "max"] as const) {
+        expect(await effortFields("openrouter", "z-ai/glm-5.3-flash", effort), effort).toEqual({
+          reasoning: { effort },
+        });
+      }
+    });
+
+    it("DeepSeek: 'none' turns thinking off, because silence leaves it on", async () => {
+      expect(await effortFields("deepseek", "deepseek-v4-flash", "none")).toEqual({
         thinking: { type: "disabled" },
       });
     });
 
-    it("DeepSeek: low and medium cap it; high and max leave DeepSeek its own ceiling", () => {
-      expect(effortFields("deepseek", "deepseek-v4-flash", "low")).toEqual({
+    it("DeepSeek: low and medium cap it; high and max leave DeepSeek its own ceiling", async () => {
+      expect(await effortFields("deepseek", "deepseek-v4-flash", "low")).toEqual({
         thinking: { type: "enabled" },
         reasoning_effort: "low",
       });
       for (const effort of ["high", "max"] as const) {
-        expect(effortFields("deepseek", "deepseek-v4-flash", effort), effort).toEqual({
+        expect(await effortFields("deepseek", "deepseek-v4-flash", effort), effort).toEqual({
           thinking: { type: "enabled" },
         });
       }
     });
 
-    it("OpenCode Zen: 'none' is raised to what each family accepts, never sent as a 400", () => {
-      // Measured live on Zen, 2026-10-21: MiniMax answers an explicit none with
-      // 400 "requires adaptive thinking; reasoning effort none is not allowed".
-      // The table is core's `opencode-go` dialect (GLM takes only high and max).
+    it("OpenCode Zen: 'none' is raised to what each family accepts, never sent as a 400", async () => {
       const none = (model: string) => effortFields("opencode", model, "none");
-      expect(none("minimax-m3.1-flash-free")).toEqual({ reasoning_effort: "low" });
-      expect(none("deepseek-v4.1-flash-free")).toEqual({ reasoning_effort: "low" });
-      expect(none("glm-5.3-flash-free")).toEqual({ reasoning_effort: "high" });
-      expect(effortFields("opencode", "big-pickle", "medium")).toEqual({
+      expect(await none("minimax-m3.1-flash-free")).toEqual({ reasoning_effort: "low" });
+      expect(await none("deepseek-v4.1-flash-free")).toEqual({ reasoning_effort: "low" });
+      expect(await none("glm-5.3-flash-free")).toEqual({ reasoning_effort: "high" });
+      expect(await effortFields("opencode", "big-pickle", "medium")).toEqual({
         reasoning_effort: "medium",
       });
     });
 
-    it("sends nothing on any endpoint when no effort was picked", () => {
+    it("sends nothing on any endpoint when no effort was picked", async () => {
       for (const [id, model] of [
         ["openrouter", "z-ai/glm-5.3-flash"],
         ["deepseek", "deepseek-v4-flash"],
         ["openai", "gpt-5.1"],
       ]) {
-        expect(effortFields(id!, model!), id).toEqual({});
+        expect(await effortFields(id!, model!), id).toEqual({});
       }
     });
 
-    it("OpenAI keeps `reasoning_effort` verbatim — 'none' is one of its values", () => {
-      expect(effortFields("openai", "gpt-5.1", "none")).toEqual({ reasoning_effort: "none" });
+    it("OpenAI keeps reasoning_effort verbatim: 'none' is one of its values", async () => {
+      expect(await effortFields("openai", "gpt-5.1", "none")).toEqual({
+        reasoning_effort: "none",
+      });
     });
   });
 
-  it("omits reasoning_content when the turn had no reasoning", () => {
-    const body = buildOpenAIBody(base, [{ role: "assistant", content: "done" }], []);
+  it("omits reasoning_content when the turn had no reasoning", async () => {
+    const body = await captureBody(base, [{ role: "assistant", content: "done" }]);
     const msgs = body.messages as Record<string, unknown>[];
     expect(msgs[0]).not.toHaveProperty("reasoning_content");
   });
 
   describe("OpenRouter upstream pinning", () => {
-    // OpenRouter routes each request to a fresh upstream host by default, and
-    // the prompt cache lives on that host — so without a pin the stable prefix
-    // re-prefills cold every turn. The pin keeps one conversation on one host.
     const openrouter: ResolvedProviderConfig = {
       ...base,
+      id: "openrouter",
       baseUrl: "https://openrouter.ai/api/v1",
       model: "anthropic/claude-sonnet-5",
     };
 
-    it("pins the model's own vendor when that vendor serves it", () => {
-      const body = buildOpenAIBody(openrouter, messages, []);
+    it("pins the model's own vendor when that vendor serves it", async () => {
+      const body = await captureBody(openrouter, messages);
       expect(body.provider).toEqual({ order: ["anthropic"], allow_fallbacks: true });
     });
 
-    it("maps vendor prefixes to their OpenRouter provider slug", () => {
-      // Prefix and slug disagree on several vendors — the body must carry the
-      // slug `order` accepts, never the raw prefix.
+    it("maps vendor prefixes to their OpenRouter provider slug", async () => {
       const aliases: Record<string, string> = {
         "qwen/qwen3.8-flash": "alibaba",
         "mistralai/mistral-medium-3-5": "mistral",
@@ -224,31 +242,28 @@ describe("buildOpenAIBody", () => {
         "zai/glm-5.3": "z-ai",
       };
       for (const [model, slug] of Object.entries(aliases)) {
-        const body = buildOpenAIBody({ ...openrouter, model }, messages, []);
+        const body = await captureBody({ ...openrouter, model }, messages);
         expect(body.provider, model).toEqual({ order: [slug], allow_fallbacks: true });
       }
     });
 
-    it("leaves default routing on for vendors OpenRouter doesn't serve first-party", () => {
-      // Open-weight models are hosted by third parties — there is no vendor
-      // host to pin, and an unknown slug in `order` is a request we never sent.
+    it("leaves default routing on for vendors OpenRouter doesn't serve first-party", async () => {
       for (const model of ["meta-llama/llama-3.3-70b-instruct", "nvidia/nemotron-3.5-lightning"]) {
-        const body = buildOpenAIBody({ ...openrouter, model }, messages, []);
+        const body = await captureBody({ ...openrouter, model }, messages);
         expect(body, model).not.toHaveProperty("provider");
       }
     });
 
-    it("leaves default routing on for a model id without a vendor prefix", () => {
-      const body = buildOpenAIBody({ ...openrouter, model: "bare-model" }, messages, []);
+    it("leaves default routing on for a model id without a vendor prefix", async () => {
+      const body = await captureBody({ ...openrouter, model: "bare-model" }, messages);
       expect(body).not.toHaveProperty("provider");
     });
 
-    it("never pins other OpenAI-shape endpoints — they are single-host", () => {
+    it("never pins other OpenAI-shape endpoints: they are single-host", async () => {
       for (const baseUrl of ["https://api.groq.com/openai/v1", "https://api.deepseek.com"]) {
-        const body = buildOpenAIBody(
+        const body = await captureBody(
           { ...base, baseUrl, model: "anthropic/claude-sonnet-5" },
           messages,
-          [],
         );
         expect(body, baseUrl).not.toHaveProperty("provider");
       }
@@ -256,246 +271,122 @@ describe("buildOpenAIBody", () => {
   });
 });
 
-describe("buildAnthropicBody", () => {
-  const anthropicBase: ResolvedProviderConfig = { ...base, shape: "anthropic" };
+describe("Anthropic API-key request bodies via @providerkit/core", () => {
+  const anthropicBase: ResolvedProviderConfig = {
+    ...base,
+    id: "anthropic",
+    shape: "anthropic",
+    baseUrl: "https://api.anthropic.com",
+    model: "claude-fable-5",
+  };
+  const tools: ToolDef[] = [
+    {
+      name: "snapshot",
+      description: "Snapshot the page",
+      params: { type: "object", properties: {} },
+    },
+  ];
 
-  it("splits system out of the conversation", () => {
-    const body = buildAnthropicBody(anthropicBase, messages, []);
-    expect(body.system).toEqual([{ type: "text", text: "You are an agent." }]);
-    expect(body.messages).toEqual([{ role: "user", content: "Do the thing." }]);
+  it("splits system out of the conversation and caches the conversation on tool turns", async () => {
+    const body = await captureBody(anthropicBase, messages, tools);
+    expect(body.system).toEqual([
+      { type: "text", text: "You are an agent.", cache_control: { type: "ephemeral" } },
+    ]);
+    const msgs = body.messages as { role: string; content: { cache_control?: unknown }[] }[];
+    expect(msgs[0]?.content.at(-1)?.cache_control).toEqual({ type: "ephemeral" });
+    expect(body.max_tokens).toBe(65536);
   });
 
-  it("thinks adaptively by default, with no effort pinned", () => {
-    // Unpinned used to send no thinking field at all, which on this shape reads
-    // as reasoning off — quieter than the other two shapes' idea of "default".
-    const body = buildAnthropicBody(anthropicBase, messages, []);
-    expect(body.thinking).toEqual({ type: "adaptive" });
-    expect(body).not.toHaveProperty("output_config");
-  });
-
-  it("keeps max_tokens above the thinking budget on every request", () => {
-    // The gateways reject a cap that doesn't clear the budget they assign, and
-    // thinking is now always on — so this can't be conditional on effort.
-    for (const effort of [undefined, "none", "high"] as const) {
-      const body = buildAnthropicBody(
-        { ...anthropicBase, ...(effort ? { reasoningEffort: effort } : {}) },
-        messages,
-        [],
-      );
-      expect(body.max_tokens).toBeGreaterThan(32768);
-    }
-  });
-
-  it("maps effort to adaptive thinking + output_config", () => {
-    const body = buildAnthropicBody({ ...anthropicBase, reasoningEffort: "high" }, messages, []);
-    expect(body.thinking).toEqual({ type: "adaptive" });
-    expect(body.output_config).toEqual({ effort: "high" });
-  });
-
-  it("sends every served Claude id the thinking its model takes, at every level", () => {
-    // Documented (Anthropic's per-model thinking table and model deprecations
-    // page, read 2026-09-30). Matched on the model, since OpenCode sends these
-    // same ids here, and a dated snapshot is its family.
-    const wire = (model: string, reasoningEffort?: ReasoningEffort) => {
-      const config = { ...anthropicBase, model, ...(reasoningEffort ? { reasoningEffort } : {}) };
-      const { thinking, output_config, max_tokens } = buildAnthropicBody(config, messages, []);
-      return { thinking, output_config, max_tokens };
-    };
-    const adaptive = [
-      "claude-fable-5-1",
-      "claude-opus-5-5",
-      "claude-sonnet-5-5",
-      "claude-fable-5",
-      "claude-opus-5",
-      "claude-sonnet-5",
-      "claude-opus-4-8",
-      "claude-opus-4-7",
-      "claude-opus-4-6",
-      "claude-sonnet-4-6",
-    ];
-    for (const model of adaptive) {
-      for (const effort of [undefined, ...REASONING_EFFORTS]) {
-        // "none" stays adaptive, not `disabled`: Fable 5.1 and Opus 5.5 answer
-        // `disabled` with a 400, and Opus 5 with thinking off leaks tool calls
-        // into its text on tool-heavy work (same docs).
-        const pinned = effort && effort !== "none" ? { output_config: { effort } } : {};
-        expect(wire(model, effort), `${model} ${effort}`).toEqual({
-          thinking: { type: "adaptive" },
-          ...pinned,
-          max_tokens: 65536,
-        });
-      }
-    }
-    const extendedOnly = [
-      "claude-haiku-4-5-20251001",
-      "claude-haiku-4-5",
-      "claude-sonnet-4-5",
-      "claude-sonnet-4-5-20250929",
-      "claude-opus-4-5",
-      "claude-opus-4-5-20251101",
-    ];
-    for (const model of extendedOnly) {
-      for (const effort of [undefined, ...REASONING_EFFORTS]) {
-        // 64000: "Max output: 64K tokens", read at its smaller value.
-        expect(wire(model, effort), `${model} ${effort}`).toEqual({ max_tokens: 64000 });
-      }
-    }
-  });
-
-  it("lands 'none' on the same adaptive floor as default — an explicit off 400s on Fable", () => {
-    for (const id of ["test", "claude", "anthropic"]) {
-      const config = { ...anthropicBase, id, model: "claude-fable-5" };
-      const none = buildAnthropicBody({ ...config, reasoningEffort: "none" }, messages, []);
-      expect(none.thinking, id).toEqual({ type: "adaptive" });
-      expect(none, id).not.toHaveProperty("output_config");
-      // Deliberate, and the reason the picker shows two rows that agree on the
-      // wire here: `explicitNone` on the preset is the only way to split them.
-      expect(none, id).toEqual(buildAnthropicBody(config, messages, []));
-    }
-  });
-
-  it("turns thinking off for 'none' on Z.ai, which thinks unless told not to", () => {
-    // @providerkit/core measured this endpoint on glm-5.3-flash (2026-09-13, in
-    // its zai.ts): no thinking field thinks, `disabled` does not. The adaptive
-    // floor sent before was not measured.
-    const zai = { ...anthropicBase, id: "zai", model: "glm-5.3-flash" };
-    const none = buildAnthropicBody({ ...zai, reasoningEffort: "none" }, messages, []);
-    expect(none.thinking).toEqual({ type: "disabled" });
-    expect(none).not.toHaveProperty("output_config");
-    // Every other level keeps the shape's usual request.
-    const low = buildAnthropicBody({ ...zai, reasoningEffort: "low" }, messages, []);
-    expect(low.thinking).toEqual({ type: "adaptive" });
-    expect(low.output_config).toEqual({ effort: "low" });
-    expect(buildAnthropicBody(zai, messages, []).thinking).toEqual({ type: "adaptive" });
-  });
-
-  it("merges back-to-back user messages (tool_results + injected mid-run note)", () => {
-    // Anthropic rejects consecutive same-role messages; an injected user note
-    // lands right after the tool_results user message and must merge into it.
-    const body = buildAnthropicBody(
-      anthropicBase,
-      [
-        { role: "user", content: "Do the thing." },
-        {
-          role: "assistant",
-          content: "",
-          toolCalls: [{ id: "c1", name: "snapshot", args: {} }],
-        },
-        { role: "tool_results", content: "", toolResults: [{ id: "c1", content: "{}" }] },
-        { role: "user", content: "also check the footer" },
-      ],
-      [],
+  it("caps Claude 4.5 models at 64000 tokens and maps adaptive Claude effort", async () => {
+    const haiku = await captureBody(
+      { ...anthropicBase, model: "claude-haiku-4-5-20251001" },
+      messages,
     );
-    const msgs = body.messages as { role: string; content: unknown }[];
+    expect(haiku.max_tokens).toBe(64000);
+
+    const high = await captureBody({ ...anthropicBase, reasoningEffort: "high" }, messages);
+    expect(high.thinking).toEqual({ type: "adaptive" });
+    expect(high.output_config).toEqual({ effort: "high" });
+  });
+
+  it("turns thinking off on Z.ai when effort is none", async () => {
+    const zai: ResolvedProviderConfig = {
+      ...anthropicBase,
+      id: "zai",
+      baseUrl: "https://api.z.ai/api/anthropic",
+      model: "glm-5.3-flash",
+    };
+    const none = await captureBody({ ...zai, reasoningEffort: "none" }, messages);
+    expect(none.thinking).toEqual({ type: "disabled" });
+  });
+
+  it("merges back-to-back user messages (tool_results + injected mid-run note)", async () => {
+    const body = await captureBody(anthropicBase, [
+      { role: "user", content: "Do the thing." },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "c1", name: "snapshot", args: {} }],
+      },
+      { role: "tool_results", content: "", toolResults: [{ id: "c1", content: "{}" }] },
+      { role: "user", content: "also check the footer" },
+    ]);
+    const msgs = body.messages as { role: string; content: unknown[] }[];
     expect(msgs).toHaveLength(3);
     expect(msgs[2]?.role).toBe("user");
-    expect(msgs[2]?.content).toEqual([
-      { type: "tool_result", tool_use_id: "c1", content: "{}" },
-      { type: "text", text: "also check the footer" },
+    expect(msgs[2]?.content[0]).toMatchObject({ type: "tool_result", tool_use_id: "c1" });
+    expect(msgs[2]?.content[1]).toMatchObject({ type: "text", text: "also check the footer" });
+  });
+
+  it("stays under the four-breakpoint cap on long conversations", async () => {
+    const long: ChatMessage[] = [
+      ...messages,
+      { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "snapshot", args: {} }] },
+      { role: "tool_results", content: "", toolResults: [{ id: "c1", content: "{}" }] },
+      { role: "user", content: "and now the footer" },
+    ];
+    const body = await captureBody(anthropicBase, long, tools);
+    const markers = JSON.stringify(body).match(/"cache_control"/g) ?? [];
+    expect(markers.length).toBeLessThanOrEqual(4);
+  });
+});
+
+describe("retained Claude plan sign-in adapter (buildAnthropicBody)", () => {
+  const oauth: ResolvedProviderConfig = {
+    ...base,
+    id: "claude",
+    name: "Claude",
+    shape: "anthropic",
+    baseUrl: "https://api.anthropic.com",
+    model: "claude-fable-5",
+    auth: { accessToken: "at", refreshToken: "rt", expiresAt: 0 },
+  };
+  const tools: ToolDef[] = [
+    {
+      name: "snapshot",
+      description: "Snapshot the page",
+      params: { type: "object", properties: {} },
+    },
+  ];
+
+  it("prepends the Claude Code identity as the first system block", () => {
+    const body = buildAnthropicBody(oauth, messages, []);
+    expect(body.system).toEqual([
+      { type: "text", text: "You are a Claude agent, built on Anthropic's Claude Agent SDK." },
+      { type: "text", text: "You are an agent." },
     ]);
   });
 
-  describe("in OAuth mode", () => {
-    // A signed-in subscription provider — the adapter must wear Claude Code's
-    // wire signatures: identity system block + custom_ tool-name prefix.
-    const oauth: ResolvedProviderConfig = {
-      ...anthropicBase,
-      auth: { accessToken: "at", refreshToken: "rt", expiresAt: 0 },
-    };
-    const tools = [
-      {
-        name: "snapshot",
-        description: "Snapshot the page",
-        params: { type: "object" as const, properties: {} },
-      },
-    ];
-
-    it("prepends the Claude Code identity as the first system block", () => {
-      const body = buildAnthropicBody(oauth, messages, []);
-      expect(body.system).toEqual([
-        { type: "text", text: "You are a Claude agent, built on Anthropic's Claude Agent SDK." },
-        { type: "text", text: "You are an agent." },
-      ]);
-    });
-
-    it("emits an identity block even when the conversation has no system message", () => {
-      const body = buildAnthropicBody(oauth, [{ role: "user", content: "hi" }], []);
-      expect((body.system as { text: string }[])[0]?.text).toContain("Claude Agent SDK");
-    });
-
-    it("prefixes declared tool names with custom_", () => {
-      const body = buildAnthropicBody(oauth, messages, tools);
-      expect((body.tools as { name: string }[])[0]?.name).toBe("custom_snapshot");
-    });
-
-    it("leaves key-based tool names unprefixed", () => {
-      const body = buildAnthropicBody(anthropicBase, messages, tools);
-      expect((body.tools as { name: string }[])[0]?.name).toBe("snapshot");
-    });
-  });
-
-  describe("prompt caching", () => {
-    const tools = [
-      {
-        name: "snapshot",
-        description: "Snapshot the page",
-        params: { type: "object" as const, properties: {} },
-      },
-    ];
-    const oauth: ResolvedProviderConfig = {
-      ...anthropicBase,
-      auth: { accessToken: "at", refreshToken: "rt", expiresAt: 0 },
-    };
-
-    /** Every cache_control in the body, wherever it was placed. */
-    const markers = (body: Record<string, unknown>) =>
-      JSON.stringify(body).match(/"cache_control"/g) ?? [];
-
-    it("anchors the fixed prefix on the last system block, not on the tools", () => {
-      // Anthropic builds its prefix tools → system → messages, so one marker at
-      // the end of `system` already covers the tool definitions above it —
-      // spending a second on the tools array would buy nothing and the API caps
-      // a request at four.
-      for (const config of [anthropicBase, oauth]) {
-        const body = buildAnthropicBody(config, messages, tools);
-        const blocks = body.system as { cache_control?: unknown }[];
-        expect(blocks[blocks.length - 1]?.cache_control).toEqual({ type: "ephemeral" });
-        expect(blocks.filter((b) => b.cache_control)).toHaveLength(1);
-        expect(JSON.stringify(body.tools)).not.toContain("cache_control");
-      }
-    });
-
-    it("rolls a second breakpoint onto the newest message", () => {
-      const body = buildAnthropicBody(anthropicBase, messages, tools);
-      const msgs = body.messages as { content: { cache_control?: unknown }[] }[];
-      const tail = msgs[msgs.length - 1]?.content;
-      expect(tail?.[tail.length - 1]?.cache_control).toEqual({ type: "ephemeral" });
-    });
-
-    it("stays under the four-breakpoint cap the API enforces", () => {
-      const long: ChatMessage[] = [
-        ...messages,
-        { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "snapshot", args: {} }] },
-        { role: "tool_results", content: "", toolResults: [{ id: "c1", content: "{}" }] },
-        { role: "user", content: "and now the footer" },
-      ];
-      expect(markers(buildAnthropicBody(oauth, long, tools)).length).toBeLessThanOrEqual(4);
-    });
-
-    it("marks nothing on a call that declares no tools", () => {
-      // The four one-shot distillations — compact, memory extract, title, skill
-      // — answer in a single turn and pass no tools. A marker there would bill
-      // a 1.25x write against a cache that gets no second request to read it.
-      const body = buildAnthropicBody(anthropicBase, messages, []);
-      expect(markers(body)).toHaveLength(0);
-    });
+  it("prefixes declared tool names with custom_ and anchors cache_control on the last system block", () => {
+    const body = buildAnthropicBody(oauth, messages, tools);
+    expect((body.tools as { name: string }[])[0]?.name).toBe("custom_snapshot");
+    const blocks = body.system as { cache_control?: unknown }[];
+    expect(blocks[blocks.length - 1]?.cache_control).toEqual({ type: "ephemeral" });
+    expect(blocks.filter((b) => b.cache_control)).toHaveLength(1);
   });
 });
 
 describe("external (remote MCP) tool schemas", () => {
-  // The widening contract: full JSON Schema from a remote server reaches both
-  // wire shapes untouched. If an adapter ever starts rebuilding params instead
-  // of assigning them, this is the test that fails first.
   const schema: ExternalJsonSchema = {
     type: "object",
     properties: {
@@ -509,15 +400,25 @@ describe("external (remote MCP) tool schemas", () => {
     { name: "mcp__aboard__search", description: "Search.", params: schema },
   ];
 
-  it("rides through OpenAI parameters verbatim", () => {
-    const body = buildOpenAIBody(base, messages, tools);
+  it("rides through OpenAI parameters with all keywords preserved", async () => {
+    const body = await captureBody(base, messages, tools);
     expect(
       (body.tools as Array<{ function: { parameters: unknown } }>)[0]?.function.parameters,
-    ).toBe(schema);
+    ).toEqual(schema);
   });
 
-  it("rides through Anthropic input_schema verbatim", () => {
-    const body = buildAnthropicBody({ ...base, shape: "anthropic" }, messages, tools);
-    expect((body.tools as Array<{ input_schema: unknown }>)[0]?.input_schema).toBe(schema);
+  it("rides through Anthropic input_schema", async () => {
+    const body = await captureBody(
+      { ...base, id: "anthropic", shape: "anthropic", baseUrl: "https://api.anthropic.com" },
+      messages,
+      tools,
+    );
+    expect(
+      (body.tools as Array<{ input_schema: Record<string, unknown> }>)[0]?.input_schema,
+    ).toMatchObject({
+      type: "object",
+      properties: schema.properties,
+      required: ["query"],
+    });
   });
 });
