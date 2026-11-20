@@ -1,4 +1,4 @@
-export { createProvider } from "./factory";
+export { createProvider, createCoreProvider, fromCoreMessages } from "./factory";
 export { resolveProviderModel } from "./models";
 export { ensureProviderCredential } from "./credential";
 export { tokenCost } from "./pricing";
