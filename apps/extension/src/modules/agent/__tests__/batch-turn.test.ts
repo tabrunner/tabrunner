@@ -242,6 +242,33 @@ describe("settling between a turn's calls", () => {
     expect(acted(calls)).toEqual(["click"]);
   });
 
+  it("does not settle on the last call when an earlier call in the turn was skipped", async () => {
+    const calls: string[] = [];
+    // First call is unknown/unavailable so it never reaches tool.run, then a
+    // trailing fill is the last call of the turn and should not settle.
+    await run(
+      scriptedProvider([
+        [plan(["Fill it"])],
+        [call("no_such_tool"), call("fill", { ref: "e1", text: "a" })],
+      ]),
+      makeDriver(calls),
+    );
+
+    expect(acted(calls)).toEqual(["fill"]);
+  });
+
+  it("does not settle on a trailing page action hoisted behind plan", async () => {
+    const calls: string[] = [];
+    // Model emits [fill, plan]; runFirst hoists plan before fill, making fill
+    // the last call in run order so it needs no settle.
+    await run(
+      scriptedProvider([[call("fill", { ref: "e1", text: "a" }), plan(["Fill it"])]]),
+      makeDriver(calls),
+    );
+
+    expect(acted(calls)).toEqual(["fill"]);
+  });
+
   it("does not settle after a scroll — scrolling cannot navigate", async () => {
     const calls: string[] = [];
     await run(

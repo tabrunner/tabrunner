@@ -469,8 +469,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
   const planCardEmittedFor = new Set<string>();
   const pendingConfirmAsks = new Map<string, ConfirmAsk[]>();
   const lastToolResult = new Map<string, ToolResult>();
-  const turnToolCount = new Map<string, number>();
-  const turnToolsSeen = new Map<string, number>();
+  const turnLastOp = new Map<string, string>();
   const emittedModelUsage = new Map<
     string,
     { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }
@@ -541,9 +540,8 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
         if (NEW_PAGE_TOOLS.has(def.name)) batchPageChanged = true;
 
         const modelOpId = operationId.replace(/\/tool\/\d+$/, "");
-        const seen = (turnToolsSeen.get(modelOpId) ?? 0) + 1;
-        turnToolsSeen.set(modelOpId, seen);
-        if (PAGE_WORK_TOOLS.has(def.name) && seen < (turnToolCount.get(modelOpId) ?? 1)) {
+        const lastOp = turnLastOp.get(modelOpId);
+        if (PAGE_WORK_TOOLS.has(def.name) && lastOp !== undefined && operationId !== lastOp) {
           if (await driver.settle()) batchPageChanged = true;
         }
 
@@ -859,8 +857,16 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
   const onLifecycle = async (event: LifecycleEvent) => {
     if (event.type === "model_end") {
       if (!event.operationId.includes("/compaction/")) completedTurns += 1;
-      turnToolCount.set(event.operationId, event.turn.message.toolCalls?.length ?? 0);
-      turnToolsSeen.set(event.operationId, 0);
+      const calls = event.turn.message.toolCalls ?? [];
+      let lastNonPlan: string | undefined;
+      let lastPlan: string | undefined;
+      for (let i = 0; i < calls.length; i++) {
+        const opId = `${event.operationId}/tool/${i + 1}`;
+        if (calls[i]?.name === "plan") lastPlan = opId;
+        else lastNonPlan = opId;
+      }
+      const lastOp = lastNonPlan ?? lastPlan;
+      if (lastOp) turnLastOp.set(event.operationId, lastOp);
       if (event.turn.finishReason === "length") {
         callbacks.onStep?.({ tool: "warn", summary: i18n.t("errors.outputLimit") });
       }
