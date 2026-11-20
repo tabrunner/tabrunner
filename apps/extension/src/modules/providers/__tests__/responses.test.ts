@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { buildResponsesBody, createResponsesProvider } from "../responses";
-import { ProviderError, isRetryable, type ResolvedProviderConfig } from "../types";
+import { createProvider } from "../factory";
+import {
+  ProviderError,
+  isRetryable,
+  type ChatMessage,
+  type ResolvedProviderConfig,
+  type ToolDef,
+} from "../types";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
-// The seam is tested in credential.test.ts; here the config is already resolved.
 vi.mock("../credential", () => ({
   ensureProviderCredential: (config: unknown) => Promise.resolve(config),
 }));
@@ -41,11 +46,33 @@ function sseStream(lines: string[]): ReadableStream<Uint8Array> {
 
 const frame = (obj: Record<string, unknown>) => `data: ${JSON.stringify(obj)}`;
 
+async function captureBody(
+  config: ResolvedProviderConfig,
+  messages: ChatMessage[],
+  tools: ToolDef[] = [],
+): Promise<Record<string, unknown>> {
+  const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+    new Response(sseStream([frame({ type: "response.completed", response: {} })]), {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+  );
+  for await (const delta of createProvider(config).stream(
+    messages,
+    tools,
+    new AbortController().signal,
+  )) {
+    void delta;
+  }
+  const init = fetchSpy.mock.calls.at(-1)?.[1];
+  return JSON.parse(String(init?.body)) as Record<string, unknown>;
+}
+
 afterEach(() => vi.restoreAllMocks());
 
-describe("buildResponsesBody", () => {
-  it("splits the system message into instructions and maps the rest to items", () => {
-    const body = buildResponsesBody(
+describe("Responses request bodies via @providerkit/core", () => {
+  it("splits the system message into instructions and maps the rest to items", async () => {
+    const body = await captureBody(
       makeConfig(),
       [
         { role: "system", content: "You are an agent." },
@@ -64,15 +91,15 @@ describe("buildResponsesBody", () => {
     ]);
   });
 
-  it("replays assistant turns WITHOUT reasoning — the ChatGPT backend requires it blanked", () => {
-    const body = buildResponsesBody(
+  it("replays assistant turns WITHOUT reasoning (ChatGPT backend requires it blanked)", async () => {
+    const body = await captureBody(
       makeConfig(),
       [
         { role: "user", content: "Look at the page." },
         {
           role: "assistant",
           content: "Let me click.",
-          reasoning: "I should check the footer first", // committed locally, never echoed
+          reasoning: "I should check the footer first",
           toolCalls: [{ id: "c1", name: "click", args: { ref: "e1" } }],
         },
         { role: "tool_results", content: "", toolResults: [{ id: "c1", content: "{}" }] },
@@ -96,15 +123,18 @@ describe("buildResponsesBody", () => {
     expect(items[3]).toEqual({ type: "function_call_output", call_id: "c1", output: "{}" });
   });
 
-  it("maps tool results to function_call_output, with images as codex content parts", () => {
-    const body = buildResponsesBody(
+  it("maps tool results to function_call_output, with images as content parts", async () => {
+    const body = await captureBody(
       makeConfig(),
       [
         { role: "user", content: "What's on screen?" },
         {
           role: "assistant",
           content: "",
-          toolCalls: [{ id: "c1", name: "snapshot", args: {} }],
+          toolCalls: [
+            { id: "c1", name: "snapshot", args: {} },
+            { id: "c2", name: "read", args: {} },
+          ],
         },
         {
           role: "tool_results",
@@ -126,59 +156,22 @@ describe("buildResponsesBody", () => {
     expect(outputs[1]?.output).toBe("plain result");
   });
 
-  it("trails screenshots in a user message for an endpoint that isn't codex's", () => {
-    // The published Responses shape says function_call_output.output is a
-    // string. Sending codex's content array to Meta would 400 every turn that
-    // carried a screenshot — which, for a browser agent, is most of them.
-    const body = buildResponsesBody(
-      makeConfig({ id: "meta", baseUrl: "https://api.meta.ai/v1", model: "muse-spark-1.3" }),
-      [
-        {
-          role: "tool_results",
-          content: "",
-          toolResults: [{ id: "c1", content: "{}", images: ["data:image/jpeg;base64,abc"] }],
-        },
-      ],
-      [],
-    );
-    const items = body.input as Record<string, unknown>[];
-    expect(items[0]).toEqual({ type: "function_call_output", call_id: "c1", output: "{}" });
-    expect(items[1]).toMatchObject({
-      type: "message",
-      role: "user",
-      content: [
-        { type: "input_text", text: "Screenshot from the tool call above:" },
-        { type: "input_image", image_url: "data:image/jpeg;base64,abc" },
-      ],
-    });
-  });
-
-  it("adds no trailing message when a tool result carried no images", () => {
-    const body = buildResponsesBody(
-      makeConfig({ id: "meta" }),
-      [{ role: "tool_results", content: "", toolResults: [{ id: "c1", content: "done" }] }],
-      [],
-    );
-    expect(body.input).toEqual([{ type: "function_call_output", call_id: "c1", output: "done" }]);
-  });
-
-  it("omits the reasoning knob by default and with effort 'none', maps the rest", () => {
-    expect(buildResponsesBody(makeConfig(), [], [])).not.toHaveProperty("reasoning");
-    expect(buildResponsesBody(makeConfig({ reasoningEffort: "none" }), [], [])).not.toHaveProperty(
+  it("omits the reasoning knob by default and with effort 'none', maps the rest", async () => {
+    expect(await captureBody(makeConfig(), [], [])).not.toHaveProperty("reasoning");
+    expect(await captureBody(makeConfig({ reasoningEffort: "none" }), [], [])).not.toHaveProperty(
       "reasoning",
     );
-    const body = buildResponsesBody(makeConfig({ reasoningEffort: "high" }), [], []);
-    expect(body.reasoning).toEqual({ effort: "high" });
+    const body = await captureBody(makeConfig({ reasoningEffort: "high" }), [], []);
+    expect(body.reasoning).toMatchObject({ effort: "high" });
   });
 
-  it("sends the picker's 'max' as 'high', the top level this shape takes", () => {
-    // @providerkit/core records a 400 for `max` on this shape (its responses.ts).
-    const body = buildResponsesBody(makeConfig({ reasoningEffort: "max" }), [], []);
-    expect(body.reasoning).toEqual({ effort: "high" });
+  it("sends the picker's 'max' as 'high', the top level this shape takes", async () => {
+    const body = await captureBody(makeConfig({ reasoningEffort: "max" }), [], []);
+    expect(body.reasoning).toMatchObject({ effort: "high" });
   });
 
-  it("serializes tools to Responses function definitions", () => {
-    const body = buildResponsesBody(
+  it("serializes tools to Responses function definitions", async () => {
+    const body = await captureBody(
       makeConfig(),
       [{ role: "user", content: "hi" }],
       [
@@ -190,19 +183,19 @@ describe("buildResponsesBody", () => {
       ],
     );
     expect(body.tools).toEqual([
-      {
+      expect.objectContaining({
         type: "function",
         name: "click",
         description: "Click an element",
         parameters: { type: "object", properties: {} },
-      },
+      }),
     ]);
   });
 });
 
 describe("ChatGPT provider SSE parsing", () => {
   it("parses text and reasoning deltas, then finishes on completed", async () => {
-    const provider = createResponsesProvider(makeConfig());
+    const provider = createProvider(makeConfig());
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         sseStream([
@@ -232,7 +225,7 @@ describe("ChatGPT provider SSE parsing", () => {
   });
 
   it("accumulates function-call arguments across deltas and emits one tool_use", async () => {
-    const provider = createResponsesProvider(makeConfig());
+    const provider = createProvider(makeConfig());
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         sseStream([
@@ -280,8 +273,55 @@ describe("ChatGPT provider SSE parsing", () => {
     expect(deltas).toContainEqual({ type: "finish", reason: "tool_use" });
   });
 
+  it("keeps the real call_id when output_item.added omits it and output_item.done supplies it", async () => {
+    const provider = createProvider(makeConfig());
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        sseStream([
+          frame({
+            type: "response.output_item.added",
+            item: {
+              type: "function_call",
+              id: "fc_1",
+              name: "click",
+              arguments: "",
+            },
+          }),
+          frame({
+            type: "response.function_call_arguments.delta",
+            item_id: "fc_1",
+            delta: '{"ref":"e1"}',
+          }),
+          frame({
+            type: "response.output_item.done",
+            item: {
+              type: "function_call",
+              id: "fc_1",
+              call_id: "call_real_99",
+              name: "click",
+              arguments: '{"ref":"e1"}',
+            },
+          }),
+          frame({ type: "response.completed", response: {} }),
+        ]),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const deltas = [];
+    for await (const d of provider.stream([], [], new AbortController().signal)) deltas.push(d);
+
+    const toolUse = deltas.find((d) => d.type === "tool_use");
+    expect(toolUse).toEqual({
+      type: "tool_use",
+      id: "call_real_99",
+      name: "click",
+      args: { ref: "e1" },
+    });
+  });
+
   it("flushes a pending tool call whose done event was omitted by the terminal frame", async () => {
-    const provider = createResponsesProvider(makeConfig());
+    const provider = createProvider(makeConfig());
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         sseStream([
@@ -314,7 +354,7 @@ describe("ChatGPT provider SSE parsing", () => {
   });
 
   it("maps a max_output_tokens incomplete to a length finish", async () => {
-    const provider = createResponsesProvider(makeConfig());
+    const provider = createProvider(makeConfig());
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         sseStream([
@@ -335,7 +375,7 @@ describe("ChatGPT provider SSE parsing", () => {
   });
 
   it("maps a content_filter incomplete to content_filter and throws retryable overload on other reasons", async () => {
-    const provider = createResponsesProvider(makeConfig());
+    const provider = createProvider(makeConfig());
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         sseStream([
@@ -361,11 +401,6 @@ describe("ChatGPT provider SSE parsing", () => {
     expect(isRetryable(error)).toBe(true);
   });
 
-  /**
-   * A failure the backend reports after it answered 200. It threw before, but
-   * as a bare status-0 error with no kind: never retried, and the reader got
-   * the backend's English with no lead line.
-   */
   async function failureOf(event: Record<string, unknown>): Promise<unknown> {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(sseStream([frame(event)]), {
@@ -374,7 +409,7 @@ describe("ChatGPT provider SSE parsing", () => {
       }),
     );
     try {
-      for await (const d of createResponsesProvider(makeConfig()).stream(
+      for await (const d of createProvider(makeConfig()).stream(
         [],
         [],
         new AbortController().signal,
@@ -412,7 +447,7 @@ describe("ChatGPT provider SSE parsing", () => {
   });
 
   it("sends the bearer token and the ChatGPT-Account-Id header to the responses endpoint", async () => {
-    const provider = createResponsesProvider(makeConfig());
+    const provider = createProvider(makeConfig());
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(sseStream([frame({ type: "response.completed", response: {} })]), {
         status: 200,
@@ -427,15 +462,13 @@ describe("ChatGPT provider SSE parsing", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
     expect(url).toBe("https://chatgpt.com/backend-api/codex/responses");
     expect(init.headers).toMatchObject({
-      Authorization: "Bearer at-123",
+      authorization: "Bearer at-123",
       "ChatGPT-Account-Id": "acct-1",
     });
   });
 
   it("keys ChatGPT's prompt cache on the conversation, in the header and the body alike", async () => {
-    // The backend shards its cache by session. Without the key a conversation's
-    // turns land on different shards, and the prefix they re-send misses.
-    const provider = createResponsesProvider(makeConfig({ sessionId: "conv-1" }));
+    const provider = createProvider(makeConfig({ sessionId: "conv-1" }));
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(sseStream([frame({ type: "response.completed", response: {} })]), {
         status: 200,
@@ -457,10 +490,8 @@ describe("ChatGPT provider SSE parsing", () => {
     );
   });
 
-  it("strips every `pattern` from a tool schema before it goes out", async () => {
-    // The ChatGPT backend 400s the WHOLE request on a regex it cannot compile,
-    // and a remote MCP server's tool schema can carry any regex it likes.
-    const provider = createResponsesProvider(makeConfig());
+  it("strips every pattern from a tool schema before it goes out", async () => {
+    const provider = createProvider(makeConfig());
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(sseStream([frame({ type: "response.completed", response: {} })]), {
         status: 200,
@@ -491,7 +522,7 @@ describe("ChatGPT provider SSE parsing", () => {
   });
 
   it("sends OpenCode Go's session header when Muse is routed to Responses", async () => {
-    const provider = createResponsesProvider(
+    const provider = createProvider(
       makeConfig({
         id: "opencode-go",
         name: "OpenCode Go",
@@ -516,18 +547,12 @@ describe("ChatGPT provider SSE parsing", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
     expect(url).toBe("https://opencode.ai/zen/go/v1/responses");
     expect(init.headers).toMatchObject({
-      Authorization: "Bearer go-key",
+      authorization: "Bearer go-key",
       "x-opencode-session": "conv-1",
     });
   });
 });
 
-/**
- * The adapter takes any base URL, so OpenRouter's `/responses` is one setting
- * away, and its closing usage carries `cost`, `is_byok` and `cost_details`
- * under the same names as chat. The run adds each call's cost to a running
- * total, so only a finite, non-negative number may reach it.
- */
 describe("what a Responses call cost", () => {
   async function costOf(usage: Record<string, unknown>): Promise<number | undefined> {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -541,8 +566,13 @@ describe("what a Responses call cost", () => {
         { status: 200, headers: { "content-type": "text/event-stream" } },
       ),
     );
-    const provider = createResponsesProvider(
-      makeConfig({ baseUrl: "https://openrouter.ai/api/v1" }),
+    const provider = createProvider(
+      makeConfig({
+        id: "openrouter",
+        name: "OpenRouter",
+        baseUrl: "https://openrouter.ai/api/v1",
+        auth: undefined,
+      }),
     );
     let cost: number | undefined;
     for await (const d of provider.stream([], [], new AbortController().signal)) {

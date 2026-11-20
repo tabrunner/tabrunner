@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { toOpenAIMessages } from "../openai";
+import { toOpenAIMessages } from "@providerkit/core";
 import { toAnthropicMessage } from "../anthropic";
+import { toCoreMessages } from "../factory";
 import type { ChatMessage } from "../types";
 
 // Storage stand-in comes from src/test-setup.ts (vitest setupFiles).
@@ -20,16 +21,16 @@ const toolResults: ChatMessage = {
   ],
 };
 
-describe("OpenAI message mapping", () => {
+describe("OpenAI message mapping via @providerkit/core", () => {
   it("expands tool_results to one role:tool message per result", () => {
-    const out = toOpenAIMessages(toolResults);
+    const out = toOpenAIMessages(toCoreMessages([toolResults])) as Record<string, unknown>[];
     expect(out).toHaveLength(2);
     expect(out[0]).toEqual({ role: "tool", content: '{"x":100,"y":200}', tool_call_id: "c1" });
     expect(out[1]).toEqual({ role: "tool", content: '{"ok":true}', tool_call_id: "c2" });
   });
 
   it("maps assistant toolCalls to OpenAI function-call shape", () => {
-    const out = toOpenAIMessages(assistantWithTools);
+    const out = toOpenAIMessages(toCoreMessages([assistantWithTools])) as Record<string, unknown>[];
     expect(out).toHaveLength(1);
     expect(out[0]!.role).toBe("assistant");
     expect(out[0]!.tool_calls).toEqual([
@@ -38,13 +39,13 @@ describe("OpenAI message mapping", () => {
   });
 
   it("passes plain messages through", () => {
-    expect(toOpenAIMessages({ role: "user", content: "hi" })).toEqual([
+    expect(toOpenAIMessages(toCoreMessages([{ role: "user", content: "hi" }]))).toEqual([
       { role: "user", content: "hi" },
     ]);
   });
 });
 
-describe("Anthropic message mapping", () => {
+describe("Anthropic message mapping (retained Claude plan adapter)", () => {
   it("collapses tool_results into ONE user message of tool_result blocks", () => {
     const out = toAnthropicMessage(toolResults);
     expect(out.role).toBe("user");

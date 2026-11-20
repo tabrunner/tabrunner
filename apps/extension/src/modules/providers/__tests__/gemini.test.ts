@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import type { AuthFlow, Credential } from "@providerkit/core/auth";
-import { createGeminiProvider, toCoreMessages } from "../gemini";
+import { createProvider, toCoreMessages } from "../factory";
 import { listModels } from "../models";
 import { saveProvider } from "../storage";
 import {
@@ -94,7 +94,7 @@ describe("gemini bridge stream", () => {
     );
 
     const deltas = [];
-    for await (const d of createGeminiProvider(geminiConfig()).stream(
+    for await (const d of createProvider(geminiConfig()).stream(
       [{ role: "user", content: "hello" }],
       [snapshotTool],
       new AbortController().signal,
@@ -138,7 +138,7 @@ describe("gemini bridge stream", () => {
   it("maps Gemini safety stops to content_filter and retries OTHER as overload", async () => {
     stubStream(200, nativeStream([{ candidates: [{ finishReason: "SAFETY" }] }]));
     const deltas = [];
-    for await (const d of createGeminiProvider(geminiConfig()).stream(
+    for await (const d of createProvider(geminiConfig()).stream(
       [],
       [],
       new AbortController().signal,
@@ -150,7 +150,7 @@ describe("gemini bridge stream", () => {
     stubStream(200, nativeStream([{ candidates: [{ finishReason: "OTHER" }] }]));
     let caught: unknown;
     try {
-      for await (const d of createGeminiProvider(geminiConfig()).stream(
+      for await (const d of createProvider(geminiConfig()).stream(
         [],
         [],
         new AbortController().signal,
@@ -173,7 +173,7 @@ describe("gemini bridge stream", () => {
 
     const error = await (async () => {
       try {
-        for await (const delta of createGeminiProvider(geminiConfig()).stream(
+        for await (const delta of createProvider(geminiConfig()).stream(
           [],
           [],
           new AbortController().signal,
@@ -202,7 +202,7 @@ describe("gemini bridge stream", () => {
 
     const error = await (async () => {
       try {
-        for await (const delta of createGeminiProvider(geminiConfig()).stream(
+        for await (const delta of createProvider(geminiConfig()).stream(
           [],
           [],
           new AbortController().signal,
@@ -227,7 +227,7 @@ describe("gemini bridge stream", () => {
 
     const error = await (async () => {
       try {
-        for await (const delta of createGeminiProvider(geminiConfig()).stream(
+        for await (const delta of createProvider(geminiConfig()).stream(
           [],
           [],
           new AbortController().signal,
@@ -251,7 +251,7 @@ describe("gemini bridge stream", () => {
 
     const error = await (async () => {
       try {
-        for await (const delta of createGeminiProvider(geminiConfig()).stream(
+        for await (const delta of createProvider(geminiConfig()).stream(
           [],
           [],
           new AbortController().signal,
@@ -376,7 +376,7 @@ describe("gemini bridge on Antigravity", () => {
 
   async function drain(config: ResolvedProviderConfig) {
     const deltas = [];
-    for await (const d of createGeminiProvider(config).stream(
+    for await (const d of createProvider(config).stream(
       [{ role: "user", content: "hello" }],
       [],
       new AbortController().signal,

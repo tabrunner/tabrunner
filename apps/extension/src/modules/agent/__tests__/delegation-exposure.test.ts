@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDriver } from "@/modules/browser";
-import { buildAnthropicBody } from "@/modules/providers/anthropic";
-import { buildOpenAIBody } from "@/modules/providers/openai";
-import { buildResponsesBody } from "@/modules/providers/responses";
+import { createProvider } from "@/modules/providers/factory";
 import type {
   ChatMessage,
   ChatProvider,
@@ -20,6 +18,43 @@ const config: ResolvedProviderConfig = {
   model: "test-model",
   createdAt: 0,
 };
+
+function emptySseFor(shape: ResolvedProviderConfig["shape"]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  const payload =
+    shape === "anthropic"
+      ? `data: ${JSON.stringify({ type: "message_stop" })}\n\n`
+      : shape === "responses"
+        ? `data: ${JSON.stringify({ type: "response.completed", response: {} })}\n\n`
+        : "data: [DONE]\n\n";
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(payload));
+      controller.close();
+    },
+  });
+}
+
+async function captureBody(
+  shape: ResolvedProviderConfig["shape"],
+  messages: ChatMessage[],
+  tools: ToolDef[],
+): Promise<Record<string, unknown>> {
+  const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+    new Response(emptySseFor(shape), {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+  );
+  for await (const delta of createProvider({ ...config, shape }).stream(
+    messages,
+    tools,
+    new AbortController().signal,
+  )) {
+    void delta;
+  }
+  return JSON.parse(String(spy.mock.calls.at(-1)?.[1]?.body)) as Record<string, unknown>;
+}
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -69,7 +104,7 @@ describe("delegation exposure", () => {
       expect(request.tools.some((tool) => tool.name === "screenshot")).toBe(supportsImages);
       if (!enabled) continue;
 
-      expect(buildOpenAIBody(config, request.messages, request.tools)).toMatchObject({
+      expect(await captureBody("openai", request.messages, request.tools)).toMatchObject({
         messages: expect.arrayContaining([
           expect.objectContaining({ role: "system", content: system }),
         ]),
@@ -77,13 +112,13 @@ describe("delegation exposure", () => {
           expect.objectContaining({ function: expect.objectContaining({ name: "delegate" }) }),
         ]),
       });
-      expect(buildAnthropicBody(config, request.messages, request.tools)).toMatchObject({
+      expect(await captureBody("anthropic", request.messages, request.tools)).toMatchObject({
         system: expect.arrayContaining([expect.objectContaining({ text: system })]),
         tools: expect.arrayContaining([
           expect.objectContaining({ name: "delegate", input_schema: expect.any(Object) }),
         ]),
       });
-      expect(buildResponsesBody(config, request.messages, request.tools)).toMatchObject({
+      expect(await captureBody("responses", request.messages, request.tools)).toMatchObject({
         instructions: system,
         tools: expect.arrayContaining([
           expect.objectContaining({ name: "delegate", parameters: expect.any(Object) }),
