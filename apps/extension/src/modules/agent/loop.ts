@@ -8,7 +8,7 @@ import type {
   ToolResult as ProviderToolResult,
 } from "@/modules/providers/types";
 import { isRetryable, ProviderError } from "@/modules/providers/types";
-import type { ErrorKind } from "@providerkit/core";
+import { withStreamRetry, type ErrorKind } from "@providerkit/core";
 import type { StepPayload, PlanApprovalPayload, PlanPayload } from "@/shared/protocol";
 import { createLogger, truncate } from "@/lib/logger";
 import { i18n, currentLanguageName } from "@/i18n";
@@ -63,7 +63,7 @@ const MAX_STREAM_ATTEMPTS = 3;
  */
 const MAX_BLIP_ATTEMPTS = 6;
 const BASE_BACKOFF_MS = 1000;
-const MAX_BACKOFF_MS = 15_000;
+const MAX_RETRY_WAIT_MS = 60_000;
 /** Result payload kept for the panel's expandable step row — a page snapshot is far larger. */
 /**
  * Images are the most expensive thing in a request body: every one is re-sent on
@@ -374,59 +374,6 @@ export interface LoopOptions {
   callbacks: LoopCallbacks;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * How long a turn may go without a single delta before the loop gives up on it.
- * Nothing else times a silent model out: the extension builds core's bare
- * adapters, and core's watchdog only wraps the ones its registry builds. So this
- * covers both ways a turn goes quiet: a backend that accepts the request and
- * never answers, and the awaits before the request exists (token refresh, the
- * header rule, the connection). Six minutes is past any healthy silent prefill
- * measured upstream (core's own progress clock is five).
- */
-const STREAM_STALL_MS = 6 * 60_000;
-
-/**
- * `promise`, unless Stop or the deadline gets there first. An `await` on I/O
- * that takes no signal (a storage read, an OAuth refresh, a Chrome API call)
- * is the one thing a Stop cannot reach: the abort fires, nothing listens, and
- * the run sits on the board for good. Racing it here is what lets the loop
- * unwind. The abandoned promise is left to settle on its own.
- */
-function raceStall<T>(
-  promise: Promise<T>,
-  signal: AbortSignal,
-  ms: number,
-  stalled: () => Error,
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const done = () => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", onAbort);
-    };
-    const onAbort = () => {
-      done();
-      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
-    };
-    const timer = setTimeout(() => {
-      done();
-      reject(stalled());
-    }, ms);
-    signal.addEventListener("abort", onAbort, { once: true });
-    if (signal.aborted) onAbort();
-    promise.then(resolve, reject).finally(done);
-  });
-}
-
-/** Full-jitter exponential backoff: random delay in [0, min(cap, base·2^(attempt-1))]. */
-function backoffMs(attempt: number): number {
-  const ceiling = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** (attempt - 1));
-  return Math.floor(Math.random() * ceiling);
-}
-
 interface TurnResult {
   text: string;
   reasoning: string;
@@ -434,92 +381,68 @@ interface TurnResult {
   truncated: boolean;
 }
 
+function maxAttemptsFor(error: unknown): number {
+  const kind = error instanceof ProviderError ? error.kind : undefined;
+  return kind === "auth" || kind === "network" ? MAX_BLIP_ATTEMPTS : MAX_STREAM_ATTEMPTS;
+}
+
 /**
- * Stream one model turn. A transient failure (network blip, 429, 5xx) is retried in place
- * with backoff, but ONLY while nothing has been emitted yet this turn — so the UI never
- * sees a replayed token. The partial turn is never committed to `messages`, so a retry
- * restarts cleanly.
+ * Collect one streamed model turn with core's `withStreamRetry`.
+ * Retries only while nothing has been emitted; per-kind attempt ceilings and
+ * retry step rows stay intact via `shouldRetry` and `onRetry`.
  */
-async function streamTurn(
+async function collectTurn(
   provider: ChatProvider,
   messages: ChatMessage[],
   tools: ToolDef[],
   signal: AbortSignal,
   callbacks: LoopCallbacks,
 ): Promise<TurnResult> {
-  for (let attempt = 1; ; attempt++) {
-    let text = "";
-    let reasoning = "";
-    const toolCalls: ToolCall[] = [];
-    let emitted = false;
-    let truncated = false;
+  let text = "";
+  let reasoning = "";
+  const toolCalls: ToolCall[] = [];
+  let truncated = false;
 
-    // Our own abort on top of Stop's, so a stalled turn can cancel the request it
-    // left behind instead of only walking away from it.
-    const turn = new AbortController();
-    try {
-      const stream = provider.stream(messages, tools, AbortSignal.any([signal, turn.signal]));
-      const iterator = stream[Symbol.asyncIterator]();
-      const stalled = () =>
-        new ProviderError(
-          i18n.t("errors.streamStalled", { minutes: STREAM_STALL_MS / 60_000 }),
-          0,
-          "timeout",
-          undefined,
-          false,
-        );
-      try {
-        for (;;) {
-          const next = await raceStall(iterator.next(), signal, STREAM_STALL_MS, stalled);
-          if (next.done) break;
-          const delta = next.value;
-          const handled = handleDelta(delta, callbacks, toolCalls);
-          if (handled) {
-            text += handled;
-            emitted = true;
-          }
-          // Committed for provider echo (ChatMessage.reasoning) — display happens in handleDelta.
-          if (delta.type === "reasoning") reasoning += delta.text;
-          if (delta.type === "tool_use") emitted = true;
-          if (delta.type === "usage")
-            callbacks.onUsage?.({
-              input: delta.input,
-              output: delta.output,
-              cacheRead: delta.cacheRead,
-              cacheWrite: delta.cacheWrite,
-              cost: delta.cost,
-            });
-          if (delta.type === "finish" && delta.reason === "length") truncated = true;
-        }
-      } finally {
-        turn.abort();
-        // What `for await` did for us: let the generator run its own cleanup.
-        iterator.return?.().catch(() => {});
-      }
-      return { text, reasoning, toolCalls, truncated };
-    } catch (e) {
-      if (signal.aborted) throw e;
-      const kind = e instanceof ProviderError ? e.kind : undefined;
-      const maxAttempts =
-        kind === "auth" || kind === "network" ? MAX_BLIP_ATTEMPTS : MAX_STREAM_ATTEMPTS;
-      const canRetry = !emitted && attempt < maxAttempts && isRetryable(e);
-      if (!canRetry) throw e;
-      const reason = e instanceof Error ? e.message : String(e);
-      log.warn(
-        `stream failed before any output — retrying (${attempt}/${maxAttempts - 1}):`,
-        reason,
-      );
-      callbacks.onStep?.({
-        tool: "retry",
-        summary: i18n.t("errors.retrying", { attempt, max: maxAttempts - 1 }),
-        detail: reason,
+  const stream = withStreamRetry(
+    (attemptSignal) => provider.stream(messages, tools, attemptSignal),
+    {
+      maxAttempts: MAX_BLIP_ATTEMPTS,
+      baseDelayMs: BASE_BACKOFF_MS,
+      maxDelayMs: MAX_RETRY_WAIT_MS,
+      budgetMs: Infinity,
+      signal,
+      shouldRetry: (err, attempt) => attempt < maxAttemptsFor(err) && isRetryable(err),
+      onRetry: ({ error, attempt }) => {
+        const max = maxAttemptsFor(error) - 1;
+        const reason = error instanceof Error ? error.message : String(error);
+        log.warn(`stream failed before any output, retrying (${attempt}/${max}):`, reason);
+        callbacks.onStep?.({
+          tool: "retry",
+          summary: i18n.t("errors.retrying", { attempt, max }),
+          detail: reason,
+        });
+      },
+    },
+  );
+
+  for await (const delta of stream) {
+    const handled = handleDelta(delta, callbacks, toolCalls);
+    if (handled) text += handled;
+    // Committed for provider echo (ChatMessage.reasoning); display happens in handleDelta.
+    if (delta.type === "reasoning") reasoning += delta.text;
+    if (delta.type === "usage") {
+      callbacks.onUsage?.({
+        input: delta.input,
+        output: delta.output,
+        cacheRead: delta.cacheRead,
+        cacheWrite: delta.cacheWrite,
+        cost: delta.cost,
       });
-      // A server's retry-after (only short ones reach here — isRetryable gives
-      // up on long waits) outranks the backoff guess.
-      const retryAfterMs = e instanceof ProviderError ? (e.retryAfterMs ?? 0) : 0;
-      await sleep(Math.max(backoffMs(attempt), retryAfterMs));
     }
+    if (delta.type === "finish" && delta.reason === "length") truncated = true;
   }
+
+  return { text, reasoning, toolCalls, truncated };
 }
 
 /**
@@ -738,7 +661,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<ChatMessage[]> {
 
     let turn: TurnResult;
     try {
-      turn = await streamTurn(provider, messages, tools, signal, callbacks);
+      turn = await collectTurn(provider, messages, tools, signal, callbacks);
     } catch (e) {
       if (signal.aborted) {
         callbacks.onDone?.();

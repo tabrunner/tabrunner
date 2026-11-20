@@ -77,14 +77,6 @@ export interface ProviderPreset {
    */
   headers?: (turn: "user" | "agent") => Record<string, string>;
   /**
-   * Responses-shape only: this endpoint takes a tool result's images inside
-   * the `function_call_output` item, the way codex-rs does. The published
-   * Responses shape says that field is a string, so everyone else gets the
-   * images in a trailing user message instead. The ChatGPT backend is the only
-   * one — see responses.ts.
-   */
-  inlineToolImages?: true;
-  /**
    * OpenAI-shape only: this endpoint spells "think this hard" its own way, so
    * the effort goes out through @providerkit/core's `effortParams` instead of
    * as a verbatim `reasoning_effort`. OpenRouter wants its own `reasoning`
@@ -304,7 +296,6 @@ export const PRESETS: ProviderPreset[] = [
     models: [],
     auth: "oauth",
     paired: true,
-    inlineToolImages: true,
     sessionHeader: "session-id",
     responsesCacheKey: true,
     color: "#10A37F",
