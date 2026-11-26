@@ -8,7 +8,7 @@ import type { Message } from "./types";
 export function renderTranscriptMessage(m: Message): string {
   switch (m.role) {
     case "user":
-      return `USER: ${m.content}`;
+      return m.cancelled ? "" : `USER: ${m.content}`;
     case "assistant":
     case "summary":
       return `AGENT: ${m.content}`;

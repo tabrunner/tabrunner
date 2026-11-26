@@ -7,6 +7,7 @@ import {
   noteContextFreed,
   renderTranscriptMessage,
 } from "@/modules/conversation";
+import { flushConversationWrites } from "@/modules/conversation/conversations";
 import { createLogger } from "@/lib/logger";
 import { i18n } from "@/i18n";
 
@@ -116,6 +117,7 @@ export async function compactConversation(
   conversationId: string,
   signal: AbortSignal,
 ): Promise<CompactionResult | null> {
+  await flushConversationWrites();
   const all = await getMessages(conversationId);
   // Everything since the last compaction — the previous summary included, so
   // this one supersedes it rather than forgetting what it held.

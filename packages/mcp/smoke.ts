@@ -474,6 +474,39 @@ try {
     question.includes("state: question") && question.includes("Not now"),
   );
 
+  emit(aRequest.clientId, "a1", "ca", {
+    type: "question",
+    question: "Send?",
+    confirmationId: "confirm-a",
+  });
+  check(
+    "MCP status exposes the exact confirmation",
+    (await call(first.client, "get_status", { wait: false })).includes("confirm-a"),
+  );
+  const consent = call(first.client, "answer", { confirmation_id: "confirm-a", approve: false });
+  const consentRequest = await request("answer");
+  check(
+    "consent is scoped to the current run and confirmation",
+    consentRequest.runId === "a1" &&
+      consentRequest.params.confirmationId === "confirm-a" &&
+      consentRequest.params.approve === false,
+  );
+  emit(aRequest.clientId, "a1", "ca", { type: "resumed" });
+  reply(consentRequest, { resumed: true });
+  check(
+    "a confirmation continues the same running task",
+    (await consent).includes("same tab") &&
+      (await call(first.client, "get_status", { wait: false })).includes("state: running"),
+  );
+
+  const tabs = call(first.client, "browser_tabs", { query: "invoices" });
+  const tabList = await request("browserTabs");
+  reply(tabList, { ok: true, data: { tabs: [{ id: 42, title: "Invoices" }] } });
+  check(
+    "MCP discovers tab ids without a direct session",
+    (await tabs).includes('"id": 42') && tabList.params.query === "invoices",
+  );
+
   const steer = call(second.client, "steer", { text: "Use the search" });
   const steerRequest = await request("steer");
   check(
@@ -520,8 +553,9 @@ try {
     "broker survives the first stdio client exit",
     (await second.client.listTools()).tools.length >= 23,
   );
-  const direct = call(second.client, "browser_start", { goal: "B direct goal" });
+  const direct = call(second.client, "browser_start", { goal: "B direct goal", tab_id: 42 });
   const directRequest = await request("browserStart");
+  check("MCP forwards an explicit target tab", directRequest.params.tabId === 42);
   check(
     "display name is kept as metadata, not identity",
     directRequest.params.agent === "same display name" &&

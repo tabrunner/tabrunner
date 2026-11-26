@@ -20,6 +20,7 @@ afterEach(async () => {
   }
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("run setup cleanup", () => {
@@ -43,6 +44,31 @@ describe("run setup cleanup", () => {
     await task;
     expect(events).toHaveBeenCalledExactlyOnceWith({ type: "done", stopped: true });
     expect(getRunById("stopped-setup")).toBeNull();
+  });
+
+  it("reports stalled provider setup instead of waiting forever or blaming Stop", async () => {
+    vi.useFakeTimers();
+    const provider = deferred();
+    const lookup = vi.spyOn(providers, "getProviderFor").mockImplementation(async () => {
+      await provider.promise;
+      return undefined;
+    });
+    const events = vi.fn();
+    const runId = "stalled-setup";
+    const task = startAgentRun({
+      runId,
+      ownerId: "client-a",
+      owner: "bridge",
+      conversationId: "chat-a",
+      task: "Read a local page",
+      emit: events,
+    });
+    await vi.waitFor(() => expect(lookup).toHaveBeenCalled());
+    await vi.advanceTimersByTimeAsync(8 * 60_000);
+    await task;
+    expect(events).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ type: "error" }));
+    expect(getRunById(runId)).toBeNull();
+    provider.resolve();
   });
 
   it("removes an aborted startup tab before releasing ownership, without touching another client", async () => {

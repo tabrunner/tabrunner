@@ -16,6 +16,8 @@ export interface Message {
   id: string;
   role: MessageRole;
   content: string;
+  /** A queued task canceled before launch. Kept for the chat, not model context. */
+  cancelled?: boolean;
   /**
    * For error messages: the classified provider failure. The message already
    * leads with its own actionable line, so the bubble skips the generic hint.

@@ -50,19 +50,27 @@ const IMAGE_TOKEN = /\s?\[Image #\d+\]/g;
 export function buildConversationHistory(
   transcript: Message[],
   contextWindow?: number,
+  taskMessageId?: string,
 ): ChatMessage[] {
-  // The last user message is the run about to start — the loop builds its task
-  // message itself, so history ends right before it.
-  const lastUser = transcript.map((m) => m.role).lastIndexOf("user");
-  if (lastUser === -1) return [];
+  // The loop builds its task message itself. A queued run's prompt is not
+  // necessarily the newest one, and a cancelled task never made it to the loop.
+  const task = transcript.findIndex((m) => m.id === taskMessageId && m.role === "user");
+  const currentAt =
+    task === -1 ? transcript.findLastIndex((m) => m.role === "user" && !m.cancelled) : task;
+  if (currentAt === -1) return [];
   const compactedAt = transcript.map((m) => m.role).lastIndexOf("summary");
-  // A summary written after the last user message belongs to a run that has not
-  // been replied to yet — replaying from it would drop the message it followed.
-  const from = compactedAt !== -1 && compactedAt < lastUser ? compactedAt : 0;
-  const past = transcript.slice(from, lastUser);
+  // A later summary may have landed while this task was waiting. Start before
+  // the task so that a fold that never saw it can't hide the preceding work.
+  const from = compactedAt !== -1 && compactedAt < currentAt ? compactedAt : 0;
 
   const entries: ChatMessage[] = [];
-  for (const m of past) {
+  const end = task === -1 ? currentAt : transcript.length;
+  for (let i = from; i < end; i++) {
+    const m = transcript[i]!;
+    // The previous run can finish after this task was queued. Keep its replies,
+    // but no later submissions or a summary written after the task was queued.
+    if (i >= currentAt && (m.role === "user" || m.role === "summary")) continue;
+    if (m.role === "user" && m.cancelled) continue;
     // ask_user steps join as assistant turns — without them the user's answer
     // would replay as a reply to a question the model never sees. A summary is
     // the agent's own account of the work, so it replays in the agent's voice.

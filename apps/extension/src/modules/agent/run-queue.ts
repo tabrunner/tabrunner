@@ -16,6 +16,7 @@ export interface QueuedRun {
 }
 
 interface QueueEntry extends QueuedRun {
+  questionRunId?: string;
   /** Claims synchronously before the launch's first await. */
   launch: () => void;
 }
@@ -36,6 +37,8 @@ export interface RunningRun {
 }
 
 export interface PendingQuestion {
+  runId?: string;
+  startedAt?: number;
   tabId?: number;
   windowId?: number;
   conversationId: string;
@@ -60,7 +63,10 @@ const queue: QueueEntry[] = [];
 const running = new Map<string, RunningRun>();
 const pendingQuestions = new Map<string, PendingQuestion>();
 
-export type SubmitOutcome = { started: true; id: string } | { queued: number; id: string };
+export type SubmitOutcome =
+  | { started: true; id: string }
+  | { queued: number; id: string }
+  | { staleQuestion: true; id: string };
 
 function sharesLane(a: QueueEntry, b: QueueEntry): boolean {
   return a.conversationId === b.conversationId || (a.owner === b.owner && a.ownerId === b.ownerId);
@@ -78,18 +84,34 @@ function launch(entry: QueueEntry): void {
   entry.launch();
 }
 
+function hasQueuedAnswer(conversationId: string): boolean {
+  return queue.some(
+    (entry) => entry.conversationId === conversationId && entry.questionRunId !== undefined,
+  );
+}
+
 /** FIFO within a client/conversation; unrelated work can pass a blocked lane. */
 export function submitRun(entry: Omit<QueueEntry, "enqueuedAt">): SubmitOutcome {
+  // Submission and launch share the same worker turn. A waiting answer holds
+  // the claim in the queue; a launching answer consumes the question immediately.
+  if (
+    entry.questionRunId !== undefined &&
+    (getPendingQuestion(entry.conversationId)?.runId !== entry.questionRunId ||
+      hasQueuedAnswer(entry.conversationId))
+  )
+    return { staleQuestion: true, id: entry.id };
   const queued: QueueEntry = { ...entry, enqueuedAt: Date.now() };
   if (
-    !queue.some((earlier) => sharesLane(earlier, queued)) &&
+    !waitsForAnswer(queued) &&
+    (queued.questionRunId !== undefined || !queue.some((earlier) => sharesLane(earlier, queued))) &&
     canStartRun(entry.conversationId, entry.owner, entry.ownerId)
   ) {
     launch(queued);
     void writeBoard();
     return { started: true, id: entry.id };
   }
-  queue.push(queued);
+  if (queued.questionRunId !== undefined) queue.unshift(queued);
+  else queue.push(queued);
   log.info("run queued", { owner: entry.owner, task: truncate(entry.task, 120) });
   void writeBoard();
   return { queued: queue.length, id: queued.id };
@@ -118,7 +140,7 @@ export function cancelQueued(id: string): boolean {
 }
 
 export function listQueue(): QueuedRun[] {
-  return queue.map(({ launch: _launch, ...entry }) => entry);
+  return queue.map(({ launch: _launch, questionRunId: _questionRunId, ...entry }) => entry);
 }
 
 export function currentBoard(): RunBoard {
@@ -168,7 +190,9 @@ export function markPendingQuestion(
 ): void {
   const task = [...running.values()].find((run) => run.conversationId === conversationId);
   pendingQuestions.set(conversationId, {
-    ...(task?.tabId !== undefined ? { tabId: task.tabId, windowId: task.windowId } : {}),
+    ...(task
+      ? { runId: task.id, startedAt: task.startedAt, tabId: task.tabId, windowId: task.windowId }
+      : {}),
     conversationId,
     question,
     ...(choices?.length ? { choices } : {}),
@@ -176,9 +200,23 @@ export function markPendingQuestion(
   void writeBoard();
 }
 
-export function clearPendingQuestion(conversationId: string): void {
-  if (!pendingQuestions.delete(conversationId)) return;
-  void writeBoard();
+export function getPendingQuestion(conversationId: string): PendingQuestion | undefined {
+  return pendingQuestions.get(conversationId);
+}
+
+export function clearPendingQuestion(conversationId: string, expectedRunId?: string): boolean {
+  if (
+    expectedRunId !== undefined &&
+    (getPendingQuestion(conversationId)?.runId !== expectedRunId || hasQueuedAnswer(conversationId))
+  )
+    return false;
+  if (!pendingQuestions.delete(conversationId)) return false;
+  // The caller can publish the question's terminal status before launching the next task.
+  queueMicrotask(() => {
+    pumpQueue();
+    void writeBoard();
+  });
+  return true;
 }
 
 export function restorePendingQuestions(stored: PendingQuestion[]): void {
@@ -201,6 +239,14 @@ function writeBoard(): Promise<void> {
   }).catch((e) => log.warn("board write failed:", e instanceof Error ? e.message : String(e)));
 }
 
+function waitsForAnswer(entry: QueueEntry): boolean {
+  return (
+    entry.owner !== "schedule" &&
+    entry.questionRunId === undefined &&
+    getPendingQuestion(entry.conversationId)?.runId !== undefined
+  );
+}
+
 function pumpQueue(): void {
   const blockedConversations = new Set<string>();
   const blockedOwners = new Set<string>();
@@ -209,6 +255,7 @@ function pumpQueue(): void {
     if (!entry) break;
     const ownerKey = `${entry.owner}:${entry.ownerId}`;
     if (
+      waitsForAnswer(entry) ||
       blockedConversations.has(entry.conversationId) ||
       blockedOwners.has(ownerKey) ||
       !canStartRun(entry.conversationId, entry.owner, entry.ownerId)

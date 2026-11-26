@@ -168,6 +168,10 @@ function toTabInfo(t: chrome.tabs.Tab): TabInfo | undefined {
   };
 }
 
+export async function listOpenTabs(): Promise<TabInfo[]> {
+  return (await chrome.tabs.query({})).flatMap((tab) => toTabInfo(tab) ?? []);
+}
+
 export function createDriver(initialTabId: TabId, opts: DriverOptions): BrowserDriver {
   const { ownerId, onSwitch, activateOnSwitch = () => true, openedTab = false } = opts;
   claimTab(ownerId, initialTabId);
@@ -305,10 +309,7 @@ export function createDriver(initialTabId: TabId, opts: DriverOptions): BrowserD
       noteAction(tabId);
     },
 
-    async listTabs() {
-      const tabs = await chrome.tabs.query({});
-      return tabs.flatMap((t) => toTabInfo(t) ?? []);
-    },
+    listTabs: listOpenTabs,
 
     async groupTab(tabId, groupId) {
       claimTab(ownerId, tabId);

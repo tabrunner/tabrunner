@@ -6,7 +6,7 @@
  * standalone bun script and must not import from the extension bundle.
  */
 
-export const BRIDGE_PROTOCOL_VERSION = 2;
+export const BRIDGE_PROTOCOL_VERSION = 3;
 
 // ── Extension → daemon ──────────────────────────────────────────────
 
@@ -74,8 +74,9 @@ export type CompactRunEvent =
   | { type: "driving"; tabId: number; windowId: number; title: string }
   | { type: "queue"; queue: BridgeQueueEntry[] }
   | { type: "error"; message: string }
-  | { type: "done"; summary?: string }
-  | { type: "question"; question: string; choices?: string[] };
+  | { type: "done"; summary?: string; stopped?: boolean }
+  | { type: "resumed" }
+  | { type: "question"; question: string; choices?: string[]; confirmationId?: string };
 
 // ── Provider readiness (serves health) ──────────────────────────────
 
@@ -110,7 +111,7 @@ export interface BridgeQueueEntry {
 export interface BridgeStatus {
   conversationId: string | null;
   runId: string | null;
-  state: "idle" | "running" | "question" | "done" | "error";
+  state: "idle" | "running" | "question" | "done" | "stopped" | "error";
   startedAt: number | null;
   finishedAt: number | null;
   steps: { tool: string; summary: string; ok?: boolean }[];
@@ -119,6 +120,7 @@ export interface BridgeStatus {
   /** This client's waiting tasks, in submission order. */
   queue: BridgeQueueEntry[];
   question: string | null;
+  confirmationId: string | null;
   /**
    * The tappable options the panel would show, when the answer is one of a few
    * concrete ones — null for an open answer. A client relaying the question has

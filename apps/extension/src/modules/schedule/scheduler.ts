@@ -147,16 +147,15 @@ async function fireSchedule(id: string, opts: { manual?: boolean } = {}): Promis
   // page, which is what keeps `resolveRunTab` out of the adoption branch.
   const url = schedule.url || (await defaultStartUrl.get());
 
-  // History excludes the latest user message as the task about to launch.
-  // Store it before submission, including when this fire waits in the queue.
+  // The task message keeps the run's identity, even if this fire waits in the queue.
+  const runId = crypto.randomUUID();
   await appendMessageTo(schedule.conversationId, {
-    id: crypto.randomUUID(),
+    id: runId,
     role: "user",
     content: task,
     timestamp: now,
   });
 
-  const runId = crypto.randomUUID();
   submitRun({
     id: runId,
     conversationId: schedule.conversationId,

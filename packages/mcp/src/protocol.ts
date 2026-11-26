@@ -7,7 +7,7 @@
  * two copies must change together — the extension's file is the source of truth.
  */
 
-export const BRIDGE_PROTOCOL_VERSION = 2;
+export const BRIDGE_PROTOCOL_VERSION = 3;
 
 // ── Extension → daemon ──────────────────────────────────────────────
 
@@ -70,8 +70,9 @@ export type CompactRunEvent =
   | { type: "driving"; tabId: number; windowId: number; title: string }
   | { type: "queue"; queue: BridgeQueueEntry[] }
   | { type: "error"; message: string }
-  | { type: "done"; summary?: string }
-  | { type: "question"; question: string; choices?: string[] };
+  | { type: "done"; summary?: string; stopped?: boolean }
+  | { type: "resumed" }
+  | { type: "question"; question: string; choices?: string[]; confirmationId?: string };
 
 /**
  * The model side of "can a task actually run", answered before one is sent.
@@ -102,7 +103,7 @@ export interface BridgeQueueEntry {
 export interface BridgeStatus {
   conversationId: string | null;
   runId: string | null;
-  state: "idle" | "running" | "question" | "done" | "error";
+  state: "idle" | "running" | "question" | "done" | "stopped" | "error";
   startedAt: number | null;
   finishedAt: number | null;
   steps: { tool: string; summary: string; ok?: boolean }[];
@@ -111,6 +112,7 @@ export interface BridgeStatus {
   /** This client's runs waiting for a browser slot. */
   queue: BridgeQueueEntry[];
   question: string | null;
+  confirmationId: string | null;
   /**
    * The tappable options the panel would show, when the answer is one of a few
    * concrete ones — null for an open answer. A client relaying the question has
@@ -134,6 +136,7 @@ export function emptyStatus(): BridgeStatus {
     driving: null,
     queue: [],
     question: null,
+    confirmationId: null,
     choices: null,
     error: null,
     summary: null,
@@ -191,8 +194,16 @@ export function applyCompact(status: BridgeStatus, event: CompactRunEvent): bool
     case "question":
       status.state = "question";
       status.question = event.question;
+      status.confirmationId = event.confirmationId ?? null;
       status.choices = event.choices ?? null;
       status.finishedAt = Date.now();
+      return true;
+    case "resumed":
+      status.state = "running";
+      status.question = null;
+      status.confirmationId = null;
+      status.choices = null;
+      status.finishedAt = null;
       return true;
     case "error":
       status.state = "error";
@@ -202,8 +213,9 @@ export function applyCompact(status: BridgeStatus, event: CompactRunEvent): bool
     case "done":
       // ask_user ends the run too, and its `done` arrives right behind the
       // question — it must not overwrite the question as the closing state.
-      if (status.state !== "question") {
-        status.state = "done";
+      if (status.state !== "error" && (event.stopped || status.state !== "question")) {
+        status.state = event.stopped ? "stopped" : "done";
+        status.confirmationId = null;
         status.summary = event.summary ?? null;
       }
       status.finishedAt = Date.now();

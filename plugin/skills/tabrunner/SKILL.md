@@ -36,22 +36,22 @@ When in doubt, `run`. It's the reason this thing exists.
 
 ## The tools
 
-| Tool                                    | Use it for                                                                                                     |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `health`                                | First call, and after any connection error. Says whether the browser is reachable and what to fix.             |
-| `run(task, url?, background?, images?)` | Start a task. Returns immediately: browser work takes minutes.                                                 |
-| `get_status(wait?, waitSeconds?)`       | Follow the run. **Blocks until something happens**: this is your wait, not a poll.                             |
-| `answer(text)`                          | Reply to a question the run stopped on.                                                                        |
-| `steer(text)`                           | Correct or constrain a task already running, without restarting it.                                            |
-| `stop(runId?)`                          | Stop your current task, or cancel the exact queued run id you pass.                                            |
-| `screenshot()`                          | Capture your live task or direct session. It never captures another client's tab or an unrelated visible page. |
-| `new_conversation()`                    | Start a fresh thread when the next task is unrelated to the last.                                              |
+| Tool                                        | Use it for                                                                                                     |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `health`                                    | First call, and after any connection error. Says whether the browser is reachable and what to fix.             |
+| `run(task, ...)`                            | Start a task. Returns immediately: browser work takes minutes.                                                 |
+| `get_status(wait?, waitSeconds?)`           | Follow the run. **Blocks until something happens**: this is your wait, not a poll.                             |
+| `answer(text?, confirmation_id?, approve?)` | Reply to a question the run stopped on.                                                                        |
+| `steer(text)`                               | Correct or constrain a task already running, without restarting it.                                            |
+| `stop(runId?)`                              | Stop your current task, or cancel the exact queued run id you pass.                                            |
+| `screenshot()`                              | Capture your live task or direct session. It never captures another client's tab or an unrelated visible page. |
+| `new_conversation()`                        | Start a fresh thread when the next task is unrelated to the last.                                              |
 
 Driving yourself:
 
 | Tool                                              | Use it for                                                                                      |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `browser_start(goal, url?, background?)`          | Take the wheel in a new background tab. Returns the first snapshot; the goal names the history. |
+| `browser_start(goal, ...)`                        | Take the wheel in the chosen tab. Returns the first snapshot; the goal names the history.       |
 | `browser_snapshot()`                              | Read the page: an accessibility tree with a `ref` on every interactive element.                 |
 | `browser_network_requests(filter?, limit?)`       | What the tab asked the network: method, URL, status, failures. No bodies.                       |
 | `browser_console_messages(errors?, limit?)`       | The tab's console output and uncaught exceptions.                                               |
@@ -69,8 +69,7 @@ Driving yourself:
 that, never on a ref you read two actions ago. Pass `snapshot: false` to get only the action's
 result (far fewer tokens), then call `browser_snapshot` before your next ref.
 
-**Your own tab by default.** `browser_start` opens a background tab and leaves the user's page alone;
-pass `background: false` only when the task is about the page they are on.
+**Choose a tab.** For `run` and `browser_start`, omit the tab options to reuse the chat's live tab. Use `browser_tabs(query)` and pass `tab_id` to use another open tab without reloading it. Pass `background: false` for the current Chrome tab, `new_tab: true` for a new tab at the start page, or `url` for a new tab at that address.
 
 **Driving means the guardrail is yours.** TabRunner stops to ask before paying, sending on the
 user's behalf, deleting, or submitting. But that rule lives in _its_ model, which you have just
@@ -83,8 +82,9 @@ rather not carry that, use `run`.
 run("…")
 while state is running:
     get_status()          ← blocks until real progress; never poll in a tight loop
-if state is question:     relay it to the user, then answer(their reply)
+if state is question:     relay it and use answer with the user's reply
 if state is done:         report the answer
+if state is stopped:      report what stopped and what remains
 if state is error:        read the error: it says what to do
 ```
 
@@ -96,16 +96,11 @@ ten-minute task is cheap. Never sleep-and-poll, and never assume silence means f
 **Questions belong to the user.** TabRunner stops and asks before consequential actions: paying,
 sending a message on the user's behalf, deleting, submitting an application. When `get_status`
 returns `state: question`, that question is for the **user**. Relay it, wait for a real answer, then
-call `answer`. Never approve a purchase, a send, or a deletion on your own judgement. That is the
-one thing this skill must not do.
+call `answer` with `text` for a normal question. If status shows a `confirmation_id`, use it with `approve: true` only after an explicit yes, or `approve: false` if the user declines. `answer` returns to the same tab; do not start another run to send the reply. If the tab closed, ask the user where to resume instead of opening a copy and repeating the action.
 
 **Start the daemon yourself; don't send the user to do setup.** If `health` says nothing is
 connected, read what it tells you and act on it. Only involve the user for things only they can do:
 installing the extension, opening the panel, choosing a provider.
-
-**Say which site.** A run works in its own background tab by default and continues that tab on
-follow-ups. Pass `url` when you know the starting address so the tab opens straight there; pass
-`background: false` only when the task is about the page the user is looking at.
 
 **One task per client and conversation.** MCP clients share one local broker. Up to four tasks
 can run across MCP clients, the panel and schedules, but panel tasks remain serial. Each task

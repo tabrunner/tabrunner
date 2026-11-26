@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { runsHere, useConversationStore, retryTargetFrom } from "./store";
+import { boardQuestionHere, runsHere, useConversationStore, retryTargetFrom } from "./store";
 import { Markdown } from "./Markdown";
 import { AsksFirstTag, PlanMark } from "./PlanMark";
 import { ElicitationCard } from "./ElicitationCard";
@@ -1296,6 +1296,7 @@ function Transcript() {
   const settled = useConversationStore((s) => s.status === "idle") && !live;
   const retry = useConversationStore((s) => s.retry);
   const sendTask = useConversationStore((s) => s.sendTask);
+  const question = useConversationStore(boardQuestionHere);
   const planApproval = useConversationStore((s) => s.planApproval);
   const approvePlan = useConversationStore((s) => s.approvePlan);
   const rejectPlan = useConversationStore((s) => s.rejectPlan);
@@ -1331,7 +1332,7 @@ function Transcript() {
       hasLiveStep: visible.some((m) => m.live),
       // The newest unanswered question keeps its answer affordance — the gate is
       // shared with the composer's answer placeholder (ask-gate.ts).
-      tappableAskId: pendingAskId(visible, live),
+      tappableAskId: question ? pendingAskId(visible, live) : undefined,
       // User messages name their tab only once a conversation spans more than
       // one — with a single tab every message is obviously there, so the label
       // is noise.
@@ -1339,7 +1340,7 @@ function Transcript() {
         new Set(visible.flatMap((m) => (m.role === "user" && m.tab ? [m.tab.url] : []))).size > 1,
       hasPlan: visible.some((m) => m.role === "plan" && m.steps?.length),
     };
-  }, [stored, live]);
+  }, [stored, live, question]);
 
   // `end` is "unseen content below the viewport" — the old !stuck: true once
   // the reader scrolls off the live edge, so the pill shows exactly then.
@@ -1401,7 +1402,10 @@ function Transcript() {
     !live && lastErrorIdx > lastUserIdx && retryTargetFrom(messages) !== null
       ? messages[lastErrorIdx]?.id
       : undefined;
-  const answer = useCallback((text: string) => void sendTask(text), [sendTask]);
+  const answer = useCallback(
+    (text: string) => void sendTask(text, undefined, question?.runId),
+    [sendTask, question?.runId],
+  );
   // The context-error CTA is the only compact button — its click carries the
   // resume intent: compact, then carry on with the task that hit the wall.
   const compact = useConversationStore((s) => s.compact);

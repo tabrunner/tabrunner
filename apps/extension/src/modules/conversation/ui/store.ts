@@ -141,7 +141,7 @@ export interface ConversationState {
 
   connect: () => void;
   disconnect: () => void;
-  sendTask: (task: string, images?: string[]) => void;
+  sendTask: (task: string, images?: string[], questionRunId?: string) => void;
   /** A local, display-only note (slash-command results) — rendered in the
    *  transcript, never persisted, never part of the model's history. */
   note: (content: string) => void;
@@ -237,6 +237,12 @@ export function boardRunHere(s: ConversationState): RunBoard["running"][number] 
   return s.board.running.find((run) => run.conversationId === s.activeId);
 }
 
+export function boardQuestionHere(
+  s: ConversationState,
+): RunBoard["pendingQuestions"][number] | undefined {
+  return s.board.pendingQuestions.find((question) => question.conversationId === s.activeId);
+}
+
 export function bridgeRunHere(s: ConversationState): BridgeActive | undefined {
   return s.bridgeActive.find((run) => run.conversationId === s.activeId);
 }
@@ -313,7 +319,7 @@ function makeMsg(role: Message["role"], content: string, extra?: Partial<Message
 export function retryTargetFrom(
   messages: Message[],
 ): { task: string; images?: string[]; url?: string } | null {
-  const last = messages.findLast((m) => m.role === "user");
+  const last = messages.findLast((m) => m.role === "user" && !m.cancelled);
   if (!last) return null;
   // A run its tab outlived cannot simply be re-sent: the page has to come back
   // first, or the retry adopts whatever the user is looking at now. The closed
@@ -567,8 +573,9 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     task: string,
     images?: string[],
     url?: string,
+    runId: string = crypto.randomUUID(),
+    questionRunId?: string,
   ) => {
-    const runId = crypto.randomUUID();
     sawAssistantText = false;
     set({
       activeRunId: runId,
@@ -609,6 +616,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       task,
       ...(images?.length ? { images } : {}),
       ...(url ? { url } : {}),
+      ...(questionRunId ? { questionRunId } : {}),
     };
     try {
       p.postMessage(dispatch);
@@ -649,7 +657,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
    * pendingSend is set, a user's Enter must not start a third run mid-handoff —
    * the pending send fires from the done handler.
    */
-  const sendTask = async (task: string, images?: string[]) => {
+  const sendTask = async (task: string, images?: string[], askedBy?: string) => {
     if (get().pendingSend !== null) return;
     // A run in flight steers instead (ChatInput routes there) — but when our
     // own submission is only waiting in the queue, a new one joins the line.
@@ -667,6 +675,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     // would file the user's message under the thread they just left — the
     // "conversation switched itself" bug, now remotely triggerable.
     sending = true;
+    const questionRunId = askedBy ?? boardQuestionHere(get())?.runId;
     // The message is anchored to the tab it was sent from — the run adopts that
     // same tab in either mode. The panel queries its own window here (the
     // send-time fact), while the background's own query stays the authority on
@@ -690,10 +699,12 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       // Stored BEFORE the run starts: the worker builds this run's history by
       // reading the transcript, so a fire-and-forget write would race it and
       // cost the model the exchange it is being asked to continue.
-      const conversationId = await pushMsg(
-        makeMsg("user", task, { ...(images?.length ? { images } : {}), ...(tab ? { tab } : {}) }),
-      );
-      startRun(p, conversationId, task, images);
+      const message = makeMsg("user", task, {
+        ...(images?.length ? { images } : {}),
+        ...(tab ? { tab } : {}),
+      });
+      const conversationId = await pushMsg(message);
+      startRun(p, conversationId, task, images, undefined, message.id, questionRunId);
     } finally {
       // Every caller is fire-and-forget, so a rejected store would otherwise
       // leave the latch stuck and ownLiveView() would defer refetches forever.

@@ -1,6 +1,7 @@
+import { i18n } from "@/i18n";
 import { createWriteQueue, defineItem } from "@/lib/storage";
 import { truncateTo } from "@/lib/format";
-import { cancelQueued, listQueue } from "@/modules/agent/run-queue";
+import { cancelQueued, listQueue, type QueuedRun } from "@/modules/agent/run-queue";
 import { deleteSchedule, disarmSchedule, schedulesForConversation } from "@/modules/schedule";
 import { removeRecordingsFor } from "@/modules/walkthrough";
 import type { Message } from "./types";
@@ -223,6 +224,19 @@ export function getActiveId(): Promise<string | null> {
  */
 export function watchActiveConversation(cb: (id: string | null) => void): () => void {
   return activeItem.watch(cb);
+}
+
+/** Model-facing reads ignore work that has not run. The panel still shows it. */
+export async function getRunMessages(id: string): Promise<Message[]> {
+  // A cancellation can free the next slot before its transcript write lands.
+  await flushConversationWrites();
+  const messages = await getMessages(id);
+  const waiting = new Set(
+    listQueue()
+      .filter((entry) => entry.conversationId === id)
+      .map((entry) => entry.id),
+  );
+  return messages.filter((message) => !waiting.has(message.id) && !message.cancelled);
 }
 
 export function getMessages(id: string): Promise<Message[]> {
@@ -492,6 +506,30 @@ export function appendMessageTo(id: string, msg: Message): Promise<string> {
   return serialized(() => appendTo(id, msg));
 }
 
+/** Queue the transcript write before removing the entry can launch the next run. */
+export function cancelQueuedTask(entry: QueuedRun): Promise<string> {
+  const write = recordTaskCancellation(entry.conversationId, entry.id);
+  cancelQueued(entry.id);
+  return write;
+}
+
+/** Keep the prompt and interruption visible without replaying a task that never started. */
+export function recordTaskCancellation(id: string, taskMessageId: string): Promise<string> {
+  return serialized(() =>
+    appendTo(
+      id,
+      {
+        id: crypto.randomUUID(),
+        role: "step",
+        tool: "interrupted",
+        content: i18n.t("errors.runCancelled"),
+        timestamp: Date.now(),
+      },
+      taskMessageId,
+    ),
+  );
+}
+
 /**
  * The first message of the panel's fresh thread — mints the conversation
  * outright instead of resolving the shared active slot. Between "New
@@ -549,10 +587,18 @@ export function flushConversationWrites(): Promise<void> {
   return serialized(async () => {});
 }
 
-async function appendTo(id: string, msg: Message): Promise<string> {
+async function appendTo(id: string, msg: Message, cancelledTaskId?: string): Promise<string> {
   const meta = await ensureConversation(id);
   const item = messagesItem(meta.id);
-  const messages = pruneTranscript([...(await item.get()), stripTransientImages(msg)]);
+  const previous = await item.get();
+  const messages = pruneTranscript([
+    ...(cancelledTaskId
+      ? previous.map((m) =>
+          m.id === cancelledTaskId && m.role === "user" ? { ...m, cancelled: true } : m,
+        )
+      : previous),
+    stripTransientImages(msg),
+  ]);
   await item.set(messages);
 
   const updated: ConversationMeta = {

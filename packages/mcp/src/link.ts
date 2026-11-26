@@ -77,11 +77,17 @@ const compactSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("queue"), queue: queueSchema }),
   z.object({ type: z.literal("error"), message: z.string() }),
-  z.object({ type: z.literal("done"), summary: z.string().optional() }),
+  z.object({
+    type: z.literal("done"),
+    summary: z.string().optional(),
+    stopped: z.boolean().optional(),
+  }),
+  z.object({ type: z.literal("resumed") }),
   z.object({
     type: z.literal("question"),
     question: z.string(),
     choices: z.array(z.string()).optional(),
+    confirmationId: z.string().optional(),
   }),
 ]);
 const messageSchema = z.discriminatedUnion("type", [
@@ -111,7 +117,7 @@ const messageSchema = z.discriminatedUnion("type", [
 const statusSchema = z.object({
   conversationId: z.string().nullable(),
   runId: z.string().nullable(),
-  state: z.enum(["idle", "running", "question", "done", "error"]),
+  state: z.enum(["idle", "running", "question", "done", "stopped", "error"]),
   startedAt: z.number().nullable(),
   finishedAt: z.number().nullable(),
   steps: z.array(z.object({ tool: z.string(), summary: z.string(), ok: z.boolean().optional() })),
@@ -119,6 +125,7 @@ const statusSchema = z.object({
   driving: z.object({ tabId: z.number(), windowId: z.number(), title: z.string() }).nullable(),
   queue: queueSchema,
   question: z.string().nullable(),
+  confirmationId: z.string().nullable(),
   choices: z.array(z.string()).nullable(),
   error: z.string().nullable(),
   summary: z.string().nullable(),
@@ -272,7 +279,7 @@ export class ClientBridgeLink {
         // A newer connection, run receipt or live event owns the mirror now.
         if (this.closed || epoch !== this.syncEpoch || revision !== this.seq) return;
         this.status =
-          previous.state === "running" && fresh.runId === null
+          (previous.state === "running" || previous.confirmationId !== null) && fresh.runId === null
             ? {
                 ...previous,
                 runId: fresh.runId,

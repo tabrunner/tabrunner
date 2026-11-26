@@ -1,4 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { buildConversationHistory } from "@/modules/agent/history";
+import { acquireRun, releaseRun } from "@/modules/agent/active-runs";
+import { cancelQueued, submitRun } from "@/modules/agent/run-queue";
+import { formatTranscriptWindow, readStepLog } from "@/modules/agent/read-history";
+import { renderTranscriptMessage } from "../render";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
@@ -17,6 +22,7 @@ import {
   recordApprovedPlan,
   recordDrivenTabFor,
   recordEngine,
+  recordTaskCancellation,
   renameConversation,
   replaceMessageTo,
   retitleIfDerived,
@@ -32,6 +38,57 @@ function msg(role: Message["role"], content: string): Message {
 
 /** The driven-tab half of the thread record — what most of these assert on. */
 const threadTabs = async (id: string) => (await getThreadTabsFor(id)).tabs;
+
+describe("queued task cancellation", () => {
+  it("does not return a future task through read_history while the current one is running", async () => {
+    const conversation = await appendMessageFresh(msg("user", "current request"));
+    const active = acquireRun(conversation, "bridge", "client", "active-history");
+    if (!active.ok) throw new Error("task did not start");
+    const queued = msg("user", "instruction for a later task");
+    try {
+      await appendMessageTo(conversation, queued);
+      expect(
+        submitRun({
+          id: queued.id,
+          conversationId: conversation,
+          owner: "bridge",
+          ownerId: "client",
+          task: queued.content,
+          launch: () => {
+            throw new Error("the queue should not launch");
+          },
+        }),
+      ).toMatchObject({ queued: 1 });
+      const result = await readStepLog(conversation, {});
+      expect(result.data).toMatchObject({ log: expect.stringContaining("current request") });
+      expect(result.data).not.toMatchObject({ log: expect.stringContaining(queued.content) });
+    } finally {
+      cancelQueued(queued.id);
+      releaseRun(active.run);
+    }
+  });
+
+  it("keeps the cancelled prompt in scrollback, but not in replay or compaction input", async () => {
+    const id = await appendMessageFresh(msg("user", "first task"));
+    await appendMessageTo(id, msg("assistant", "first result"));
+    const cancelled = msg("user", "cancel this task");
+    const current = msg("user", "continue");
+    await appendMessageTo(id, cancelled);
+    await appendMessageTo(id, current);
+    await appendMessageTo(id, msg("user", "later queued task"));
+    await recordTaskCancellation(id, cancelled.id);
+
+    const transcript = await getMessages(id);
+    expect(transcript).toContainEqual({ ...cancelled, cancelled: true });
+    expect(transcript.at(-1)).toMatchObject({ role: "step", tool: "interrupted" });
+    expect(buildConversationHistory(transcript, undefined, current.id)).toEqual([
+      { role: "user", content: "first task" },
+      { role: "assistant", content: "first result" },
+    ]);
+    expect(transcript.map(renderTranscriptMessage).join("\n")).not.toContain(cancelled.content);
+    expect(formatTranscriptWindow(transcript, {}).log).not.toContain(cancelled.content);
+  });
+});
 
 describe("conversationTitle", () => {
   it("takes the first line and truncates long tasks", () => {

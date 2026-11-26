@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { boardRunHere, bridgeRunHere, runsHere, useConversationStore } from "./store";
-import { pendingAskId } from "./ask-gate";
+import {
+  boardQuestionHere,
+  boardRunHere,
+  bridgeRunHere,
+  runsHere,
+  useConversationStore,
+} from "./store";
 import { toAttachment } from "./image";
 import { recallStep, sentMessages } from "./history-recall";
 import { caretVisualLine } from "./caret-line";
@@ -63,8 +68,8 @@ export function ChatInput() {
   // background run reads idle.
   const runHere = useConversationStore(runsHere);
   // An unanswered ask_user turns the composer into the answer field — the
-  // placeholder says so (the card's chips/hint use the same gate, ask-gate.ts).
-  const questionPending = pendingAskId(messages, runHere) !== undefined;
+  // placeholder follows the same pending question as the card.
+  const questionPending = useConversationStore(boardQuestionHere) !== undefined && !runHere;
   // A parked plan gate does the same, stronger: the run is BLOCKED on the
   // answer with no tool boundary ahead, so a queued steer could never land.
   // Typed text is the answer — it sends the plan back with the note.
