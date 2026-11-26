@@ -1252,6 +1252,10 @@
     "saveSkillBadUrl": "Não foi possível acessar um arquivo de habilidade em {{url}}. Use um link https direto ao arquivo .md ou owner/repo[/caminho].",
     "saveSkillUnnamed": "O arquivo não tem nome para a habilidade e nenhum outro nome foi informado. Passe um nome em kebab-case: palavras minúsculas separadas por hífens.",
     "tabInUse": "Outra tarefa está usando a aba {{tabId}}. Escolha outra aba ou espere essa tarefa terminar.",
+    "workerRunInterrupted": "O TabRunner reiniciou antes de terminar a tarefa. Confira a aba antes de continuar.",
+    "bridgeTabUnavailable": "Essa aba está fechada ou indisponível. Abra a aba original de novo ou use browser_tabs para escolher uma aba aberta.",
+    "runStalled": "Nenhuma etapa no navegador terminou em {{minutes}} minutos. A tarefa parou. Confira a aba antes de tentar de novo.",
+    "bridgeRunDisconnected": "A conexão MCP caiu antes de a tarefa terminar. Confira a aba antes de tentar de novo.",
     "bridgeClientRecovering": "A tarefa anterior está parando porque a conexão caiu. Consulte health ou get_status novamente antes de iniciar outra tarefa.",
     "staleBridgeRun": "Esta tarefa já foi encerrada ou substituída. Confira o status e tente de novo com o ID da execução atual.",
     "noBridgeScreenshot": "Esta tarefa não tem uma página para capturar. Inicie uma tarefa ou sessão de navegador e tente de novo."

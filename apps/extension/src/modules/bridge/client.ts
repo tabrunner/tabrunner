@@ -1,22 +1,30 @@
 import { i18n } from "@/i18n";
 import { createLogger, truncate } from "@/lib/logger";
 import { createWriteQueue } from "@/lib/storage";
-import { getActiveRun, getOwnerRun, getRunById } from "@/modules/agent/active-runs";
+import {
+  BRIDGE_DISCONNECTED,
+  getActiveRun,
+  getOwnerRun,
+  getRunById,
+} from "@/modules/agent/active-runs";
 import { compactConversation } from "@/modules/agent/compact";
 import {
-  cancelQueued,
   clearPendingQuestion,
+  getPendingQuestion,
   listQueue,
   submitRun,
 } from "@/modules/agent/run-queue";
 import type { QueuedRun } from "@/modules/agent/run-queue";
 import { startAgentRun } from "@/modules/agent/start-run";
+import type { PlanApprovalOutcome } from "@/modules/agent/loop";
+import { listOpenTabs } from "@/modules/browser/driver";
 import { isAttached, screenshot, tabOwner } from "@/modules/browser";
 import {
   appendMessageTo,
   getConversationMeta,
   openAgentConversation,
 } from "@/modules/conversation";
+import { cancelQueuedTask, recordTaskCancellation } from "@/modules/conversation/conversations";
 import { TranscriptWriter } from "@/modules/conversation/transcript";
 import {
   createProvider,
@@ -66,6 +74,9 @@ export class BridgeClient {
   private active: BridgeActive | null = null;
   private closed = false;
   private launched: Promise<void> | null = null;
+  private queuedAnswer: { id: string; question: string; choices?: string[] } | null = null;
+  private confirmation: { id: string; resolve: (outcome: PlanApprovalOutcome) => void } | null =
+    null;
 
   get activity(): BridgeActive | null {
     return this.active;
@@ -77,26 +88,37 @@ export class BridgeClient {
       switch (method) {
         case "sync": {
           this.status.conversationId ??= await this.thread.get();
+          if (!this.status.runId && this.status.conversationId) {
+            const pending = getPendingQuestion(this.status.conversationId);
+            if (pending?.runId) {
+              this.status.runId = pending.runId;
+              this.status.startedAt = pending.startedAt ?? null;
+              applyQuestion(this.status, pending.question, pending.choices);
+            }
+          }
           this.updateQueue(listQueue());
           return this.status;
         }
         case "run":
-          return this.beginRun(params);
-        case "answer": {
-          this.requireCurrent(runId);
-          if (this.status.state !== "question") {
+          if (this.status.state === "question" || this.queuedAnswer)
             throw new BridgeError(
-              "no-question",
-              "No question needs an answer. Use run to start a task.",
+              "question-pending",
+              "This task is waiting for the user. Use answer to reply, or stop it to start another task.",
             );
-          }
-          const result = await this.beginRun({ ...params, task: str(params.text) });
-          if (this.status.runId === runId) {
-            this.status.state = "done";
-            this.status.question = null;
-            this.status.choices = null;
-          }
-          return result;
+          return this.beginRun(params);
+        case "answer":
+          return this.answer(params, runId);
+        case "browserTabs": {
+          const query = str(params.query).toLowerCase();
+          const tabs = await listOpenTabs();
+          return {
+            ok: true,
+            data: {
+              tabs: query
+                ? tabs.filter((tab) => `${tab.title} ${tab.url}`.toLowerCase().includes(query))
+                : tabs,
+            },
+          };
         }
         case "steer": {
           const run = this.requireActive(runId);
@@ -139,10 +161,10 @@ export class BridgeClient {
   }
 
   /** Stop is abort-only until the run's own finalizer has drained its work. */
-  stopFromPanel(runId: string): void {
+  stopFromPanel(runId: string, reason?: string): void {
     const run = getRunById(runId);
     if (!run || run.owner !== "bridge" || run.ownerId !== this.id) return;
-    run.controller.abort();
+    run.controller.abort(reason);
     run.injectedQueue.length = 0;
     if (this.direct.run === run) {
       void this.direct
@@ -160,6 +182,13 @@ export class BridgeClient {
       task: truncate(run.task, 160),
       owner: run.owner,
     }));
+    if (this.queuedAnswer && !mine.some((run) => run.id === this.queuedAnswer?.id)) {
+      const { question, choices } = this.queuedAnswer;
+      this.queuedAnswer = null;
+      // The reply was cancelled before it could run. The original question still needs an answer.
+      applyQuestion(this.status, question, choices);
+      this.publish({ type: "question", question, choices });
+    }
     if (JSON.stringify(this.status.queue) === JSON.stringify(next)) return;
     this.status.queue = next;
     this.publish({ type: "queue", queue: next });
@@ -169,16 +198,17 @@ export class BridgeClient {
   async close(): Promise<void> {
     this.closed = true;
     const run = getOwnerRun("bridge", this.id);
-    if (run) this.stopFromPanel(run.id);
+    if (run) this.stopFromPanel(run.id, BRIDGE_DISCONNECTED);
     const cancelled = listQueue().filter(
       (entry) => entry.owner === "bridge" && entry.ownerId === this.id,
     );
-    for (const entry of cancelled) cancelQueued(entry.id);
-    await this.serialize(async () => {
-      await this.direct.end();
-      await this.launched;
-      for (const entry of cancelled) await this.recordCancellation(entry);
-    });
+    await Promise.all([
+      ...cancelled.map(cancelQueuedTask),
+      this.serialize(async () => {
+        await this.direct.end();
+        await this.launched;
+      }),
+    ]);
   }
 
   private async ensureThread(): Promise<string> {
@@ -189,7 +219,58 @@ export class BridgeClient {
     return id;
   }
 
-  private async beginRun(params: Record<string, unknown>): Promise<unknown> {
+  private async answer(params: Record<string, unknown>, runId?: string): Promise<unknown> {
+    this.requireCurrent(runId);
+    if (this.status.state !== "question") {
+      throw new BridgeError("no-question", "No question needs an answer. Use run to start a task.");
+    }
+    if (this.confirmation) {
+      this.requireActive(runId);
+      const { id, resolve } = this.confirmation;
+      if (params.confirmationId !== id || typeof params.approve !== "boolean") {
+        throw new BridgeError(
+          "confirmation-required",
+          "Ask the user first. Then call answer with the current confirmation_id and their decision (approve: true or false).",
+        );
+      }
+      this.confirmation = null;
+      this.resumeStatus();
+      resolve({ approved: params.approve });
+      return { resumed: true };
+    }
+    const pending = this.status.conversationId
+      ? getPendingQuestion(this.status.conversationId)
+      : undefined;
+    const tabId = pending?.tabId ?? this.status.driving?.tabId;
+    if (tabId === undefined || !(await chrome.tabs.get(tabId).catch(() => undefined))) {
+      throw new BridgeError("tab-unavailable", i18n.t("errors.bridgeTabUnavailable"));
+    }
+    const result = await this.beginRun(
+      { agent: params.agent, task: str(params.text), tabId },
+      true,
+    );
+
+    if (this.status.runId === runId) {
+      if (result.queued !== undefined && this.status.question) {
+        this.queuedAnswer = {
+          id: result.runId,
+          question: this.status.question,
+          choices: this.status.choices ?? undefined,
+        };
+      }
+      this.resumeStatus();
+    }
+    return result;
+  }
+
+  private async beginRun(
+    params: Record<string, unknown>,
+    answerQuestion = false,
+  ): Promise<{
+    runId: string;
+    conversationId: string;
+    queued?: number;
+  }> {
     const task = str(params.task);
     if (!task) throw new BridgeError("empty-task", "Enter a task, then try again.");
     const attached = images(params.images);
@@ -201,29 +282,42 @@ export class BridgeClient {
     }
     if (this.direct.open)
       throw new BridgeError("already-running", i18n.t("errors.alreadyRunningMCP"));
+    const target = tabTarget(params);
+    if (params.background === false) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id === undefined) {
+        throw new BridgeError("tab-unavailable", i18n.t("errors.bridgeTabUnavailable"));
+      }
+      target.tabId = tab.id;
+    }
     const conversationId = await this.ensureThread();
     const runId = crypto.randomUUID();
     const client = str(params.agent) || i18n.t("history.unknownAgent");
     await openAgentConversation(conversationId, client);
     await appendMessageTo(conversationId, {
-      id: crypto.randomUUID(),
+      id: runId,
       role: "user",
       content: task,
       timestamp: Date.now(),
       ...(attached?.length ? { images: attached } : {}),
     });
-    if (this.closed) throw staleRun();
+    if (this.closed) {
+      await recordTaskCancellation(conversationId, runId);
+      throw staleRun();
+    }
     const outcome = submitRun({
       id: runId,
       conversationId,
       owner: "bridge",
       ownerId: this.id,
       task,
+      answerQuestion,
       launch: () => {
+        this.queuedAnswer = null;
         this.status = newRunStatus(conversationId, runId);
         this.setActivity("run", client, runId, conversationId);
         this.publish({ type: "started", runId, conversationId });
-        const running = this.launch(runId, conversationId, task, attached, params);
+        const running = this.launch(runId, conversationId, task, attached, target, answerQuestion);
         this.launched = running;
         void running.finally(() => {
           if (this.launched === running) this.launched = null;
@@ -242,7 +336,8 @@ export class BridgeClient {
     conversationId: string,
     task: string,
     images: string[] | undefined,
-    params: Record<string, unknown>,
+    target: ReturnType<typeof tabTarget>,
+    answerQuestion: boolean,
   ): Promise<void> {
     const writer = new TranscriptWriter(conversationId);
     const emit = (event: Event) => {
@@ -259,8 +354,30 @@ export class BridgeClient {
         ownerId: this.id,
         task,
         images,
-        url: str(params.url) || undefined,
-        adoptCurrentTab: params.background === false ? true : undefined,
+        ...target,
+        answerQuestion,
+        onActionApproval: ({ action, site }) => {
+          const run = getRunById(runId);
+          if (!run || run.controller.signal.aborted) return Promise.resolve({ approved: false });
+          return new Promise<PlanApprovalOutcome>((resolve) => {
+            const id = crypto.randomUUID();
+            const abort = () => {
+              this.confirmation = null;
+              resolve({ approved: false });
+            };
+            run.controller.signal.addEventListener("abort", abort, { once: true });
+            this.confirmation = {
+              id,
+              resolve: (outcome) => {
+                run.controller.signal.removeEventListener("abort", abort);
+                resolve(outcome);
+              },
+            };
+            const question = site ? `${action} (${site})` : action;
+            applyQuestion(this.status, question, undefined, id);
+            this.publish({ type: "question", question, confirmationId: id });
+          });
+        },
         emit,
         onAskUser: (question, choices) => {
           if (this.status.runId !== runId) return;
@@ -279,6 +396,7 @@ export class BridgeClient {
 
   private async beginDirect(params: Record<string, unknown>): Promise<unknown> {
     if (
+      this.status.state === "question" ||
       getOwnerRun("bridge", this.id) ||
       listQueue().some((run) => run.owner === "bridge" && run.ownerId === this.id)
     ) {
@@ -294,7 +412,7 @@ export class BridgeClient {
         goal,
         client,
         {
-          url: str(params.url) || undefined,
+          ...tabTarget(params),
           background: params.background !== false,
         },
         conversationId,
@@ -349,24 +467,24 @@ export class BridgeClient {
     const queued = listQueue().find(
       (run) => run.id === runId && run.owner === "bridge" && run.ownerId === this.id,
     );
-    if (queued && cancelQueued(queued.id)) {
-      await this.recordCancellation(queued);
+    if (queued) {
+      await cancelQueuedTask(queued);
+      return { stopped: true, panelBusy: false };
+    }
+    if (this.status.runId === runId && this.status.state === "question" && !this.confirmation) {
+      const conversationId = this.status.conversationId;
+      this.status.state = "stopped";
+      this.status.question = null;
+      this.status.choices = null;
+      this.status.finishedAt = Date.now();
+      this.publish({ type: "done", stopped: true });
+      if (conversationId) clearPendingQuestion(conversationId);
       return { stopped: true, panelBusy: false };
     }
     const run = this.requireActive(runId);
     this.stopFromPanel(run.id);
     if (this.direct.open) await this.direct.end();
     return { stopped: true, panelBusy: false };
-  }
-
-  private async recordCancellation(run: QueuedRun): Promise<void> {
-    await appendMessageTo(run.conversationId, {
-      id: crypto.randomUUID(),
-      role: "step",
-      tool: "interrupted",
-      content: i18n.t("errors.runCancelled"),
-      timestamp: Date.now(),
-    });
   }
 
   private async capture(runId?: string): Promise<unknown> {
@@ -425,7 +543,7 @@ export class BridgeClient {
       );
     if (
       getActiveRun(conversationId) ||
-      listQueue().some((run) => run.owner === "bridge" && run.ownerId === this.id)
+      listQueue().some((run) => run.conversationId === conversationId)
     ) {
       throw new BridgeError(
         "run-in-progress",
@@ -460,6 +578,15 @@ export class BridgeClient {
     this.onActivity();
   }
 
+  private resumeStatus(): void {
+    this.status.state = "running";
+    this.status.question = null;
+    this.status.confirmationId = null;
+    this.status.choices = null;
+    this.status.finishedAt = null;
+    this.publish({ type: "resumed" });
+  }
+
   private publish(event: CompactRunEvent): void {
     this.send({
       type: "event",
@@ -489,4 +616,28 @@ function images(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const list = value.filter((image): image is string => typeof image === "string");
   return list.length ? list : undefined;
+}
+
+function tabTarget(params: Record<string, unknown>): {
+  url?: string;
+  tabId?: number;
+  newTab?: boolean;
+} {
+  const url = str(params.url) || undefined;
+  const tabId =
+    typeof params.tabId === "number" && Number.isSafeInteger(params.tabId) && params.tabId >= 0
+      ? params.tabId
+      : undefined;
+  const newTab = params.newTab === true;
+  if (
+    (params.tabId !== undefined && tabId === undefined) ||
+    (tabId !== undefined && (newTab || url || params.background === false)) ||
+    (params.background === false && (newTab || url))
+  ) {
+    throw new BridgeError(
+      "bad-tab-target",
+      "Choose one target: tab_id for an open tab, background: false for the current tab, or new_tab / url for a new tab.",
+    );
+  }
+  return { url, tabId, newTab };
 }

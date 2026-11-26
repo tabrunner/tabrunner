@@ -122,17 +122,17 @@ program that owns the port.
 
 ## The tools
 
-| Tool                                    | What it does                                                                                                                                                                                                                                                                                                             |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `health`                                | Is TabRunner reachable? Reports the connection, the extension id and version, and the fix when something's off. Call it first.                                                                                                                                                                                           |
-| `run(task, url?, background?, images?)` | Give TabRunner a task and get a run id. It reuses a tab this chat drove while it lives, otherwise opens a background tab. A URL opens its own page; `background: false` without a URL adopts your current tab. Extra tasks queue when this client is busy or all four task slots are taken. Images are base64 data URLs. |
-| `get_status(wait?, waitSeconds?)`       | Follow this client's task and queue. Blocks until something changes by default, so you do not need to poll on a timer. Other clients' steps, questions and queued tasks are not included.                                                                                                                                |
-| `answer(text)`                          | Reply to a question the run stopped on.                                                                                                                                                                                                                                                                                  |
-| `steer(text)`                           | Drop a note into a running task, such as a correction or an extra constraint. It lands between tool calls; the run doesn't restart.                                                                                                                                                                                      |
-| `stop(runId?)`                          | Stop this client's current task, or pass one of its queued run ids to cancel that exact task. Later queued tasks are kept. Other clients, panel tasks and schedules are untouched.                                                                                                                                       |
-| `screenshot()`                          | Capture this client's live task or direct session, even in a background tab. Fails if it has no claimed, attached page. It never captures another client's page or an unrelated visible tab.                                                                                                                             |
-| `new_conversation()`                    | Start a fresh chat for this client. Closes its direct session, but refuses while its delegated work is active or queued. Stop those tasks first. Other clients' chats are unchanged.                                                                                                                                     |
-| `compact()`                             | Summarize this client's chat for later tasks. Nothing is deleted from history. Refuses while this chat has active or queued work.                                                                                                                                                                                        |
+| Tool                                        | What it does                                                                                                                                                                                 |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `health`                                    | Is TabRunner reachable? Reports the connection, the extension id and version, and the fix when something's off. Call it first.                                                               |
+| `run(task, ...)`                            | Give TabRunner a task and get a run id. Choose the tab with the options below. Extra tasks queue when this client is busy or all four task slots are taken. Images are base64 data URLs.     |
+| `get_status(wait?, waitSeconds?)`           | Follow this client's task and queue. Blocks until something changes by default, so you do not need to poll on a timer. Other clients' steps, questions and queued tasks are not included.    |
+| `answer(text?, confirmation_id?, approve?)` | Reply on the same tab. Use `text` for a question or `confirmation_id` and `approve` for a specific action.                                                                                   |
+| `steer(text)`                               | Drop a note into a running task, such as a correction or an extra constraint. It lands between tool calls; the run doesn't restart.                                                          |
+| `stop(runId?)`                              | Stop this client's current task, or pass one of its queued run ids to cancel that exact task. Later queued tasks are kept. Other clients, panel tasks and schedules are untouched.           |
+| `screenshot()`                              | Capture this client's live task or direct session, even in a background tab. Fails if it has no claimed, attached page. It never captures another client's page or an unrelated visible tab. |
+| `new_conversation()`                        | Start a fresh chat for this client. Closes its direct session, but refuses while its delegated work is active or queued. Stop those tasks first. Other clients' chats are unchanged.         |
+| `compact()`                                 | Summarize this client's chat for later tasks. Nothing is deleted from history. Refuses while this chat has active or queued work.                                                            |
 
 ### Driving it yourself
 
@@ -142,7 +142,7 @@ opens a direct-control session, and every `browser_*` tool drives the real tab:
 
 | Tool                                                  | What it does                                                                                                                                                                  |
 | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `browser_start(goal, url?, background?)`              | Start direct control on this client's earlier page or a new background tab, and get its first snapshot. Adds the goal to this client's chat and returns the session's run id. |
+| `browser_start(goal, ...)`                            | Start direct control on this client's earlier page or a new background tab, and get its first snapshot. Adds the goal to this client's chat and returns the session's run id. |
 | `browser_snapshot()`                                  | The page as an accessibility tree, with a `ref` on every interactive element.                                                                                                 |
 | `browser_network_requests(url_filter?, limit?)`       | What the tab asked the network, with method, URL, status and failures. No bodies.                                                                                             |
 | `browser_console_messages(only_errors?, limit?)`      | The tab's console output and uncaught exceptions.                                                                                                                             |
@@ -156,9 +156,7 @@ opens a direct-control session, and every `browser_*` tool drives the real tab:
 | `browser_tabs(query?)` / `browser_switch_tab(tab_id)` | Find another tab (`query` keeps only titles and URLs that contain it), re-target every later action at it.                                                                    |
 | `browser_end()`                                       | Hand the browser back.                                                                                                                                                        |
 
-Every verb goes through the **same `executeTool` the agent loop uses**: one browser
-implementation, no second catalog to drift. On the wire they all arrive as a single `browserAct`
-method; they are discrete only at the MCP surface, because that is the shape models know.
+Direct actions use the same browser tools as the agent. `browser_tabs` can list tabs before a task or direct session starts.
 
 **Refs belong to the snapshot that produced them.** Anything that changes the page invalidates
 them, so every mutating action returns the fresh snapshot alongside its result. Act on that, never
@@ -167,12 +165,16 @@ on a ref you read two actions ago. A snapshot costs a few thousand tokens; pass 
 `browser_press_key` or `browser_scroll` to get only the action's result, then call `browser_snapshot`
 before your next ref.
 
-**Where it works.** Like `run`, `browser_start` reuses this client's earlier driven page while
-it lives; otherwise it opens a background tab at your start page. A URL opens its own page.
-`background: false` without a URL adopts your current tab and sends that page to the client.
-Tabs work off screen. A claimed tab cannot be taken by another task; end the task that owns it
-before switching another client onto it. `browser_tabs` lists open tabs, so pass `query` when
-you know which one you need.
+### Choose the tab
+
+`run` and `browser_start` use the same options:
+
+- Omit the tab options to keep using this chat's open tab. A new chat starts in a background tab.
+- Pass `tab_id` to use a specific open tab without reloading it. Find its id with `browser_tabs`.
+- Pass `background: false` to use the current Chrome tab.
+- Pass `new_tab: true` to open the start page in a new background tab, or `url` to open a specific page in one.
+
+Use one target at a time. If another task owns the tab, stop that task or choose a different tab.
 
 **Direct control has no ask_user.** TabRunner's policy of stopping before consequential actions
 lives in its system prompt, and driving directly takes that prompt out of the loop. Paying, sending
@@ -194,12 +196,11 @@ run("find the Q3 invoice in my email and download it")
   → get_status()        blocks… returns: state: question
                         "Download invoice-q3.pdf to your Downloads folder?"
   → (relay to the user, get their decision)
-  → answer("yes")
+  → answer({ text: "yes" })
   → get_status()        blocks… returns: state: done + the answer
 ```
 
-`get_status` is the wait primitive. Call it in a loop until the state is `done`, `error`, or
-`question`. Each call returns as soon as something real happens.
+`get_status` is the wait primitive. Call it in a loop until the state is `done`, `stopped`, `error` or `question`. Each call returns as soon as something real happens.
 
 ### Questions are the user's to answer
 
@@ -207,9 +208,10 @@ TabRunner stops and asks before consequential actions: paying, sending on someon
 deleting and submitting. When `get_status` comes back with `state: question`, that question is for the
 **user**, not for the model driving the bridge. Relay it, get a real answer, then call `answer`.
 
-Some questions come with options listed under them; the run is waiting on those exact words, so
-offer them to the user as they are. A question with no options is an open one, such as a file name or an
-address, and the user's own words are the answer.
+If the question asks for a value or offers choices, send the user's words in `answer({ text })`.
+TabRunner returns to the exact tab where it asked. If that tab closed, it tells you instead of opening another copy. Follow-up tasks wait until the question is answered or stopped.
+
+If the question includes a `confirmation_id`, relay the action to the user. Send `answer({ confirmation_id, approve: true })` only with the user's explicit yes. Use `approve: false` if they say no. This resumes the same task. If a connection loss ends the task, check the tab before retrying and get a new confirmation if needed.
 
 ## The conversation model
 
@@ -244,6 +246,7 @@ Every failure comes back as text that says what happened, why, and what to do ne
 | This client is busy, or four tasks are active   | Delegated tasks queue. `get_status` shows this client's waiting tasks. End a direct session before submitting delegated work from that client.                                    |
 | The target tab is in use                        | Use another tab, or end the task that owns it before switching onto it.                                                                                                           |
 | A request times out or the link drops           | The action may already have happened. Restore the link, inspect `get_status` or `browser_snapshot`, then decide whether to retry. Browser actions are not replayed automatically. |
+| No browser step finishes for eight minutes      | The task stops unless it is waiting for your answer. Check the tab before trying again.                                                                                           |
 | A short extension link outage                   | The same client's task can keep running during a 60-second reconnect grace. Reconnect resyncs its status. Longer outages abort and drain only the missing clients' work.          |
 | Chrome restarts the worker                      | A lost task is reported as interrupted. Its chat survives for the same live MCP session. Check the page before sending it again.                                                  |
 | Different MCP package versions                  | Update all clients sharing the broker to the same version, close them and reconnect. The existing broker is left alone.                                                           |
@@ -259,7 +262,7 @@ Reopening the client starts a fresh session, not a replay of the old one.
 The broker listens only on `127.0.0.1`. Its HTTP endpoint requires a bearer token from a
 private runtime file, rejects unexpected Host/Origin headers and uses a separate MCP session
 for each client. The extension WebSocket checks the configured extension Origin, extension id
-and bridge protocol v2. The default id is the store extension's id; custom builds must
+and bridge protocol v3. The default id is the store extension's id; custom builds must
 configure theirs.
 
 These checks do not protect you from software running as your own operating-system user.

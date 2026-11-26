@@ -49,11 +49,12 @@ describe("continuesThreadTab", () => {
     expect(continuesThreadTab("bridge", true)).toBe(true);
   });
 
-  it("an explicit url or foreground adoption starts fresh unless a question is pending", () => {
+  it("an explicit target wins over the previous tab", () => {
     expect(continuesThreadTab("bridge", false, { url: "https://example.com" })).toBe(false);
-    expect(continuesThreadTab("bridge", false, { adoptCurrentTab: true })).toBe(false);
     expect(continuesThreadTab("panel", false, { url: "https://example.com" })).toBe(false);
-    expect(continuesThreadTab("bridge", true, { url: "https://example.com" })).toBe(true);
+    expect(continuesThreadTab("bridge", true, { url: "https://example.com" })).toBe(false);
+    expect(continuesThreadTab("bridge", false, { tabId: 42 })).toBe(false);
+    expect(continuesThreadTab("bridge", false, { newTab: true })).toBe(false);
   });
 
   it("a schedule run returns only for a parked answer", () => {
@@ -134,6 +135,17 @@ describe("resolveRunTab", () => {
       thread(continuation ? [continuation] : []),
       new AbortController().signal,
     );
+
+  it("uses the exact tab on an answer and never opens a copy when it is gone", async () => {
+    const answer = { ...opts, tabId: current.id!, answerQuestion: true };
+    await expect(
+      resolveRunTab(answer, last, thread([last]), new AbortController().signal),
+    ).resolves.toMatchObject({ tab: current, resumed: true });
+    await expect(
+      resolveRunTab({ ...answer, tabId: 999 }, last, thread([last]), new AbortController().signal),
+    ).resolves.toHaveProperty("error");
+    expect(create).not.toHaveBeenCalled();
+  });
 
   it("keeps the primary when the follow-up is sent from an error page", async () => {
     executeScript.mockImplementation(async ({ target }: { target: { tabId: number } }) => {

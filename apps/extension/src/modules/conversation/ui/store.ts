@@ -313,7 +313,7 @@ function makeMsg(role: Message["role"], content: string, extra?: Partial<Message
 export function retryTargetFrom(
   messages: Message[],
 ): { task: string; images?: string[]; url?: string } | null {
-  const last = messages.findLast((m) => m.role === "user");
+  const last = messages.findLast((m) => m.role === "user" && !m.cancelled);
   if (!last) return null;
   // A run its tab outlived cannot simply be re-sent: the page has to come back
   // first, or the retry adopts whatever the user is looking at now. The closed
@@ -567,8 +567,8 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     task: string,
     images?: string[],
     url?: string,
+    runId: string = crypto.randomUUID(),
   ) => {
-    const runId = crypto.randomUUID();
     sawAssistantText = false;
     set({
       activeRunId: runId,
@@ -690,10 +690,12 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       // Stored BEFORE the run starts: the worker builds this run's history by
       // reading the transcript, so a fire-and-forget write would race it and
       // cost the model the exchange it is being asked to continue.
-      const conversationId = await pushMsg(
-        makeMsg("user", task, { ...(images?.length ? { images } : {}), ...(tab ? { tab } : {}) }),
-      );
-      startRun(p, conversationId, task, images);
+      const message = makeMsg("user", task, {
+        ...(images?.length ? { images } : {}),
+        ...(tab ? { tab } : {}),
+      });
+      const conversationId = await pushMsg(message);
+      startRun(p, conversationId, task, images, undefined, message.id);
     } finally {
       // Every caller is fire-and-forget, so a rejected store would otherwise
       // leave the latch stuck and ownLiveView() would defer refetches forever.

@@ -29,7 +29,7 @@ MCP client B → stdio proxy B ─┘                                 │
   "Claude Code" labels history; it never identifies the owner. Two clients with the same
   name still have separate state. A fresh client launch is not a continuation of an old one.
 - HTTP requests need the local bearer token and the expected Host/Origin. The WebSocket
-  checks the configured extension Origin and hello id, plus bridge protocol v2. The default
+  checks the configured extension Origin and hello id, plus bridge protocol v3. The default
   extension id is `ilnohobdcigbmlikjbkdpbkhciephdle`; a custom build must configure its own id.
   These are local access checks, not a boundary against another process running as the user.
 
@@ -56,6 +56,8 @@ their client/conversation; a blocked client does not block unrelated work. Each 
 `get_status` queue contains only its own entries and local positions. Direct sessions
 cannot queue: the client must end its own direct session before delegating, and it cannot
 start direct control while its delegated work is active or queued.
+
+Both MCP start tools can adopt an exact tab id, use the current tab or open a fresh one. The default is to reuse the thread's open tab. `browser_tabs` does not claim a tab or require a session. An `ask_user` question stores its run and tab ids with the board so the same MCP client can answer after worker restart. The answer goes ahead of that client's queued tasks and refuses to open a copy of a missing tab. An action confirmation stays in the live run and needs the current confirmation id plus a user decision. It is never replayed after that run ends.
 
 Tab claims are separate from admission. A driver uses `ownerId: run.id`, claims a tab before
 page work or indicators, and refuses a tab claimed by another run. CDP calls name a target

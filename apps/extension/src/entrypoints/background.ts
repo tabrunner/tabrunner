@@ -11,7 +11,6 @@ import {
   type ActiveRun,
 } from "@/modules/agent/active-runs";
 import {
-  cancelQueued,
   currentBoard,
   listQueue,
   onBoardChanged,
@@ -22,7 +21,9 @@ import {
 import type { RunBoard } from "@/modules/agent/run-queue";
 import { appendMessageTo, getActiveId, getConversationMeta } from "@/modules/conversation";
 import {
+  cancelQueuedTask,
   listConversations,
+  recordTaskCancellation,
   setActiveConversation,
   watchConversations,
 } from "@/modules/conversation/conversations";
@@ -126,12 +127,13 @@ export default defineBackground(() => {
   void runBoardItem.get().then(async (stale) => {
     restorePendingQuestions(stale.pendingQuestions);
     if (stale.running.length === 0 && stale.queue.length === 0) return;
-    for (const q of [...stale.running, ...stale.queue]) {
+    for (const q of stale.queue) void recordTaskCancellation(q.conversationId, q.id);
+    for (const q of stale.running) {
       void appendMessageTo(q.conversationId, {
         id: crypto.randomUUID(),
         role: "step",
         tool: "interrupted",
-        content: i18n.t("errors.runCancelled"),
+        content: i18n.t("errors.workerRunInterrupted"),
         timestamp: Date.now(),
       });
     }
@@ -282,17 +284,7 @@ export default defineBackground(() => {
           // user's work is theirs to wave off — skipping one fire leaves the
           // schedule itself standing, already armed for the next.
           const entry = listQueue().find((q) => q.id === msg.id && q.owner !== "bridge");
-          if (entry && cancelQueued(msg.id)) {
-            // A cancelled queued run never produces an event — leave the
-            // breadcrumb, or the thread reads as if the task vanished.
-            void appendMessageTo(entry.conversationId, {
-              id: crypto.randomUUID(),
-              role: "step",
-              tool: "interrupted",
-              content: i18n.t("errors.runCancelled"),
-              timestamp: Date.now(),
-            });
-          }
+          if (entry) await cancelQueuedTask(entry);
           break;
         }
 

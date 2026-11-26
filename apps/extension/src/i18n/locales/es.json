@@ -1252,6 +1252,10 @@
     "saveSkillBadUrl": "No se ha podido acceder a un archivo de habilidad en {{url}}. Usa un enlace https directo al archivo .md u owner/repo[/ruta].",
     "saveSkillUnnamed": "El archivo no tiene nombre para la habilidad y no se ha indicado otro. Pasa un nombre en kebab-case: palabras en minúscula separadas por guiones.",
     "tabInUse": "Otra tarea está usando la pestaña {{tabId}}. Elige otra pestaña o espera a que termine esa tarea.",
+    "workerRunInterrupted": "TabRunner se reinició antes de terminar la tarea. Revisa la pestaña antes de continuar.",
+    "bridgeTabUnavailable": "Esa pestaña está cerrada o no está disponible. Vuelve a abrir la pestaña original o usa browser_tabs para elegir una pestaña abierta.",
+    "runStalled": "En {{minutes}} minutos no se completó ningún paso en el navegador. La tarea se detuvo. Revisa la pestaña antes de volver a intentarlo.",
+    "bridgeRunDisconnected": "La conexión MCP se cerró antes de que terminara la tarea. Revisa la pestaña antes de volver a intentarlo.",
     "bridgeClientRecovering": "Se perdió la conexión y la tarea anterior aún se está deteniendo. Vuelve a consultar health o get_status antes de iniciar otra tarea.",
     "staleBridgeRun": "Esta tarea ya ha terminado o ha sido reemplazada. Comprueba su estado e inténtalo con el ID de la ejecución actual.",
     "noBridgeScreenshot": "Esta tarea no tiene ninguna página que capturar. Inicia una tarea o una sesión de navegador e inténtalo de nuevo."

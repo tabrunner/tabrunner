@@ -45,7 +45,8 @@ export interface WindowOptions {
 
 /** What the model can usefully read: the conversation's turns and work rows. Reasoning is display-only noise. */
 function readable(m: Message): boolean {
-  if (m.role === "user" || m.role === "assistant" || m.role === "error") return true;
+  if (m.role === "user") return !m.cancelled;
+  if (m.role === "assistant" || m.role === "error") return true;
   if (m.role === "plan") return true;
   if (m.role === "step") return !!m.tool && !SKIP_TOOLS.has(m.tool);
   return false;

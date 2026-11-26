@@ -16,6 +16,7 @@ export interface QueuedRun {
 }
 
 interface QueueEntry extends QueuedRun {
+  answerQuestion?: boolean;
   /** Claims synchronously before the launch's first await. */
   launch: () => void;
 }
@@ -36,6 +37,8 @@ export interface RunningRun {
 }
 
 export interface PendingQuestion {
+  runId?: string;
+  startedAt?: number;
   tabId?: number;
   windowId?: number;
   conversationId: string;
@@ -82,14 +85,16 @@ function launch(entry: QueueEntry): void {
 export function submitRun(entry: Omit<QueueEntry, "enqueuedAt">): SubmitOutcome {
   const queued: QueueEntry = { ...entry, enqueuedAt: Date.now() };
   if (
-    !queue.some((earlier) => sharesLane(earlier, queued)) &&
+    !waitsForAnswer(queued) &&
+    (queued.answerQuestion || !queue.some((earlier) => sharesLane(earlier, queued))) &&
     canStartRun(entry.conversationId, entry.owner, entry.ownerId)
   ) {
     launch(queued);
     void writeBoard();
     return { started: true, id: entry.id };
   }
-  queue.push(queued);
+  if (queued.answerQuestion) queue.unshift(queued);
+  else queue.push(queued);
   log.info("run queued", { owner: entry.owner, task: truncate(entry.task, 120) });
   void writeBoard();
   return { queued: queue.length, id: queued.id };
@@ -118,7 +123,7 @@ export function cancelQueued(id: string): boolean {
 }
 
 export function listQueue(): QueuedRun[] {
-  return queue.map(({ launch: _launch, ...entry }) => entry);
+  return queue.map(({ launch: _launch, answerQuestion: _answerQuestion, ...entry }) => entry);
 }
 
 export function currentBoard(): RunBoard {
@@ -168,7 +173,9 @@ export function markPendingQuestion(
 ): void {
   const task = [...running.values()].find((run) => run.conversationId === conversationId);
   pendingQuestions.set(conversationId, {
-    ...(task?.tabId !== undefined ? { tabId: task.tabId, windowId: task.windowId } : {}),
+    ...(task
+      ? { runId: task.id, startedAt: task.startedAt, tabId: task.tabId, windowId: task.windowId }
+      : {}),
     conversationId,
     question,
     ...(choices?.length ? { choices } : {}),
@@ -176,8 +183,13 @@ export function markPendingQuestion(
   void writeBoard();
 }
 
+export function getPendingQuestion(conversationId: string): PendingQuestion | undefined {
+  return pendingQuestions.get(conversationId);
+}
+
 export function clearPendingQuestion(conversationId: string): void {
   if (!pendingQuestions.delete(conversationId)) return;
+  pumpQueue();
   void writeBoard();
 }
 
@@ -201,6 +213,12 @@ function writeBoard(): Promise<void> {
   }).catch((e) => log.warn("board write failed:", e instanceof Error ? e.message : String(e)));
 }
 
+function waitsForAnswer(entry: QueueEntry): boolean {
+  return (
+    entry.owner === "bridge" && !entry.answerQuestion && pendingQuestions.has(entry.conversationId)
+  );
+}
+
 function pumpQueue(): void {
   const blockedConversations = new Set<string>();
   const blockedOwners = new Set<string>();
@@ -209,6 +227,7 @@ function pumpQueue(): void {
     if (!entry) break;
     const ownerKey = `${entry.owner}:${entry.ownerId}`;
     if (
+      waitsForAnswer(entry) ||
       blockedConversations.has(entry.conversationId) ||
       blockedOwners.has(ownerKey) ||
       !canStartRun(entry.conversationId, entry.owner, entry.ownerId)

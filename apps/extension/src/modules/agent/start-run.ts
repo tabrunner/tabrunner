@@ -55,12 +55,13 @@ import { hostnameOf } from "@/lib/format";
 import { autoApprovePlan, defaultStartUrl, walkthroughsEnabled } from "@/lib/prefs";
 import { createLogger, truncate } from "@/lib/logger";
 import type { ElicitationAsk, Event, PlanApprovalPayload } from "@/shared/protocol";
-import { acquireRun, releaseRun } from "./active-runs";
+import { acquireRun, BRIDGE_DISCONNECTED, releaseRun } from "./active-runs";
 import type { ActiveRun, RunOwner } from "./active-runs";
 import type { PlanApprovalOutcome } from "./loop";
 import type { SubmitPage } from "./prompt";
 import {
   currentBoard,
+  listQueue,
   markPendingQuestion,
   clearPendingQuestion,
   markRunningAwaiting,
@@ -85,6 +86,24 @@ function keepBackgroundWorkAlive(work: Promise<unknown>): void {
   });
 }
 
+const RUN_IDLE_MINUTES = 8;
+const RUN_STALLED = "run-stalled";
+
+/** These lookups do not touch the browser. Stop waiting if their API ignores AbortSignal. */
+async function awaitSetup<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  let abort: (() => void) | undefined;
+  const stopped = new Promise<never>((_resolve, reject) => {
+    abort = () => reject(signal.reason);
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+  });
+  try {
+    return await Promise.race([work, stopped]);
+  } finally {
+    if (abort) signal.removeEventListener("abort", abort);
+  }
+}
+
 export interface StartRunOptions {
   runId: string;
   ownerId: string;
@@ -98,10 +117,11 @@ export interface StartRunOptions {
   images?: string[];
   /** Where a background run's tab starts — wins over the default start URL. */
   url?: string;
-  /** Work the tab the user is looking at instead of opening one. Implied for a
-   *  panel run (see resolveRunTab) and set by an MCP client asking for the
-   *  foreground — nobody else has a current tab worth adopting. */
-  adoptCurrentTab?: boolean;
+  /** A specific open tab, never replaced with a fresh page if it is gone. */
+  tabId?: number;
+  newTab?: boolean;
+  /** The answer picked this exact tab. Never wait on the old question again. */
+  answerQuestion?: boolean;
   /** Streams run events to the client — the panel port or the bridge's WS. */
   emit: (event: Event) => void;
   /** The run ended on an ask_user question; the client may want to react
@@ -109,6 +129,9 @@ export interface StartRunOptions {
   onAskUser?: (question: string, choices?: string[]) => void;
   /** The run parked on a plan approval — the away notification's cue, same as ask_user. */
   onPlanApprovalRequest?: (ask: PlanApprovalPayload) => void;
+  onActionApproval?: (
+    ask: PlanApprovalPayload & { action: string },
+  ) => Promise<PlanApprovalOutcome>;
 }
 
 export type StartRunResult = { ok: true } | { ok: false; active: ActiveRun };
@@ -132,6 +155,18 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
   const claim = acquireRun(conversationId, owner, opts.ownerId, opts.runId);
   if (!claim.ok) return { ok: false, active: claim.active };
   const { run } = claim;
+  const signal = run.controller.signal;
+  let progressTimer: ReturnType<typeof setTimeout> | undefined;
+  const pauseProgress = () => clearTimeout(progressTimer);
+  const armProgress = () => {
+    pauseProgress();
+    if (!signal.aborted)
+      progressTimer = setTimeout(
+        () => run.controller.abort(RUN_STALLED),
+        RUN_IDLE_MINUTES * 60_000,
+      );
+  };
+  let interruptionReported = false;
 
   // A stop (or panel close) while parked answers the safe direction — the plan
   // a flat "no" (its reject side-effects apply), the elicitation a decline —
@@ -163,6 +198,25 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
   // ambient side-effects; no protocol event carries it.
   let runIsReal = false;
   const emit = (event: Event): void => {
+    if (interruptionReported) return;
+    if (signal.reason === RUN_STALLED || signal.reason === BRIDGE_DISCONNECTED) {
+      interruptionReported = true;
+      runFailed = true;
+      event = {
+        type: "error",
+        message:
+          signal.reason === RUN_STALLED
+            ? i18n.t("errors.runStalled", { minutes: RUN_IDLE_MINUTES })
+            : i18n.t("errors.bridgeRunDisconnected"),
+      };
+    }
+    if (event.type === "done" || event.type === "error") pauseProgress();
+    else if (
+      event.type === "driving" ||
+      event.type === "engine" ||
+      (event.type === "step" && event.ok !== false)
+    )
+      armProgress();
     baseEmit(event);
     if (!runIsReal) return;
     if (event.type === "error") {
@@ -214,15 +268,34 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     void safe.then(() => indicatorWork.delete(safe));
   };
 
+  signal.addEventListener(
+    "abort",
+    () => {
+      pauseProgress();
+      if (signal.reason === RUN_STALLED || signal.reason === BRIDGE_DISCONNECTED)
+        emit({ type: "done" });
+    },
+    { once: true },
+  );
+  armProgress();
+  if (opts.answerQuestion) clearPendingQuestion(conversationId);
   try {
     // What this conversation runs on: its own pin, else the stored pick. The
     // thread owns the engine so a picker change mid-afternoon can't re-point
     // the 9am schedule, and a reopened chat still runs what it always ran.
-    const [meta, transcript] = await Promise.all([
-      getConversationMeta(conversationId),
-      getMessages(conversationId),
-    ]);
-    const providerConfig = await getProviderFor(meta?.engine);
+    // A queued cancellation can release this lane before its transcript write commits.
+    await awaitSetup(flushConversationWrites(), signal);
+    const waiting = new Set(
+      listQueue()
+        .filter((entry) => entry.conversationId === conversationId)
+        .map((entry) => entry.id),
+    );
+    const [meta, messages] = await awaitSetup(
+      Promise.all([getConversationMeta(conversationId), getMessages(conversationId)]),
+      signal,
+    );
+    const transcript = messages.filter((message) => !waiting.has(message.id) && !message.cancelled);
+    const providerConfig = await awaitSetup(getProviderFor(meta?.engine), signal);
     run.controller.signal.throwIfAborted();
     if (!providerConfig) {
       emit({ type: "error", message: i18n.t("errors.noActiveProvider") });
@@ -241,7 +314,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     let provider;
     let resolvedProvider: ResolvedProviderConfig | undefined;
     try {
-      resolvedProvider = await resolveProviderModel(providerConfig);
+      resolvedProvider = await awaitSetup(resolveProviderModel(providerConfig), signal);
       // Names the conversation for gateways that route (or gate) per session —
       // OpenCode's Zen rows send it as `x-opencode-session`. Set here, at the
       // one place that knows which conversation the run answers in.
@@ -278,6 +351,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // and declining is the safe direction (the gate auto-approves plans;
       // handing data to a server is not ours to approve for them).
       if (owner !== "panel" || run.controller.signal.aborted) return "decline";
+      pauseProgress();
       return new Promise<{ action: "accept" | "decline"; value?: Record<string, unknown> }>(
         (resolve) => {
           const requestId = crypto.randomUUID();
@@ -302,6 +376,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
             resolve: (result) => {
               // Answered: the run works again, so the working marks return.
               markRunningElicitation(run.id, undefined);
+              armProgress();
               trackIndicator(showAgentIndicator(drivenTabId));
               resolve(result);
             },
@@ -516,7 +591,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
 
     // The stored conversation as wire turns — "continue" lands on a model that
     // has read the same exchange, not on a stranger.
-    const history = buildConversationHistory(transcript, contextWindow);
+    const history = buildConversationHistory(transcript, contextWindow, run.id);
 
     // Present whenever walkthroughs are on; the `document` tool is what arms
     // it. An unarmed recorder captures nothing and costs a pair of no-op calls
@@ -551,10 +626,9 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       // Read once per run, like every other per-run tool switch: the tool
       // array is frozen for the run's prompt cache.
       const jev = await jevForRun();
-      // Panel runs only: a bridge client is an AI carrying its own policy, and
-      // a schedule's yes was the creation. Neither has a person to put a card
-      // in front of, so they keep the plan auto-approval they always had.
-      const autoApprove = owner === "panel" && (await autoApprovePlan.get());
+      // Bridge tasks start without a plan card but stop for consequential actions.
+      const autoApprove =
+        owner === "bridge" || (owner === "panel" && (await autoApprovePlan.get()));
       const wire = await runAgentLoop({
         provider,
         driver,
@@ -598,14 +672,26 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
           // The gate's yes is the conversation's, not the run's: persist each
           // transition so the next run's first plan call doesn't re-ask it.
           onApprovedPlanChange: (steps) => void recordApprovedPlan(conversationId, steps),
-          onPlanApproval: (ask) => {
-            // The gate is the panel's, because the panel is the only owner with
-            // a human at the other end. A bridge client is itself an AI carrying
-            // the consequential-action policy, and a scheduled run's consent was
-            // given when the user approved creating the schedule — parking
-            // either one would hang a run nobody can answer. The plan still
-            // crosses the event stream and lands in the transcript for review.
-            if (owner !== "panel") return Promise.resolve({ approved: true });
+          onPlanApproval: async (ask) => {
+            // MCP relays the consequential action to its user. The plan itself does not pause.
+            if (owner === "bridge" && ask.action !== undefined) {
+              pauseProgress();
+              markRunningAwaiting(run.id, true);
+              trackIndicator(waitAgentIndicator(drivenTabId));
+              try {
+                return (
+                  (await opts.onActionApproval?.({ ...ask, action: ask.action })) ?? {
+                    approved: false,
+                  }
+                );
+              } finally {
+                markRunningAwaiting(run.id, false);
+                if (!signal.aborted) trackIndicator(showAgentIndicator(drivenTabId));
+                armProgress();
+              }
+            }
+            if (owner !== "panel") return { approved: true };
+            pauseProgress();
             emit({ type: "plan_approval", ...ask });
             // Parked runs stall silently otherwise — the user has usually tabbed
             // away by the time a mid-run replan asks again.
@@ -629,6 +715,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
                   // revise: the run works again, so the working marks return;
                   // a plain reject ends it — its unwind clears the rest.
                   markRunningAwaiting(run.id, false);
+                  armProgress();
                   // A declined action is not a rejected plan: the run goes on
                   // and tells the model, so the working marks come back and the
                   // tab is kept.
@@ -851,6 +938,7 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
       emit({ type: "error", message });
     }
   } finally {
+    pauseProgress();
     for (const remove of removeListeners.splice(0)) remove();
     await reopening;
     await Promise.all(indicatorWork);
@@ -936,10 +1024,10 @@ export function hasPendingQuestion(transcript: Message[]): boolean {
 export function continuesThreadTab(
   owner: RunOwner,
   pendingQuestion: boolean,
-  opts?: { url?: string; adoptCurrentTab?: boolean },
+  opts?: Pick<StartRunOptions, "url" | "tabId" | "newTab">,
 ): boolean {
+  if (opts?.tabId !== undefined || opts?.newTab || opts?.url) return false;
   if (pendingQuestion) return true;
-  if (opts?.url || opts?.adoptCurrentTab) return false;
   return owner !== "schedule";
 }
 
@@ -1055,6 +1143,15 @@ export async function resolveRunTab(
   signal: AbortSignal,
 ): Promise<RunTab | { error: string }> {
   signal.throwIfAborted();
+  if (opts.tabId !== undefined) {
+    const tab = await chrome.tabs.get(opts.tabId).catch(() => undefined);
+    if (!tab || !(await canUseRunTab(opts.runId, tab))) {
+      return { error: i18n.t("errors.bridgeTabUnavailable") };
+    }
+    signal.throwIfAborted();
+    const threadGroupId = await liveThreadGroup(thread, tab);
+    return { tab, adopted: true, threadGroupId, resumed: opts.answerQuestion };
+  }
   const reused = await reuseContinuationTab(continuation, thread);
   if (reused && (await canUseRunTab(opts.runId, reused.tab))) {
     signal.throwIfAborted();
@@ -1071,7 +1168,7 @@ export async function resolveRunTab(
   // Adoption takes the tab as-is; the run reads it and proposes a plan before
   // any action tool is unlocked, so "don't touch this draft" is a plan
   // rejection, not a fork. A URL names its own page, so it never adopts.
-  const adopt = !opts.url && (opts.owner === "panel" || opts.adoptCurrentTab === true);
+  const adopt = !opts.url && !opts.newTab && opts.owner === "panel";
   if (adopt) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id !== reused?.tab.id && (await canUseRunTab(opts.runId, tab))) {
@@ -1111,7 +1208,7 @@ export async function resolveRunTab(
     return {
       tab: loaded,
       opened: true,
-      starter: !opts.url && !continuationUrl,
+      starter: !opts.newTab && !opts.url && !continuationUrl,
       ...(threadGroupId !== undefined ? { threadGroupId } : {}),
     };
   } catch (e) {

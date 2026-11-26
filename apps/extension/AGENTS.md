@@ -214,7 +214,7 @@ UI-only (including its zustand `store.ts`); everything else is background-safe. 
   starts fresh. Client commands serialize independently. Requests/events carry client and run ids;
   stale controls cannot reach newer work. Broker heartbeats renew a 60s owner lease, reconnects
   resync each client without replaying browser actions, and close/expiry drains only that owner's
-  work. Protocol v2 rejects mismatches. The outbound twin is `mcp/`. Background-only.
+  work. Protocol v3 rejects mismatches. The outbound twin is `mcp/`. Background-only.
 - `tips/` — the rotating "Tip: …" line; i18n data + cooldown scheduler (panel opens,
   least-recently-shown wins, re-picked on panel open / run end). Shows in the running run
   band, or above the composer card when idle — and yields whenever the zone is already

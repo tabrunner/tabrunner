@@ -3,6 +3,8 @@ import type { PlanApprovalPayload } from "@/shared/protocol";
 
 const log = createLogger("runs");
 
+export const BRIDGE_DISCONNECTED = "bridge-disconnected";
+
 export type RunOwner = "panel" | "bridge" | "schedule";
 
 /** Browser work is bounded separately from each provider's stream gate. */

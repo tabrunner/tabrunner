@@ -67,13 +67,18 @@ function formatStatus(status: BridgeStatus): string {
     case "done":
       lines.push(`state: done · ${took}`);
       break;
+    case "stopped":
+      lines.push(`state: stopped · ${took}`, "Start another run to continue from this tab.");
+      break;
     case "error":
       lines.push(`state: error · ${took}`);
       break;
   }
 
   if (status.driving) {
-    lines.push(`tab: ${status.driving.title || "(untitled)"} (window ${status.driving.windowId})`);
+    lines.push(
+      `tab: ${status.driving.title || "(untitled)"} (tab ${status.driving.tabId}, window ${status.driving.windowId})`,
+    );
   }
 
   if (status.queue.length > 0) {
@@ -110,7 +115,12 @@ function formatStatus(status: BridgeStatus): string {
     // The options exist only when the answer really is one of a few — offer
     // them verbatim, since the run is waiting on those exact words, and let
     // the user say something else anyway.
-    if (status.choices?.length) {
+    if (status.confirmationId) {
+      lines.push(
+        `confirmation_id: ${status.confirmationId}`,
+        "next: ask the user whether to allow this action. Call answer with this confirmation_id and approve: true only if they explicitly agree, or false if they decline.",
+      );
+    } else if (status.choices?.length) {
       for (const choice of status.choices) lines.push(`  - ${choice}`);
       lines.push(
         "next: relay this question AND its options to the user, then send their reply with answer, using their own words if none of the options fit. TabRunner asks before consequential actions (paying, sending on someone's behalf, deleting or submitting), so never answer those yourself.",
@@ -222,6 +232,28 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
         `Cause: the ${p.auth === "subscription" ? "sign-in was never completed, expired, or was revoked" : "API key is missing"}.\n` +
         `Fix: the user ${p.auth === "subscription" ? "signs in again" : "pastes a key"} in TabRunner's settings, or picks another provider in the panel header. Direct control (browser_start and the browser_* verbs) works without one.`;
 
+  const tabInputs = {
+    url: z.string().optional().describe("Open this URL in a new background tab."),
+    tab_id: z
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .describe("Use this open tab without reloading it. Find its id with browser_tabs."),
+    new_tab: z
+      .boolean()
+      .optional()
+      .describe(
+        "Open a new background tab even if this chat has one. With no url, use the start page.",
+      ),
+    background: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set false to use the current Chrome tab. Omit to reuse this chat's tab by default.",
+      ),
+  };
+
   server.registerTool(
     "run",
     {
@@ -230,18 +262,7 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
         "Give TabRunner a task to do in the user's real Chrome, with their existing logins and sessions to navigate, read pages, click, type, fill forms and extract data. Describe the goal in plain language, as you would to a person; TabRunner plans and executes the steps itself. Returns immediately: follow the task with get_status. By default the task works in its own background tab (reusing this chat's tab while it lives, or opening url / the start page) and leaves the user's current page alone; pass background: false only when the task is explicitly about what the user is looking at.",
       inputSchema: {
         task: z.string().describe("What to do, in plain language."),
-        url: z
-          .string()
-          .optional()
-          .describe(
-            "Absolute URL to open when the task starts on a specific site. Omit to continue this chat's tab or start from the configured start page.",
-          ),
-        background: z
-          .boolean()
-          .optional()
-          .describe(
-            "Run in a fresh background tab (default true). false drives the tab the user is on.",
-          ),
+        ...tabInputs,
         images: z
           .array(
             z.object({
@@ -255,7 +276,7 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
           ),
       },
     },
-    async ({ task, url, background, images }) =>
+    async ({ task, url, tab_id, new_tab, background, images }) =>
       withLink(async () => {
         const result = await link.request<{
           runId: string;
@@ -266,6 +287,8 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
           agent: clientName(),
           ...(url ? { url } : {}),
           ...(background === undefined ? {} : { background }),
+          ...(tab_id === undefined ? {} : { tabId: tab_id }),
+          ...(new_tab ? { newTab: true } : {}),
           ...(images?.length
             ? { images: images.map((i) => `data:${i.mimeType};base64,${i.data}`) }
             : {}),
@@ -288,7 +311,7 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
     {
       ...labels("Follow the task", READS),
       description:
-        "Where the current task stands: the plan and the steps taken; when it ends, the answer, the question it stopped on or the error. By default this WAITS for the next change instead of returning immediately, so following a ten-minute task costs one call per real event. Keep calling it until state is done, error, or question.",
+        "Where the current task stands: the plan and the steps taken; when it ends, the answer, the question it stopped on or the error. By default this WAITS for the next change instead of returning immediately, so following a ten-minute task costs one call per real event. Keep calling it until state is done, stopped, error, or question.",
       inputSchema: {
         wait: z
           .boolean()
@@ -310,7 +333,11 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
       // Park while there is something to wait FOR: a run in flight, or one of
       // this client's runs queued — its `started` event wakes the wait.
       const queuedOurs = link.status.queue.length > 0;
-      if (shouldWait && !link.problem && (link.status.state === "running" || queuedOurs)) {
+      if (
+        shouldWait &&
+        !link.problem &&
+        (link.status.state === "running" || (queuedOurs && link.status.state !== "question"))
+      ) {
         const seconds = Math.min(
           Math.max(waitSeconds ?? DEFAULT_WAIT_SECONDS, 1),
           MAX_WAIT_SECONDS,
@@ -333,18 +360,40 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
       ...labels("Answer TabRunner's question", ACTS),
       description:
         "Reply to the question a task stopped on (state: question) and let it continue. TabRunner stops to ask before consequential actions (paying, sending on the user's behalf, deleting or submitting), so relay the question to the user and send THEIR decision, never your own.",
-      inputSchema: { text: z.string().describe("The user's answer, in their words.") },
+      inputSchema: {
+        text: z
+          .string()
+          .optional()
+          .describe("The user's answer, in their words, to a question without a confirmation_id."),
+        confirmation_id: z
+          .string()
+          .optional()
+          .describe("The current confirmation_id from get_status."),
+        approve: z
+          .boolean()
+          .optional()
+          .describe(
+            "The user's decision for that confirmation: true to allow the action, false to decline.",
+          ),
+      },
     },
-    async ({ text: answerText }) =>
+    async ({ text: answerText, confirmation_id, approve }) =>
       withLink(async () => {
-        // An answer starts a fresh run over the same thread — same claim as run.
-        const result = await link.request<{
-          runId: string;
-          conversationId: string;
-          queued?: number;
-        }>("answer", {
+        const result = await link.request<
+          | { resumed: true }
+          | {
+              runId: string;
+              conversationId: string;
+              queued?: number;
+            }
+        >("answer", {
           text: answerText,
+          confirmationId: confirmation_id,
+          approve,
+          agent: clientName(),
         });
+        if ("resumed" in result)
+          return text("Answered. The task continues on the same tab. Follow it with get_status.");
         link.startRun(result.runId, result.conversationId, result.queued);
         if (result.queued !== undefined) {
           return text(
@@ -543,19 +592,10 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
         goal: z
           .string()
           .describe("What you're setting out to do, in the user's terms. Titles the chat."),
-        url: z
-          .string()
-          .optional()
-          .describe("Absolute URL to open in the new tab. Defaults to the user's start page."),
-        background: z
-          .boolean()
-          .optional()
-          .describe(
-            "Default true: drive a new background tab. false drives the tab the user is on right now, and you receive its contents. Ignored when url is set.",
-          ),
+        ...tabInputs,
       },
     },
-    async ({ goal, url, background }) =>
+    async ({ goal, url, tab_id, new_tab, background }) =>
       withLink(async () => {
         const result = await link.request<{
           data?: unknown;
@@ -568,6 +608,8 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
             agent: clientName(),
             ...(url ? { url } : {}),
             ...(background === false ? { background } : {}),
+            ...(tab_id === undefined ? {} : { tabId: tab_id }),
+            ...(new_tab ? { newTab: true } : {}),
           },
           PAGE_TIMEOUT_MS,
         );
@@ -732,7 +774,7 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
     {
       ...labels("List open tabs", READS),
       description:
-        "Open tabs with their id, title and URL. These are all the tabs the user has open, so pass query to get only the ones you need. Find the one you need, then switch.",
+        "List open tabs by id, title and URL without starting a task. Pass query to find the tab you need, then use its id with run, browser_start or browser_switch_tab.",
       inputSchema: {
         query: z
           .string()
@@ -740,7 +782,10 @@ export function createBridgeServer(link: ClientBridgeLink): McpServer {
           .describe("Only tabs whose title or URL contains this text, ignoring case."),
       },
     },
-    async ({ query }) => act("list_tabs", query ? { query } : {}),
+    async ({ query }) =>
+      withLink(async () =>
+        text(renderToolResult("list_tabs", await link.request("browserTabs", { query }))),
+      ),
   );
 
   server.registerTool(

@@ -74,7 +74,7 @@ export class DirectSession {
   start(
     goal: string,
     agent: string,
-    where: { url?: string; background: boolean },
+    where: { url?: string; background: boolean; tabId?: number; newTab?: boolean },
     conversationId: string,
   ): Promise<ToolResult> {
     return this.serialize(async () => {
@@ -181,7 +181,7 @@ export class DirectSession {
   }
 
   private async pickTab(
-    where: { url?: string; background: boolean },
+    where: { url?: string; background: boolean; tabId?: number; newTab?: boolean },
     run: ActiveRun,
   ): Promise<{ tabId: TabId; opened: boolean; starter: boolean }> {
     const adopt = async (tabId: TabId, loading: boolean, opened: boolean, starter = false) => {
@@ -192,13 +192,20 @@ export class DirectSession {
       if (loading) await waitForLoad(tabId, opened ? 30_000 : 10_000);
       return { tabId, opened, starter };
     };
-    if (!where.background && !where.url) {
+    if (where.tabId !== undefined) {
+      const tab = await chrome.tabs.get(where.tabId).catch(() => undefined);
+      if (tab?.id === undefined || isRestrictedUrl(tab.url)) {
+        throw new Error(i18n.t("errors.bridgeTabUnavailable"));
+      }
+      return adopt(tab.id, tab.status === "loading", false);
+    }
+    if (!where.background && !where.url && !where.newTab) {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id === undefined) throw new Error(i18n.t("errors.noActiveTab"));
       if (isRestrictedUrl(tab.url)) throw new Error(i18n.t("errors.restrictedPage"));
       return adopt(tab.id, tab.status === "loading", false);
     }
-    if (!where.url) {
+    if (!where.url && !where.newTab) {
       const { tabs } = await getThreadTabsFor(run.conversationId);
       const priorId = tabs[0]?.tabId;
       if (priorId !== undefined) {
@@ -214,7 +221,7 @@ export class DirectSession {
     const tab = await chrome.tabs.create({ active: false, url });
     if (tab.id === undefined) throw new Error(i18n.t("errors.noActiveTab"));
     try {
-      return await adopt(tab.id, true, true, !where.url);
+      return await adopt(tab.id, true, true, !where.url && !where.newTab);
     } catch (error) {
       await chrome.tabs.remove(tab.id).catch(() => {});
       this.unactedTabId = null;

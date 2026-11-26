@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { buildConversationHistory } from "@/modules/agent/history";
+import { formatTranscriptWindow } from "@/modules/agent/read-history";
+import { renderTranscriptMessage } from "../render";
 
 // Storage stand-in and i18n come from src/test-setup.ts (vitest setupFiles).
 
@@ -17,6 +20,7 @@ import {
   recordApprovedPlan,
   recordDrivenTabFor,
   recordEngine,
+  recordTaskCancellation,
   renameConversation,
   replaceMessageTo,
   retitleIfDerived,
@@ -32,6 +36,29 @@ function msg(role: Message["role"], content: string): Message {
 
 /** The driven-tab half of the thread record — what most of these assert on. */
 const threadTabs = async (id: string) => (await getThreadTabsFor(id)).tabs;
+
+describe("queued task cancellation", () => {
+  it("keeps the cancelled prompt in scrollback, but not in replay or compaction input", async () => {
+    const id = await appendMessageFresh(msg("user", "first task"));
+    await appendMessageTo(id, msg("assistant", "first result"));
+    const cancelled = msg("user", "cancel this task");
+    const current = msg("user", "continue");
+    await appendMessageTo(id, cancelled);
+    await appendMessageTo(id, current);
+    await appendMessageTo(id, msg("user", "later queued task"));
+    await recordTaskCancellation(id, cancelled.id);
+
+    const transcript = await getMessages(id);
+    expect(transcript).toContainEqual({ ...cancelled, cancelled: true });
+    expect(transcript.at(-1)).toMatchObject({ role: "step", tool: "interrupted" });
+    expect(buildConversationHistory(transcript, undefined, current.id)).toEqual([
+      { role: "user", content: "first task" },
+      { role: "assistant", content: "first result" },
+    ]);
+    expect(transcript.map(renderTranscriptMessage).join("\n")).not.toContain(cancelled.content);
+    expect(formatTranscriptWindow(transcript, {}).log).not.toContain(cancelled.content);
+  });
+});
 
 describe("conversationTitle", () => {
   it("takes the first line and truncates long tasks", () => {

@@ -19,6 +19,7 @@ export function emptyStatus(): BridgeStatus {
     driving: null,
     queue: [],
     question: null,
+    confirmationId: null,
     choices: null,
     error: null,
     summary: null,
@@ -61,21 +62,28 @@ export function applyStatusEvent(status: BridgeStatus, event: Event): CompactRun
     case "done":
       // A question ends the run too (ask_user is run-terminating) — the done
       // that follows it must not overwrite the question as the closing state.
-      if (status.state !== "question") {
-        status.state = "done";
+      if (status.state !== "error" && (event.stopped || status.state !== "question")) {
+        status.state = event.stopped ? "stopped" : "done";
+        status.confirmationId = null;
         status.summary = event.summary ?? null;
       }
       status.finishedAt = Date.now();
-      return { type: "done", summary: event.summary };
+      return { type: "done", summary: event.summary, stopped: event.stopped };
     default:
       return null;
   }
 }
 
 /** The run ended on an ask_user question — state "question" until answer() lands. */
-export function applyQuestion(status: BridgeStatus, question: string, choices?: string[]): void {
+export function applyQuestion(
+  status: BridgeStatus,
+  question: string,
+  choices?: string[],
+  confirmationId?: string,
+): void {
   status.state = "question";
   status.question = question;
+  status.confirmationId = confirmationId ?? null;
   status.choices = choices ?? null;
   status.finishedAt = Date.now();
 }
