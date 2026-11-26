@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import pkg from "../package.json" with { type: "json" };
-import { BRIDGE_PROTOCOL_VERSION } from "./protocol";
+import { BRIDGE_PROTOCOL_VERSION, DEFAULT_BRIDGE_PORT } from "./protocol";
 
 function positiveInteger(name: string, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
   const value = Number(process.env[name] ?? fallback);
@@ -16,7 +16,7 @@ function positiveInteger(name: string, fallback: number, max = Number.MAX_SAFE_I
 export const config = {
   version: pkg.version,
   protocolVersion: BRIDGE_PROTOCOL_VERSION,
-  port: positiveInteger("TABRUNNER_BRIDGE_PORT", 17_836, 65_535),
+  port: positiveInteger("TABRUNNER_BRIDGE_PORT", DEFAULT_BRIDGE_PORT, 65_535),
   expectedExtensionId:
     process.env.TABRUNNER_BRIDGE_EXPECTED_EXTENSION_ID ?? "ilnohobdcigbmlikjbkdpbkhciephdle",
   runtimeDir: process.env.TABRUNNER_BRIDGE_RUNTIME_DIR ?? join(homedir(), ".tabrunner", "mcp"),

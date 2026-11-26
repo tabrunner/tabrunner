@@ -1,7 +1,7 @@
 {
   "name": "tabrunner-mcp",
   "description": "MCP server that lets Claude, ChatGPT or any MCP client drive the TabRunner browser agent in your own Chrome",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "type": "module",
   "license": "MIT",
   "author": "Gustavo Salomé <contato@openwings.com.br>",
@@ -36,6 +36,8 @@
   "devDependencies": {
     "@modelcontextprotocol/sdk": "catalog:",
     "@types/bun": "catalog:",
+    "@types/proper-lockfile": "catalog:",
+    "proper-lockfile": "catalog:",
     "typescript": "catalog:",
     "zod": "catalog:"
   }

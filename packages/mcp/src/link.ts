@@ -166,7 +166,7 @@ export class ClientBridgeLink {
     return this.owner.problem ?? (this.connected && this.syncRequired ? SYNC_PENDING : null);
   }
   get port(): number {
-    return config.port;
+    return this.owner.port;
   }
   get expectedExtensionId(): string {
     return config.expectedExtensionId;
@@ -338,14 +338,16 @@ export class BridgeLink {
     return this.socket !== null && this.extension !== null;
   }
 
+  constructor(readonly port = config.port) {}
+
   listen(): void {
     this.listener = Bun.serve<undefined>({
-      port: config.port,
+      port: this.port,
       hostname: "127.0.0.1",
       fetch: (req, server) => {
         if (new URL(req.url).pathname !== "/ws") return new Response("Not found", { status: 404 });
         if (
-          req.headers.get("host") !== `127.0.0.1:${config.port}` ||
+          req.headers.get("host") !== `127.0.0.1:${this.port}` ||
           req.headers.get("origin") !== `chrome-extension://${config.expectedExtensionId}`
         )
           return new Response("Only the configured TabRunner extension can connect.", {
@@ -498,6 +500,12 @@ export class BridgeLink {
       this.everConnected = true;
       this.extension = { id: msg.extensionId, version: msg.version };
       this.problem = null;
+      ws.send(
+        JSON.stringify({
+          type: "ready",
+          protocolVersion: BRIDGE_PROTOCOL_VERSION,
+        } satisfies DaemonMessage),
+      );
       this.ping();
       for (const client of this.clients.values()) {
         client.markSyncPending();

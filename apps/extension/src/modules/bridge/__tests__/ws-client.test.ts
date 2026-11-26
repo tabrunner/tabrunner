@@ -1,13 +1,25 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bridgeConnected, bridgeItem, validBridgePort } from "../config";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireStorageWatch } from "@/test-setup";
+import { BRIDGE_LEASE_MS, bridgeConnected, bridgeItem, validBridgePort } from "../config";
+import { BRIDGE_PROTOCOL_VERSION, bridgePorts, DEFAULT_BRIDGE_PORT } from "../protocol";
+import type { BridgeHello, DaemonMessage } from "../protocol";
 import { BridgeSocket } from "../ws-client";
 
-/**
- * The bridge's cost when nobody is using it is the thing worth pinning down:
- * almost every user runs no daemon, so the bridge ships off and a fresh
- * install must dial nothing at all. Once enabled, "no daemon listening" is the
- * normal path — it costs one alarm every 30s and nothing else.
- */
+const hello: BridgeHello = {
+  type: "hello",
+  extensionId: "test-extension",
+  version: "0.0.0-test",
+  protocolVersion: BRIDGE_PROTOCOL_VERSION,
+};
+const ready = { type: "ready", protocolVersion: BRIDGE_PROTOCOL_VERSION };
+const ping = { type: "ping", clientIds: ["client-a"] };
+const request = {
+  type: "request",
+  clientId: "client-a",
+  requestId: "request-a",
+  method: "sync",
+  params: {},
+};
 
 class FakeSocket {
   static instances: FakeSocket[] = [];
@@ -17,12 +29,18 @@ class FakeSocket {
   onmessage: ((e: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
+  sent: unknown[] = [];
 
   constructor(readonly url: string) {
     FakeSocket.instances.push(this);
   }
-  send(): void {}
-  /** What a refused connection does: error, then close, never having opened. */
+  send(data: string): void {
+    this.sent.push(JSON.parse(data));
+  }
+  receive(frame: unknown): void {
+    this.onmessage?.({ data: JSON.stringify(frame) });
+  }
+  /** A refused connection emits error and close, without having opened. */
   refuse(): void {
     this.onerror?.();
     this.close();
@@ -37,203 +55,286 @@ class FakeSocket {
   }
 }
 
-const alarmCalls = { created: [] as string[], cleared: [] as string[] };
+const alarms = {
+  create: vi.fn(() => Promise.resolve()),
+  clear: vi.fn(() => Promise.resolve(true)),
+  onAlarm: { addListener: vi.fn<(listener: (alarm: { name: string }) => void) => void>() },
+};
 
 beforeEach(() => {
   FakeSocket.instances = [];
-  alarmCalls.created = [];
-  alarmCalls.cleared = [];
+  vi.clearAllMocks();
   vi.useFakeTimers();
-  // Tests own the globals the class reaches for; both are real only in Chrome.
-  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
-  const chromeStub = globalThis.chrome as unknown as Record<string, unknown>;
-  chromeStub.alarms = {
-    create: (name: string) => {
-      alarmCalls.created.push(name);
-      return Promise.resolve();
-    },
-    clear: (name: string) => {
-      alarmCalls.cleared.push(name);
-      return Promise.resolve();
-    },
-    onAlarm: { addListener: () => {} },
-  };
+  vi.stubGlobal("WebSocket", FakeSocket);
+  vi.stubGlobal("chrome", { ...chrome, alarms });
 });
 
-/** Lets reconcile's awaited storage read and alarm calls settle. */
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
 const settle = () => vi.advanceTimersByTimeAsync(0);
+const dialedPorts = () => FakeSocket.instances.map((socket) => Number(new URL(socket.url).port));
+
+function latestSocket(): FakeSocket {
+  const socket = FakeSocket.instances.at(-1);
+  if (!socket) throw new Error("No WebSocket attempt");
+  return socket;
+}
+
+async function fireAlarm(): Promise<void> {
+  alarms.onAlarm.addListener.mock.calls[0]?.[0]({ name: "tabrunner-bridge" });
+  await settle();
+}
+
+function start(hasActiveWork?: () => boolean) {
+  const onMessage = vi.fn<(msg: DaemonMessage) => void>();
+  const disconnected = vi.fn();
+  const bridge = new BridgeSocket(onMessage, () => bridge.send(hello), disconnected, hasActiveWork);
+  bridge.start();
+  return { bridge, onMessage, disconnected };
+}
+
+async function enable(port = DEFAULT_BRIDGE_PORT, hasActiveWork?: () => boolean) {
+  await bridgeItem.set({ enabled: true, port });
+  const handlers = start(hasActiveWork);
+  await settle();
+  return handlers;
+}
 
 describe("BridgeSocket", () => {
-  it("costs nothing at all out of the box — the bridge ships off", async () => {
-    // Nothing is stored on a fresh install, so this runs on the fallback: if
-    // the default ever flips back to enabled, this is the test that fails.
-    // A boot that dials nothing logs nothing — the refused-WebSocket error a
-    // daemonless install would otherwise show is Chromium's, and unsilenceable.
-    new BridgeSocket(
-      () => {},
-      () => {},
-    ).start();
+  it("keeps the bridge off on a fresh install and clears a stale connected flag", async () => {
+    await bridgeConnected.set(true);
+    start();
     await settle();
 
-    expect(alarmCalls.cleared).toContain("tabrunner-bridge");
-    expect(alarmCalls.created).toEqual([]);
-    expect(FakeSocket.instances).toHaveLength(0);
+    expect(alarms.clear).toHaveBeenCalledWith("tabrunner-bridge");
+    expect(alarms.create).not.toHaveBeenCalled();
+    expect(dialedPorts()).toEqual([]);
+    expect(await bridgeConnected.get()).toBe(false);
   });
 
-  it("arms the reconcile alarm and dials the daemon when enabled", async () => {
-    await bridgeItem.set({ enabled: true, port: 4_242 });
-    new BridgeSocket(
-      () => {},
-      () => {},
-    ).start();
-    await settle();
-
-    expect(alarmCalls.created).toEqual(["tabrunner-bridge"]);
-    expect(FakeSocket.instances[0]?.url).toBe("ws://127.0.0.1:4242/ws");
-  });
-
-  it("does not fast-retry a connection that never opened", async () => {
-    await bridgeItem.set({ enabled: true, port: 17_836 });
-    new BridgeSocket(
-      () => {},
-      () => {},
-    ).start();
-    await settle();
-    FakeSocket.instances[0]?.refuse();
-
-    // No daemon is listening. A 2s retry here would loop forever and hold the
-    // service worker awake — the 30s alarm is the only thing allowed to retry.
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(FakeSocket.instances).toHaveLength(1);
-  });
-
-  it("captions Chromium's refused-connection error once, not once per retry", async () => {
-    const info = vi.spyOn(console, "info").mockImplementation(() => {});
-    try {
-      await bridgeItem.set({ enabled: true, port: 17_836 });
-      const socket = new BridgeSocket(
-        () => {},
-        () => {},
-      );
-      socket.start();
-      await settle();
-      FakeSocket.instances[0]?.refuse();
-
-      const captions = () =>
-        info.mock.calls.filter(([, line]) => String(line).includes("no daemon on ws://"));
-      expect(captions()).toHaveLength(1);
-      // The port the user set is in the line — the whole point is telling them
-      // where nothing was listening.
-      expect(String(captions()[0]?.[1])).toContain("127.0.0.1:17836");
-
-      // The alarm keeps dialing every 30s for as long as the bridge is on, and
-      // a caption per attempt is a console nobody can read. A second refusal
-      // stands for the next dial here (the alarm stub fires nothing).
-      await vi.advanceTimersByTimeAsync(60_000);
-      FakeSocket.instances.at(-1)?.refuse();
-      expect(captions()).toHaveLength(1);
-    } finally {
-      info.mockRestore();
-    }
-  });
-
-  it("explains the next outage too — a daemon that came back and went away", async () => {
-    const info = vi.spyOn(console, "info").mockImplementation(() => {});
-    try {
-      await bridgeItem.set({ enabled: true, port: 17_836 });
-      new BridgeSocket(
-        () => {},
-        () => {},
-      ).start();
-      await settle();
-      FakeSocket.instances[0]?.refuse();
-      // The user starts their MCP client: the next dial lands. The same socket
-      // object stands in for it, the alarm being a stub — what matters is that
-      // an open clears the latch. Then the daemon goes away, the drop earns its
-      // fast retry, and that one finds nothing listening again.
-      FakeSocket.instances[0]?.open();
-      FakeSocket.instances[0]?.close();
-      await vi.advanceTimersByTimeAsync(2_500);
-      FakeSocket.instances.at(-1)?.refuse();
-
-      const captions = info.mock.calls.filter(([, line]) =>
-        String(line).includes("no daemon on ws://"),
-      );
-      expect(captions).toHaveLength(2);
-    } finally {
-      info.mockRestore();
-    }
-  });
-
-  it("fast-retries a link that was established and then dropped", async () => {
-    await bridgeItem.set({ enabled: true, port: 17_836 });
-    new BridgeSocket(
-      () => {},
-      () => {},
-    ).start();
-    await settle();
-    FakeSocket.instances[0]?.open();
-    FakeSocket.instances[0]?.close();
-
-    // A daemon restart is worth catching in seconds, not on the next alarm.
-    await vi.advanceTimersByTimeAsync(2_500);
-    expect(FakeSocket.instances).toHaveLength(2);
-  });
-
-  it("mirrors the link state for UI contexts: up on open, down on close", async () => {
-    await bridgeItem.set({ enabled: true, port: 17_836 });
-    new BridgeSocket(
-      () => {},
-      () => {},
-    ).start();
-    await settle();
+  it("sends hello at once but waits for ready before marking connected or passing traffic", async () => {
+    const { bridge, onMessage, disconnected } = await enable(4_242);
+    expect(alarms.create).toHaveBeenCalledWith("tabrunner-bridge", { periodInMinutes: 0.5 });
+    const socket = latestSocket();
+    expect(socket.url).toBe("ws://127.0.0.1:4242/ws");
+    socket.open();
+    bridge.send({ type: "pong" });
+    await fireAlarm();
+    expect(socket.sent).toEqual([hello]);
+    expect(dialedPorts()).toEqual([4_242]);
     expect(await bridgeConnected.get()).toBe(false);
 
-    FakeSocket.instances[0]?.open();
+    socket.receive(ready);
     await settle();
     expect(await bridgeConnected.get()).toBe(true);
-
-    FakeSocket.instances[0]?.close();
+    expect(onMessage).not.toHaveBeenCalled();
+    socket.receive({ type: "ping", clientIds: null });
+    socket.receive({ ...request, params: [] });
+    socket.receive(ping);
+    socket.receive(request);
+    expect(onMessage.mock.calls).toEqual([[ping], [request]]);
+    bridge.send({ type: "pong" });
+    expect(socket.sent).toEqual([hello, { type: "pong" }]);
+    socket.close();
     await settle();
     expect(await bridgeConnected.get()).toBe(false);
-  });
-
-  it("starts the owner reconnect grace only after an established link drops", async () => {
-    await bridgeItem.set({ enabled: true, port: 17_836 });
-    const disconnected = vi.fn();
-    new BridgeSocket(
-      () => {},
-      () => {},
-      disconnected,
-    ).start();
-    await settle();
-    FakeSocket.instances[0]?.refuse();
-    expect(disconnected).not.toHaveBeenCalled();
-
-    FakeSocket.instances[0]?.open();
-    FakeSocket.instances[0]?.close();
     expect(disconnected).toHaveBeenCalledOnce();
   });
 
-  it("reports the link as down when the bridge is switched off", async () => {
-    // A link was up before the user switched the bridge off; the boot reconcile
-    // is what stands for the config-change watch here (the storage mock's watch
-    // is a no-op).
-    await bridgeConnected.set(true);
-    await bridgeItem.set({ enabled: false, port: 17_836 });
-    new BridgeSocket(
-      () => {},
-      () => {},
-    ).start();
-    await settle();
+  it("accepts the first ping from an older compatible broker on the preferred port", async () => {
+    const { onMessage } = await enable();
+    latestSocket().open();
+    latestSocket().receive(ping);
+    await vi.advanceTimersByTimeAsync(1_000);
 
+    expect(await bridgeConnected.get()).toBe(true);
+    expect(onMessage).toHaveBeenCalledExactlyOnceWith(ping);
+    expect(dialedPorts()).toEqual([DEFAULT_BRIDGE_PORT]);
+  });
+
+  it("skips an incompatible broker that closes after hello and requires ready on fallback ports", async () => {
+    const { disconnected, onMessage } = await enable(4_242);
+    const incompatible = latestSocket();
+    incompatible.open();
+    expect(incompatible.sent).toEqual([hello]);
+    incompatible.close();
+
+    const legacyOnFallback = latestSocket();
+    legacyOnFallback.open();
+    legacyOnFallback.receive(ping);
     expect(await bridgeConnected.get()).toBe(false);
+    expect(onMessage).not.toHaveBeenCalled();
+
+    latestSocket().open();
+    latestSocket().receive(ready);
+    expect(dialedPorts()).toEqual([4_242, 4_243, 4_244]);
+    expect(await bridgeConnected.get()).toBe(true);
+    expect(disconnected).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a mismatched version", { ...ready, protocolVersion: BRIDGE_PROTOCOL_VERSION - 1 }],
+    ["a missing version", { type: "ready" }],
+    ["a malformed ping", { type: "ping", clientIds: [1] }],
+    ["an early request", request],
+  ])("tries the next port after %s without passing it to the handler", async (_label, frame) => {
+    const { onMessage, disconnected } = await enable(4_242);
+    latestSocket().open();
+    latestSocket().receive(frame);
+
+    expect(dialedPorts()).toEqual([4_242, 4_243]);
+    expect(await bridgeConnected.get()).toBe(false);
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(disconnected).not.toHaveBeenCalled();
+  });
+
+  it("bounds both unopened and unconfirmed sockets and ignores late frames", async () => {
+    const { disconnected, onMessage } = await enable(4_242);
+    const unopened = latestSocket();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(unopened.readyState).toBe(3);
+    const unconfirmed = latestSocket();
+    unconfirmed.open();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(unconfirmed.readyState).toBe(3);
+    expect(dialedPorts()).toEqual([4_242, 4_243, 4_244]);
+
+    unconfirmed.open();
+    unconfirmed.receive(ready);
+    unconfirmed.receive(request);
+    expect(unconfirmed.sent).toEqual([hello]);
+    expect(await bridgeConnected.get()).toBe(false);
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(disconnected).not.toHaveBeenCalled();
+  });
+
+  it("waits for the alarm after exhausting all ports and explains the outage once", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    await enable(4_242);
+    for (let attempt = 0; attempt < 4; attempt++) latestSocket().refuse();
+    expect(dialedPorts()).toEqual([4_242, 4_243, 4_244, 4_245]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(dialedPorts()).toHaveLength(4);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await fireAlarm();
+    for (let attempt = 0; attempt < 4; attempt++) latestSocket().refuse();
+    expect(dialedPorts()).toEqual([4_242, 4_243, 4_244, 4_245, 4_242, 4_243, 4_244, 4_245]);
+    const captions = info.mock.calls.filter(([, line]) =>
+      String(line).includes("No compatible MCP broker"),
+    );
+    expect(captions).toHaveLength(1);
+    expect(captions[0]?.[1]).toContain("127.0.0.1:4242");
+  });
+
+  it("fast-retries an accepted fallback first, then tries the rest without duplicates", async () => {
+    const { disconnected } = await enable(4_242);
+    latestSocket().refuse();
+    const accepted = latestSocket();
+    accepted.open();
+    accepted.receive(ready);
+    accepted.close();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(dialedPorts()).toEqual([4_242, 4_243, 4_243]);
+
+    for (let attempt = 0; attempt < 4; attempt++) latestSocket().refuse();
+    expect(dialedPorts()).toEqual([4_242, 4_243, 4_243, 4_242, 4_244, 4_245]);
+    expect(disconnected).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(["work ends", "grace expires"])(
+    "holds the last accepted slot until %s",
+    async (release) => {
+      let active = true;
+      const { disconnected } = await enable(4_242, () => active);
+      latestSocket().refuse();
+      const accepted = latestSocket();
+      accepted.open();
+      accepted.receive(ready);
+      accepted.close();
+      await vi.advanceTimersByTimeAsync(2_000);
+      latestSocket().refuse();
+      await fireAlarm();
+      latestSocket().refuse();
+      expect(dialedPorts()).toEqual([4_242, 4_243, 4_243, 4_243]);
+      expect(vi.getTimerCount()).toBe(0);
+
+      if (release === "work ends") active = false;
+      else await vi.advanceTimersByTimeAsync(BRIDGE_LEASE_MS - 2_000);
+      await fireAlarm();
+      latestSocket().refuse();
+      expect(dialedPorts()).toEqual([4_242, 4_243, 4_243, 4_243, 4_243, 4_242]);
+      expect(disconnected).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("does not dial out of the configured range while holding an active broker's slot", async () => {
+    await enable(4_242, () => true);
+    const accepted = latestSocket();
+    accepted.open();
+    accepted.receive(ready);
+    fireStorageWatch("bridge", { enabled: true, port: 5_000 });
+    await settle();
+    accepted.close();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(dialedPorts()).toEqual([4_242]);
+
+    await vi.advanceTimersByTimeAsync(BRIDGE_LEASE_MS - 2_000);
+    await fireAlarm();
+    expect(dialedPorts()).toEqual([4_242, 5_000]);
+  });
+
+  it("keeps an accepted broker on alarm and port edits, then uses the new range on disconnect", async () => {
+    await enable(4_242);
+    const accepted = latestSocket();
+    accepted.open();
+    accepted.receive(ready);
+    await fireAlarm();
+    fireStorageWatch("bridge", { enabled: true, port: 5_000 });
+    await settle();
+    expect(dialedPorts()).toEqual([4_242]);
+    expect(accepted.sent).toEqual([hello, { type: "pong" }, { type: "pong" }]);
+
+    accepted.close();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(dialedPorts()).toEqual([4_242, 5_000]);
+  });
+
+  it.each([false, true])("stops dialing when switched off (accepted: %s)", async (accepted) => {
+    const { disconnected } = await enable(4_242);
+    const socket = latestSocket();
+    socket.open();
+    if (accepted) socket.receive(ready);
+    fireStorageWatch("bridge", { enabled: false, port: 4_242 });
+    await settle();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(socket.readyState).toBe(3);
+    expect(await bridgeConnected.get()).toBe(false);
+    expect(alarms.clear).toHaveBeenCalledWith("tabrunner-bridge");
+    expect(dialedPorts()).toEqual([4_242]);
+    expect(disconnected).toHaveBeenCalledTimes(accepted ? 1 : 0);
+
+    fireStorageWatch("bridge", { enabled: true, port: 4_242 });
+    await settle();
+    expect(dialedPorts()).toEqual([4_242, 4_242]);
   });
 });
 
-describe("validBridgePort", () => {
-  it("accepts userland ports, rejects system ports and nonsense", () => {
-    expect(validBridgePort(17_836)).toBe(true);
+describe("bridge ports", () => {
+  it("offers four consecutive ports without exceeding the port limit", () => {
+    expect(bridgePorts(DEFAULT_BRIDGE_PORT)).toEqual([17_836, 17_837, 17_838, 17_839]);
+    expect(bridgePorts(65_534)).toEqual([65_534, 65_535]);
+    expect(bridgePorts(65_535)).toEqual([65_535]);
+  });
+
+  it("accepts userland ports, not system ports or invalid numbers", () => {
+    expect(validBridgePort(DEFAULT_BRIDGE_PORT)).toBe(true);
     expect(validBridgePort(1024)).toBe(true);
     expect(validBridgePort(65_535)).toBe(true);
     expect(validBridgePort(80)).toBe(false);

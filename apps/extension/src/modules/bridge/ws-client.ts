@@ -1,49 +1,38 @@
 import { createLogger } from "@/lib/logger";
-import { bridgeConnected, bridgeItem } from "./config";
+import { isRecord } from "@/shared/types";
+import { BRIDGE_LEASE_MS, bridgeConnected, bridgeItem, validBridgePort } from "./config";
+import { BRIDGE_PROTOCOL_VERSION, bridgePorts } from "./protocol";
 import type { DaemonMessage, ExtensionMessage } from "./protocol";
 
 const log = createLogger("bridge");
+const PROBE_TIMEOUT_MS = 1_000;
 
 /**
- * Outbound WS to the local daemon — the only place WebSocket lives. The worker
- * cannot listen on a socket, so this is always a client; the daemon accepts and
- * makes requests. A 30s alarm (Chrome's minimum period) reconciles the link: it
- * wakes a suspended service worker and doubles as the heartbeat that keeps it
- * from suspending in the first place — mirroring Kimi's reconcile cadence.
- *
- * `start()` is synchronous on purpose: an MV3 worker only receives events whose
- * listeners were registered in the first turn after the script evaluates, so
- * registering the alarm handler behind an `await` would silently forfeit the
- * wake-ups this class exists for. Creating the alarm is an ordinary API call
- * and can wait for the config — which is what lets a disabled bridge cost
- * nothing at all, and a re-enabled one connect without a worker restart.
+ * Outbound WS to the local daemon. The worker cannot listen on a socket,
+ * so this is always a client. A 30s alarm reconciles the link and wakes a
+ * suspended worker. Register its listener synchronously to receive that wakeup.
  */
 export class BridgeSocket {
-  private ws: WebSocket | null = null;
-  /** Set across the async config read so two reconciles can't open two sockets. */
-  private connecting = false;
-  /**
-   * Whether this outage has already been explained. Chromium logs a refused
-   * socket from its own network stack — `WebSocket connection to
-   * 'ws://127.0.0.1:17836/ws' failed: net::ERR_CONNECTION_REFUSED`, red, and
-   * unsilenceable from JS — which on its own reads like the extension is
-   * broken rather than like a daemon that simply isn't up yet. So we caption
-   * it. Once, though: the alarm retries every 30s forever, and a caption per
-   * retry is a console nobody can read. Cleared by a link that lands, so a
-   * daemon that goes away later gets its own explanation.
-   */
+  private connection: {
+    ws: WebSocket;
+    preferred: number;
+    accepted: boolean;
+    close: () => void;
+  } | null = null;
+  private lastAcceptedPort: number | null = null;
+  private reconnectDeadline = 0;
   private outageExplained = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly alarm = "tabrunner-bridge";
 
   constructor(
     private readonly onMessage: (msg: DaemonMessage) => void,
-    private readonly onOpen: () => void,
+    private readonly sendHello: () => void,
     private readonly onDisconnect?: () => void,
+    private readonly hasActiveWork: () => boolean = () => false,
   ) {}
 
   start(): void {
-    // Both listeners must be registered before the first await — see above.
     chrome.alarms.onAlarm.addListener((alarm) => {
       if (alarm.name === this.alarm) void this.reconcile();
     });
@@ -51,99 +40,181 @@ export class BridgeSocket {
     void this.reconcile();
   }
 
-  /**
-   * The one path that decides whether we should be connected and gets us there.
-   * Runs on boot, on every alarm, and the moment the config changes.
-   */
   private async reconcile(): Promise<void> {
     const { enabled, port } = await bridgeItem.get();
+    const connection = this.connection;
     if (!enabled) {
-      // An alarm firing every 30s for a feature the user switched off is pure
-      // battery cost — the bridge that isn't running wakes nothing.
-      await chrome.alarms.clear(this.alarm);
-      this.ws?.close();
-      await bridgeConnected.set(false);
+      this.cancelReconnect();
+      connection?.close();
+      if (connection?.accepted) this.beginReconnectGrace();
+      await Promise.all([chrome.alarms.clear(this.alarm), bridgeConnected.set(false)]);
       return;
     }
     // Same name replaces, so reconciling never stacks alarms.
-    await chrome.alarms.create(this.alarm, { periodInMinutes: 0.5 });
-    // Heartbeat keeps the worker alive; a dead socket gets reconnected.
-    if (this.ws?.readyState === WebSocket.OPEN) this.send({ type: "pong" });
-    else await this.connect(port);
+    const alarm = chrome.alarms.create(this.alarm, { periodInMinutes: 0.5 });
+    if (connection?.accepted) {
+      // A live broker owns its sessions. Never switch it out on a settings edit.
+      this.send({ type: "pong" });
+    } else if (connection?.preferred !== port) {
+      this.cancelReconnect();
+      connection?.close();
+      void bridgeConnected.set(false);
+      if (validBridgePort(port)) {
+        const ports = bridgePorts(port);
+        const last = this.lastAcceptedPort;
+        this.dial(
+          port,
+          last !== null && ports.includes(last)
+            ? [last, ...ports.filter((p) => p !== last)]
+            : ports,
+        );
+      }
+    }
+    await alarm;
   }
 
-  /** Best-effort send — a dead socket silently drops it; the alarm retries. */
+  /** Only the hello can go out before a broker confirms the link. */
   send(msg: ExtensionMessage): void {
-    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    const connection = this.connection;
+    if (
+      !connection ||
+      connection.ws.readyState !== WebSocket.OPEN ||
+      (!connection.accepted && msg.type !== "hello")
+    )
+      return;
     try {
-      this.ws.send(JSON.stringify(msg));
+      connection.ws.send(JSON.stringify(msg));
     } catch (e) {
       log.debug("ws send failed:", e instanceof Error ? e.message : String(e));
     }
   }
 
-  private async connect(port: number): Promise<void> {
-    if (this.ws || this.connecting) return;
-    this.connecting = true;
+  private dial(preferred: number, ports: number[]): void {
+    const [port, ...remaining] = ports;
+    if (port !== this.lastAcceptedPort && this.holdingPort()) return;
+    if (port === undefined) {
+      if (!this.outageExplained) {
+        this.outageExplained = true;
+        log.info(
+          `No compatible MCP broker in the range starting at ws://127.0.0.1:${preferred}. ` +
+            `Chromium logs refused WebSocket connections when a port has no listener. ` +
+            `The bridge retries every 30s while enabled in Settings → MCP.`,
+        );
+      }
+      return;
+    }
+
+    let ws: WebSocket;
     try {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
-      this.ws = ws;
-      let established = false;
-      ws.onopen = () => {
-        established = true;
+      ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    } catch {
+      this.dial(preferred, remaining);
+      return;
+    }
+    const close = () => {
+      this.connection = null;
+      clearTimeout(timer);
+      ws.close();
+    };
+    const connection = { ws, preferred, accepted: false, close };
+    const fail = () => {
+      if (this.connection !== connection) return;
+      close();
+      if (connection.accepted) {
+        log.debug("bridge ws closed");
+        void bridgeConnected.set(false);
+        this.beginReconnectGrace();
+        this.scheduleReconnect();
+      } else {
+        this.dial(preferred, remaining);
+      }
+    };
+    const timer = setTimeout(fail, PROBE_TIMEOUT_MS);
+    this.connection = connection;
+
+    ws.onopen = () => {
+      if (this.connection === connection) this.sendHello();
+    };
+    ws.onmessage = ({ data }) => {
+      if (this.connection !== connection || ws.readyState !== WebSocket.OPEN) return;
+      const message = readFrame(data);
+      if (!connection.accepted) {
+        // v0.18.0 sent a ping after validating hello. Only trust it on the configured port.
+        const confirmed =
+          message?.type === "ready" || (port === preferred && message?.type === "ping");
+        if (!confirmed || (port !== this.lastAcceptedPort && this.holdingPort())) {
+          fail();
+          return;
+        }
+        clearTimeout(timer);
+        connection.accepted = true;
+        this.lastAcceptedPort = port;
+        this.reconnectDeadline = 0;
         this.outageExplained = false;
         log.info("bridge connected");
         void bridgeConnected.set(true);
-        this.onOpen();
-      };
-      ws.onmessage = (e) => {
-        try {
-          this.onMessage(JSON.parse(String(e.data)) as DaemonMessage);
-        } catch {
-          log.debug("bridge ws bad frame");
-        }
-      };
-      ws.onclose = () => {
-        this.ws = null;
-        log.debug("bridge ws closed");
-        void bridgeConnected.set(false);
-        if (established) this.onDisconnect?.();
-        if (!established && !this.outageExplained) {
-          this.outageExplained = true;
-          // The caption for Chromium's red line above it. Not a warning: a
-          // daemon that isn't up is the normal state of an enabled bridge —
-          // it starts when the user's MCP client starts — so this says what
-          // the state is and where to change it, at the level of any other
-          // lifecycle line.
-          log.info(
-            `no daemon on ws://127.0.0.1:${port} — the refused-connection error above is ` +
-              `Chromium's own, not a failure inside TabRunner. The daemon starts with your MCP ` +
-              `client; the bridge keeps dialing every 30s until it does. Settings → MCP has the ` +
-              `port and the setup, and the switch that stops the dialing.`,
-          );
-        }
-        // Only a link that actually existed earns the fast retry. A socket that
-        // never opened means no daemon is listening — the overwhelmingly common
-        // case — and retrying every 2s would hammer a closed port forever and
-        // keep the worker awake for a feature nobody is using. Leave that to
-        // the 30s alarm.
-        if (established) this.scheduleReconnect();
-      };
-      ws.onerror = () => ws.close();
-    } catch {
-      // No daemon listening — the alarm reconciles later. Not an error state:
-      // the bridge is optional and most users never run the daemon at all.
-    } finally {
-      this.connecting = false;
-    }
+      }
+      if (message === null) log.debug("bridge ws bad frame");
+      else if (message.type !== "ready") this.onMessage(message);
+    };
+    ws.onclose = fail;
+    ws.onerror = fail;
   }
 
-  /** A drop is usually a daemon restart — retry once quickly before the alarm. */
+  private beginReconnectGrace(): void {
+    this.reconnectDeadline = Date.now() + BRIDGE_LEASE_MS;
+    this.onDisconnect?.();
+  }
+
+  /** The previous broker can still own live work. Recheck on the next alarm. */
+  private holdingPort(): boolean {
+    return Date.now() < this.reconnectDeadline && this.hasActiveWork();
+  }
+
+  /** A drop is usually a daemon restart. Retry one scan quickly before the alarm. */
   private scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
+    if (this.reconnectTimer !== null) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.reconcile();
     }, 2_000);
+  }
+
+  private cancelReconnect(): void {
+    if (this.reconnectTimer === null) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+  }
+}
+
+function readFrame(data: unknown): DaemonMessage | null {
+  if (typeof data !== "string") return null;
+  try {
+    const message: unknown = JSON.parse(data);
+    return isDaemonMessage(message) ? message : null;
+  } catch {
+    return null;
+  }
+}
+
+function isDaemonMessage(message: unknown): message is DaemonMessage {
+  if (!isRecord(message)) return false;
+  switch (message.type) {
+    case "ready":
+      return message.protocolVersion === BRIDGE_PROTOCOL_VERSION;
+    case "ping":
+      return (
+        Array.isArray(message.clientIds) && message.clientIds.every((id) => typeof id === "string")
+      );
+    case "request":
+      return (
+        typeof message.requestId === "string" &&
+        typeof message.clientId === "string" &&
+        (message.runId === undefined || typeof message.runId === "string") &&
+        typeof message.method === "string" &&
+        isRecord(message.params)
+      );
+    default:
+      return false;
   }
 }

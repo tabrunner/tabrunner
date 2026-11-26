@@ -5,7 +5,7 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { config } from "./config";
 import { BridgeLink } from "./link";
 import { createBridgeServer } from "./server";
-import { prepareRuntimeDir, publishMetadata, removeMetadata, type BrokerMetadata } from "./runtime";
+import { electBroker, publishMetadata, removeMetadata, type BrokerMetadata } from "./runtime";
 
 interface Session {
   clientId: string;
@@ -14,14 +14,17 @@ interface Session {
   expiresAt: number;
 }
 
-export async function runBroker(): Promise<void> {
-  await prepareRuntimeDir();
-  const link = new BridgeLink();
+export function runBroker(): Promise<void> {
+  return electBroker(startBroker);
+}
+
+async function startBroker(port: number): Promise<boolean> {
+  const link = new BridgeLink(port);
   try {
     // The fixed WS bind elects one winner. Losers never touch metadata or listeners.
     link.listen();
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "EADDRINUSE") return;
+    if (error instanceof Error && "code" in error && error.code === "EADDRINUSE") return false;
     throw error;
   }
   const sessions = new Map<string, Session>();
@@ -158,7 +161,7 @@ export async function runBroker(): Promise<void> {
     stopping = true;
     if (idleTimer) clearTimeout(idleTimer);
     clearInterval(leases);
-    if (metadata) await removeMetadata(metadata.token);
+    if (metadata) await removeMetadata(port, metadata.token);
     for (const session of [...sessions.values()]) void closeSession(session);
     await Promise.all([...draining]);
     await new Promise<void>((resolve) => http.close(() => resolve()));
@@ -181,7 +184,8 @@ export async function runBroker(): Promise<void> {
       token: crypto.randomUUID() + crypto.randomUUID(),
       version: config.version,
       protocolVersion: config.protocolVersion,
-      port: config.port,
+      readyHandshake: true,
+      port,
       pid: process.pid,
     };
     await publishMetadata(metadata);
@@ -192,6 +196,7 @@ export async function runBroker(): Promise<void> {
     process.once("SIGINT", () => {
       void shutdown();
     });
+    return true;
   } catch (error) {
     clearInterval(leases);
     http.close();

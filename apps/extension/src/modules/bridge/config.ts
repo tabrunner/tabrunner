@@ -1,4 +1,8 @@
 import { defineItem } from "@/lib/storage";
+import { DEFAULT_BRIDGE_PORT } from "./protocol";
+
+/** Time to recover an owner's connection before giving up on its work. */
+export const BRIDGE_LEASE_MS = 60_000;
 
 /**
  * Bridge config — off by default: almost nobody runs an MCP client, and an
@@ -6,13 +10,13 @@ import { defineItem } from "@/lib/storage";
  * error every reconcile, which on a fresh install reads as the extension being
  * broken. Chromium logs a refused socket from the network stack — no JS can
  * silence it — so not dialing is the only clean install. MCP users opt in at
- * Settings → MCP; the port must match what `bun run bridge` listens on. Lives
- * apart from the socket so UI contexts (Settings → MCP) can read and edit it
- * without bundling the WebSocket client.
+ * Settings → MCP; the port starts the small range the extension checks for a broker.
+ * The config lives apart from the socket so settings can read and edit it without
+ * bundling the WebSocket client.
  */
 export const bridgeItem = defineItem<{ enabled: boolean; port: number }>("bridge", {
   enabled: false,
-  port: 17_836,
+  port: DEFAULT_BRIDGE_PORT,
 });
 
 /**
