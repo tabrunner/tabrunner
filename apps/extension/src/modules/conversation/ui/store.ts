@@ -141,7 +141,7 @@ export interface ConversationState {
 
   connect: () => void;
   disconnect: () => void;
-  sendTask: (task: string, images?: string[]) => void;
+  sendTask: (task: string, images?: string[], questionRunId?: string) => void;
   /** A local, display-only note (slash-command results) — rendered in the
    *  transcript, never persisted, never part of the model's history. */
   note: (content: string) => void;
@@ -235,6 +235,12 @@ export function pinOf(s: ConversationState): ConversationEngine | undefined {
  */
 export function boardRunHere(s: ConversationState): RunBoard["running"][number] | undefined {
   return s.board.running.find((run) => run.conversationId === s.activeId);
+}
+
+export function boardQuestionHere(
+  s: ConversationState,
+): RunBoard["pendingQuestions"][number] | undefined {
+  return s.board.pendingQuestions.find((question) => question.conversationId === s.activeId);
 }
 
 export function bridgeRunHere(s: ConversationState): BridgeActive | undefined {
@@ -568,6 +574,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     images?: string[],
     url?: string,
     runId: string = crypto.randomUUID(),
+    questionRunId?: string,
   ) => {
     sawAssistantText = false;
     set({
@@ -609,6 +616,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       task,
       ...(images?.length ? { images } : {}),
       ...(url ? { url } : {}),
+      ...(questionRunId ? { questionRunId } : {}),
     };
     try {
       p.postMessage(dispatch);
@@ -649,7 +657,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
    * pendingSend is set, a user's Enter must not start a third run mid-handoff —
    * the pending send fires from the done handler.
    */
-  const sendTask = async (task: string, images?: string[]) => {
+  const sendTask = async (task: string, images?: string[], askedBy?: string) => {
     if (get().pendingSend !== null) return;
     // A run in flight steers instead (ChatInput routes there) — but when our
     // own submission is only waiting in the queue, a new one joins the line.
@@ -667,6 +675,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
     // would file the user's message under the thread they just left — the
     // "conversation switched itself" bug, now remotely triggerable.
     sending = true;
+    const questionRunId = askedBy ?? boardQuestionHere(get())?.runId;
     // The message is anchored to the tab it was sent from — the run adopts that
     // same tab in either mode. The panel queries its own window here (the
     // send-time fact), while the background's own query stays the authority on
@@ -695,7 +704,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         ...(tab ? { tab } : {}),
       });
       const conversationId = await pushMsg(message);
-      startRun(p, conversationId, task, images, undefined, message.id);
+      startRun(p, conversationId, task, images, undefined, message.id, questionRunId);
     } finally {
       // Every caller is fire-and-forget, so a rejected store would otherwise
       // leave the latch stuck and ownLiveView() would defer refetches forever.

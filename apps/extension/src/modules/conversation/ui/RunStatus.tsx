@@ -1,11 +1,10 @@
 import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { boardRunHere, bridgeRunHere, runsHere, useConversationStore } from "./store";
+import { boardQuestionHere, boardRunHere, bridgeRunHere, useConversationStore } from "./store";
 import { DrivenTabChip } from "./DrivenTabChip";
 import { PlanMark } from "./PlanMark";
 import { ContextGauge } from "./ContextGauge";
 import { usageParts } from "../usage-parts";
-import { pendingAskId } from "./ask-gate";
 import { useNow, useQueueBusy } from "./hooks";
 import { TipLine } from "@/modules/tips/ui";
 import { Button } from "@/components/Button";
@@ -37,11 +36,7 @@ export function RunStatus() {
     (s) => s.planApproval !== null && s.planApproval.action === undefined,
   );
   const elicitation = useConversationStore((s) => s.elicitation);
-  const awaitingAnswer = useConversationStore(
-    (s) =>
-      pendingAskId(s.messages, runsHere(s)) !== undefined ||
-      s.board.pendingQuestions.some((question) => question.conversationId === s.activeId),
-  );
+  const awaitingAnswer = useConversationStore(boardQuestionHere) !== undefined;
   // A crowded footer (queued lines, a queued run, a stop-redirect in transit)
   // evicts the band's tip — one shared rule, see useQueueBusy.
   const queueBusy = useQueueBusy();

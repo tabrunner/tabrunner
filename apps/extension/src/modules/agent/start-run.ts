@@ -39,7 +39,6 @@ import {
 } from "@/modules/providers/context-window";
 import {
   getConversationMeta,
-  getMessages,
   getThreadTabsFor,
   recordApprovedPlan,
   recordDrivenTabFor,
@@ -47,6 +46,7 @@ import {
 } from "@/modules/conversation";
 import {
   flushConversationWrites,
+  getRunMessages,
   type LastTab,
   type ThreadTabs,
 } from "@/modules/conversation/conversations";
@@ -61,7 +61,6 @@ import type { PlanApprovalOutcome } from "./loop";
 import type { SubmitPage } from "./prompt";
 import {
   currentBoard,
-  listQueue,
   markPendingQuestion,
   clearPendingQuestion,
   markRunningAwaiting,
@@ -283,18 +282,10 @@ export async function startAgentRun(opts: StartRunOptions): Promise<StartRunResu
     // What this conversation runs on: its own pin, else the stored pick. The
     // thread owns the engine so a picker change mid-afternoon can't re-point
     // the 9am schedule, and a reopened chat still runs what it always ran.
-    // A queued cancellation can release this lane before its transcript write commits.
-    await awaitSetup(flushConversationWrites(), signal);
-    const waiting = new Set(
-      listQueue()
-        .filter((entry) => entry.conversationId === conversationId)
-        .map((entry) => entry.id),
-    );
-    const [meta, messages] = await awaitSetup(
-      Promise.all([getConversationMeta(conversationId), getMessages(conversationId)]),
+    const [meta, transcript] = await awaitSetup(
+      Promise.all([getConversationMeta(conversationId), getRunMessages(conversationId)]),
       signal,
     );
-    const transcript = messages.filter((message) => !waiting.has(message.id) && !message.cancelled);
     const providerConfig = await awaitSetup(getProviderFor(meta?.engine), signal);
     run.controller.signal.throwIfAborted();
     if (!providerConfig) {

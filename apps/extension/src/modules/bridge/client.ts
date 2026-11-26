@@ -100,6 +100,7 @@ export class BridgeClient {
           return this.status;
         }
         case "run":
+          this.refreshQuestion();
           if (this.status.state === "question" || this.queuedAnswer)
             throw new BridgeError(
               "question-pending",
@@ -173,7 +174,28 @@ export class BridgeClient {
     }
   }
 
+  private pendingQuestion() {
+    return this.status.conversationId ? getPendingQuestion(this.status.conversationId) : undefined;
+  }
+
+  private refreshQuestion(): void {
+    if (
+      this.status.state !== "question" ||
+      this.confirmation ||
+      this.pendingQuestion()?.runId === this.status.runId
+    )
+      return;
+    // The panel answered or dismissed the question. The old MCP reply must not run.
+    this.resumeStatus();
+    const event = applyStatusEvent(this.status, {
+      type: "done",
+      summary: i18n.t("errors.questionAlreadyAnswered"),
+    });
+    if (event) this.publish(event);
+  }
+
   updateQueue(queue: QueuedRun[]): void {
+    this.refreshQuestion();
     const mine = queue.filter((run) => run.owner === "bridge" && run.ownerId === this.id);
     const next = mine.map((run, index) => ({
       runId: run.id,
@@ -203,7 +225,11 @@ export class BridgeClient {
       (entry) => entry.owner === "bridge" && entry.ownerId === this.id,
     );
     await Promise.all([
-      ...cancelled.map(cancelQueuedTask),
+      ...cancelled.map((entry) =>
+        cancelQueuedTask(entry).catch((error: unknown) => {
+          log.warn("could not save queued task cancellation", String(error));
+        }),
+      ),
       this.serialize(async () => {
         await this.direct.end();
         await this.launched;
@@ -238,16 +264,18 @@ export class BridgeClient {
       resolve({ approved: params.approve });
       return { resumed: true };
     }
-    const pending = this.status.conversationId
-      ? getPendingQuestion(this.status.conversationId)
-      : undefined;
-    const tabId = pending?.tabId ?? this.status.driving?.tabId;
+    const pending = this.pendingQuestion();
+    if (!pending || pending.runId !== runId) {
+      this.refreshQuestion();
+      throw new BridgeError("no-question", i18n.t("errors.questionAlreadyAnswered"));
+    }
+    const tabId = pending.tabId;
     if (tabId === undefined || !(await chrome.tabs.get(tabId).catch(() => undefined))) {
       throw new BridgeError("tab-unavailable", i18n.t("errors.bridgeTabUnavailable"));
     }
     const result = await this.beginRun(
       { agent: params.agent, task: str(params.text), tabId },
-      true,
+      runId,
     );
 
     if (this.status.runId === runId) {
@@ -265,7 +293,7 @@ export class BridgeClient {
 
   private async beginRun(
     params: Record<string, unknown>,
-    answerQuestion = false,
+    questionRunId?: string,
   ): Promise<{
     runId: string;
     conversationId: string;
@@ -311,19 +339,30 @@ export class BridgeClient {
       owner: "bridge",
       ownerId: this.id,
       task,
-      answerQuestion,
+      questionRunId,
       launch: () => {
         this.queuedAnswer = null;
         this.status = newRunStatus(conversationId, runId);
         this.setActivity("run", client, runId, conversationId);
         this.publish({ type: "started", runId, conversationId });
-        const running = this.launch(runId, conversationId, task, attached, target, answerQuestion);
+        const running = this.launch(
+          runId,
+          conversationId,
+          task,
+          attached,
+          target,
+          questionRunId !== undefined,
+        );
         this.launched = running;
         void running.finally(() => {
           if (this.launched === running) this.launched = null;
         });
       },
     });
+    if ("staleQuestion" in outcome) {
+      await recordTaskCancellation(conversationId, runId);
+      throw new BridgeError("no-question", i18n.t("errors.questionAlreadyAnswered"));
+    }
     if ("queued" in outcome) {
       const mine = listQueue().filter((run) => run.owner === "bridge" && run.ownerId === this.id);
       return { runId, conversationId, queued: mine.findIndex((run) => run.id === runId) + 1 };
@@ -405,6 +444,12 @@ export class BridgeClient {
     const goal = str(params.goal);
     if (!goal) throw new BridgeError("empty-task", "Enter a goal, then try again.");
     const conversationId = await this.ensureThread();
+    if (getPendingQuestion(conversationId)) {
+      throw new BridgeError(
+        "question-pending",
+        "Answer or stop the pending question before taking direct control.",
+      );
+    }
     if (this.closed) throw staleRun();
     const client = str(params.agent) || i18n.t("history.unknownAgent");
     try {
@@ -473,12 +518,14 @@ export class BridgeClient {
     }
     if (this.status.runId === runId && this.status.state === "question" && !this.confirmation) {
       const conversationId = this.status.conversationId;
+      if (!conversationId || !clearPendingQuestion(conversationId, runId)) {
+        throw new BridgeError("no-question", i18n.t("errors.questionAlreadyAnswered"));
+      }
       this.status.state = "stopped";
       this.status.question = null;
       this.status.choices = null;
       this.status.finishedAt = Date.now();
       this.publish({ type: "done", stopped: true });
-      if (conversationId) clearPendingQuestion(conversationId);
       return { stopped: true, panelBusy: false };
     }
     const run = this.requireActive(runId);
@@ -527,7 +574,12 @@ export class BridgeClient {
     }
     await this.direct.end();
     const conversationId = await this.thread.get();
-    if (conversationId) clearPendingQuestion(conversationId);
+    if (conversationId) {
+      const pending = getPendingQuestion(conversationId);
+      if (pending?.runId && !clearPendingQuestion(conversationId, pending.runId)) {
+        throw new BridgeError("run-in-progress", i18n.t("errors.questionAlreadyAnswered"));
+      }
+    }
     await this.thread.set(null);
     this.status = emptyStatus();
     return { ok: true };

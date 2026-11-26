@@ -18,7 +18,7 @@ export function pendingAskId(messages: Message[], live: boolean): string | undef
   if (live) return undefined;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
-    if (m?.role === "user") return undefined;
+    if (m?.role === "user" && !m.cancelled) return undefined;
     if (m?.role === "step" && m.tool === "ask_user") return m.id;
   }
   return undefined;

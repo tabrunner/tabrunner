@@ -16,7 +16,7 @@ export interface QueuedRun {
 }
 
 interface QueueEntry extends QueuedRun {
-  answerQuestion?: boolean;
+  questionRunId?: string;
   /** Claims synchronously before the launch's first await. */
   launch: () => void;
 }
@@ -63,7 +63,10 @@ const queue: QueueEntry[] = [];
 const running = new Map<string, RunningRun>();
 const pendingQuestions = new Map<string, PendingQuestion>();
 
-export type SubmitOutcome = { started: true; id: string } | { queued: number; id: string };
+export type SubmitOutcome =
+  | { started: true; id: string }
+  | { queued: number; id: string }
+  | { staleQuestion: true; id: string };
 
 function sharesLane(a: QueueEntry, b: QueueEntry): boolean {
   return a.conversationId === b.conversationId || (a.owner === b.owner && a.ownerId === b.ownerId);
@@ -81,19 +84,33 @@ function launch(entry: QueueEntry): void {
   entry.launch();
 }
 
+function hasQueuedAnswer(conversationId: string): boolean {
+  return queue.some(
+    (entry) => entry.conversationId === conversationId && entry.questionRunId !== undefined,
+  );
+}
+
 /** FIFO within a client/conversation; unrelated work can pass a blocked lane. */
 export function submitRun(entry: Omit<QueueEntry, "enqueuedAt">): SubmitOutcome {
+  // Submission and launch share the same worker turn. A waiting answer holds
+  // the claim in the queue; a launching answer consumes the question immediately.
+  if (
+    entry.questionRunId !== undefined &&
+    (getPendingQuestion(entry.conversationId)?.runId !== entry.questionRunId ||
+      hasQueuedAnswer(entry.conversationId))
+  )
+    return { staleQuestion: true, id: entry.id };
   const queued: QueueEntry = { ...entry, enqueuedAt: Date.now() };
   if (
     !waitsForAnswer(queued) &&
-    (queued.answerQuestion || !queue.some((earlier) => sharesLane(earlier, queued))) &&
+    (queued.questionRunId !== undefined || !queue.some((earlier) => sharesLane(earlier, queued))) &&
     canStartRun(entry.conversationId, entry.owner, entry.ownerId)
   ) {
     launch(queued);
     void writeBoard();
     return { started: true, id: entry.id };
   }
-  if (queued.answerQuestion) queue.unshift(queued);
+  if (queued.questionRunId !== undefined) queue.unshift(queued);
   else queue.push(queued);
   log.info("run queued", { owner: entry.owner, task: truncate(entry.task, 120) });
   void writeBoard();
@@ -123,7 +140,7 @@ export function cancelQueued(id: string): boolean {
 }
 
 export function listQueue(): QueuedRun[] {
-  return queue.map(({ launch: _launch, answerQuestion: _answerQuestion, ...entry }) => entry);
+  return queue.map(({ launch: _launch, questionRunId: _questionRunId, ...entry }) => entry);
 }
 
 export function currentBoard(): RunBoard {
@@ -187,10 +204,19 @@ export function getPendingQuestion(conversationId: string): PendingQuestion | un
   return pendingQuestions.get(conversationId);
 }
 
-export function clearPendingQuestion(conversationId: string): void {
-  if (!pendingQuestions.delete(conversationId)) return;
-  pumpQueue();
-  void writeBoard();
+export function clearPendingQuestion(conversationId: string, expectedRunId?: string): boolean {
+  if (
+    expectedRunId !== undefined &&
+    (getPendingQuestion(conversationId)?.runId !== expectedRunId || hasQueuedAnswer(conversationId))
+  )
+    return false;
+  if (!pendingQuestions.delete(conversationId)) return false;
+  // The caller can publish the question's terminal status before launching the next task.
+  queueMicrotask(() => {
+    pumpQueue();
+    void writeBoard();
+  });
+  return true;
 }
 
 export function restorePendingQuestions(stored: PendingQuestion[]): void {
@@ -215,7 +241,9 @@ function writeBoard(): Promise<void> {
 
 function waitsForAnswer(entry: QueueEntry): boolean {
   return (
-    entry.owner === "bridge" && !entry.answerQuestion && pendingQuestions.has(entry.conversationId)
+    entry.owner !== "schedule" &&
+    entry.questionRunId === undefined &&
+    getPendingQuestion(entry.conversationId)?.runId !== undefined
   );
 }
 

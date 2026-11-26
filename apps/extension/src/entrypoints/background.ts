@@ -15,6 +15,7 @@ import {
   listQueue,
   onBoardChanged,
   restorePendingQuestions,
+  getPendingQuestion,
   runBoardItem,
   submitRun,
 } from "@/modules/agent/run-queue";
@@ -124,36 +125,39 @@ export default defineBackground(() => {
   // the worker rather than vanishing silently. A parked ask_user is not a run —
   // the answer is still owed across the restart, so its record is restored, not
   // reset, or the ambient "answer needed" would drop exactly when it matters.
-  void runBoardItem.get().then(async (stale) => {
-    restorePendingQuestions(stale.pendingQuestions);
-    if (stale.running.length === 0 && stale.queue.length === 0) return;
-    for (const q of stale.queue) void recordTaskCancellation(q.conversationId, q.id);
-    for (const q of stale.running) {
-      void appendMessageTo(q.conversationId, {
-        id: crypto.randomUUID(),
-        role: "step",
-        tool: "interrupted",
-        content: i18n.t("errors.workerRunInterrupted"),
-        timestamp: Date.now(),
+  const boardReady = runBoardItem
+    .get()
+    .then(async (stale) => {
+      restorePendingQuestions(stale.pendingQuestions);
+      if (stale.running.length === 0 && stale.queue.length === 0) return;
+      for (const q of stale.queue) void recordTaskCancellation(q.conversationId, q.id);
+      for (const q of stale.running) {
+        void appendMessageTo(q.conversationId, {
+          id: crypto.randomUUID(),
+          role: "step",
+          tool: "interrupted",
+          content: i18n.t("errors.workerRunInterrupted"),
+          timestamp: Date.now(),
+        });
+      }
+      for (const run of stale.running) {
+        if (run.tabId !== undefined) await hideAgentIndicator(run.tabId);
+      }
+      await runBoardItem.set({
+        running: [],
+        pendingQuestions: stale.pendingQuestions,
+        queue: [],
       });
-    }
-    for (const run of stale.running) {
-      if (run.tabId !== undefined) await hideAgentIndicator(run.tabId);
-    }
-    await runBoardItem.set({
-      running: [],
-      pendingQuestions: stale.pendingQuestions,
-      queue: [],
-    });
-    void sweepStatusWidget();
-  });
+      void sweepStatusWidget();
+    })
+    .catch((error: unknown) => log.warn("could not restore run board", String(error)));
   // The MCP bridge — a WS client to the local daemon so external AI clients can
   // drive the same loop. Reconnects on its own reconcile alarm; harmless when
   // no daemon is listening. Activity changes are broadcast to open panels: the
   // run is already blinking the driven tab's favicon, the panel just names it.
   startBridge((active) => {
     for (const p of panelPorts.keys()) send(p, { type: "run_active", active });
-  });
+  }, boardReady);
 
   // Both ambient surfaces follow the run board. The toolbar badge is the floor
   // — never injected, never suppressed, so "is it still running?" always has an
@@ -228,11 +232,13 @@ export default defineBackground(() => {
         }
 
         case "run": {
+          await boardReady;
           // The panel stored its task message (and adopted the conversation)
           // before the run command left — the id rides the command, so this
           // run's transcript lands exactly where its message did.
           const conversationId = msg.conversationId;
           const runId = msg.runId;
+          const question = msg.questionRunId ? getPendingQuestion(conversationId) : undefined;
           const launch = () => {
             // Persistence lives here, not in the panel store: the panel closes
             // itself after submit, and its writer would die with it.
@@ -247,6 +253,7 @@ export default defineBackground(() => {
               owner: "panel",
               task: msg.task,
               images: msg.images,
+              ...(question ? { answerQuestion: true, tabId: question.tabId } : {}),
               // Only a retry after a closed tab names one — it reopens the page
               // the run lost instead of adopting the user's current tab.
               ...(msg.url ? { url: msg.url } : {}),
@@ -270,9 +277,13 @@ export default defineBackground(() => {
             owner: "panel",
             ownerId: "panel",
             task: msg.task,
+            questionRunId: msg.questionRunId,
             launch,
           });
-          if ("queued" in outcome) {
+          if ("staleQuestion" in outcome) {
+            await recordTaskCancellation(conversationId, runId);
+            send(port, { type: "error", message: i18n.t("errors.questionAlreadyAnswered") });
+          } else if ("queued" in outcome) {
             send(port, { type: "run_queued", id: outcome.id, position: outcome.queued });
           }
           break;

@@ -226,6 +226,19 @@ export function watchActiveConversation(cb: (id: string | null) => void): () => 
   return activeItem.watch(cb);
 }
 
+/** Model-facing reads ignore work that has not run. The panel still shows it. */
+export async function getRunMessages(id: string): Promise<Message[]> {
+  // A cancellation can free the next slot before its transcript write lands.
+  await flushConversationWrites();
+  const messages = await getMessages(id);
+  const waiting = new Set(
+    listQueue()
+      .filter((entry) => entry.conversationId === id)
+      .map((entry) => entry.id),
+  );
+  return messages.filter((message) => !waiting.has(message.id) && !message.cancelled);
+}
+
 export function getMessages(id: string): Promise<Message[]> {
   return messagesItem(id).get();
 }

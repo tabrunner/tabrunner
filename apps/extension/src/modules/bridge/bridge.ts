@@ -15,7 +15,10 @@ const LEASE_MS = 60_000;
 
 /** Routes the broker's MCP sessions without sharing their status, controls or browser work. */
 export class Bridge {
-  constructor(private readonly onActivity?: (active: BridgeActive[]) => void) {}
+  constructor(
+    private readonly onActivity?: (active: BridgeActive[]) => void,
+    private readonly boardReady = Promise.resolve(),
+  ) {}
 
   private socket: BridgeSocket | null = null;
   private readonly clients = new Map<string, BridgeClient>();
@@ -83,6 +86,7 @@ export class Bridge {
           "This MCP session has no valid client ID. Restart the MCP client, then try again.",
         );
       }
+      await this.boardReady;
       if (method === "closeClient") {
         this.retired.add(clientId);
         await this.drainClient(clientId);

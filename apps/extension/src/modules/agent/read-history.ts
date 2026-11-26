@@ -1,4 +1,4 @@
-import { getMessages } from "@/modules/conversation";
+import { getRunMessages } from "@/modules/conversation/conversations";
 import type { Message } from "@/modules/conversation/types";
 import { stepHint } from "@/modules/conversation/step-hint";
 import { i18n } from "@/i18n";
@@ -126,7 +126,7 @@ export async function readStepLog(
   conversationId: string,
   args: Record<string, unknown>,
 ): Promise<ToolResult> {
-  const messages = await getMessages(conversationId);
+  const messages = await getRunMessages(conversationId);
   const opts: WindowOptions = { includeDetails: args.include_details === true };
   if (typeof args.from === "number") opts.from = args.from;
   if (typeof args.limit === "number") opts.limit = args.limit;

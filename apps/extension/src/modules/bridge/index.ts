@@ -10,9 +10,12 @@ let bridge: Bridge | null = null;
  * @param onActivity Fired when an external client starts or stops working in
  * the browser — the worker broadcasts it to every open panel.
  */
-export function startBridge(onActivity?: (active: BridgeActive[]) => void): Bridge {
+export function startBridge(
+  onActivity?: (active: BridgeActive[]) => void,
+  boardReady?: Promise<void>,
+): Bridge {
   if (bridge) return bridge;
-  bridge = new Bridge(onActivity);
+  bridge = new Bridge(onActivity, boardReady);
   bridge.start();
   return bridge;
 }

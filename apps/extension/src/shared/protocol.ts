@@ -23,6 +23,7 @@ export type Command =
       conversationId: string;
       task: string;
       images?: string[];
+      questionRunId?: string;
       /** Put this page back before starting — a retry after the run's own tab
        *  was closed. Named urls never adopt (see resolveRunTab), which is the
        *  point: the work belongs to that page, not to the tab in front of the

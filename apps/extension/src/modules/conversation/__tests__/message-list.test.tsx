@@ -256,8 +256,20 @@ describe("ask_user chips", () => {
     },
   ];
 
-  async function renderAsk(messages: Message[]): Promise<HTMLElement> {
-    useConversationStore.setState({ messages, status: "idle", streamingText: "" });
+  async function renderAsk(messages: Message[], pending = true): Promise<HTMLElement> {
+    useConversationStore.setState({
+      messages,
+      status: "idle",
+      streamingText: "",
+      activeId: "ask-chat",
+      board: {
+        running: [],
+        queue: [],
+        pendingQuestions: pending
+          ? [{ conversationId: "ask-chat", runId: "asked", question: "Which files?" }]
+          : [],
+      },
+    });
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -274,6 +286,11 @@ describe("ask_user chips", () => {
       { id: "a1", role: "assistant", content: "Let me check which files you mean.", timestamp: 2 },
     ]);
     expect(chip(container, "waitlist.csv")).toBeDefined();
+  });
+
+  it("drops the chips when MCP resolved the question before the transcript refreshed", async () => {
+    const container = await renderAsk(ASK, false);
+    expect(chip(container, "waitlist.csv")).toBeUndefined();
   });
 
   it("drops the chips once the user replied", async () => {

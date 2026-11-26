@@ -6,6 +6,8 @@ import {
   clearPendingQuestion,
   listQueue,
   markRunningTab,
+  markPendingQuestion,
+  submitRun,
   restorePendingQuestions,
 } from "@/modules/agent/run-queue";
 import type { StartRunOptions } from "@/modules/agent/start-run";
@@ -13,6 +15,7 @@ import type { Event } from "@/shared/protocol";
 import type { ProviderConfig } from "@/modules/providers/types";
 import type { DaemonMessage, ExtensionMessage, BridgeStatus } from "../protocol";
 import { bridgeThread } from "../config";
+import * as conversations from "@/modules/conversation/conversations";
 
 const socket: {
   onMessage?: (message: DaemonMessage) => void;
@@ -52,9 +55,15 @@ vi.mock("@/modules/agent/start-run", () => ({
     const acquired = acquireRun(opts.conversationId, opts.owner, opts.ownerId, opts.runId);
     if (!acquired.ok) return Promise.resolve({ ok: false, active: acquired.active });
     const run = acquired.run;
+    if (opts.answerQuestion) clearPendingQuestion(opts.conversationId);
+    const onAskUser: StartRunOptions["onAskUser"] = (question, choices) => {
+      parkedChats.add(opts.conversationId);
+      markPendingQuestion(opts.conversationId, question, choices);
+      opts.onAskUser?.(question, choices);
+    };
     return new Promise<{ ok: true }>((resolve) => {
       runs.set(run.id, {
-        opts,
+        opts: { ...opts, onAskUser },
         run,
         finish: () => {
           releaseRun(run);
@@ -306,10 +315,6 @@ describe("Bridge client ownership", () => {
     const queued = await begin("a", "a-follow-up");
     expect(queued.queued).toBe(1);
 
-    parkedChats.add(a.conversationId);
-    restorePendingQuestions([
-      { conversationId: a.conversationId, runId: a.runId, tabId: 21, question: "Which account?" },
-    ]);
     runs.get(a.runId)?.opts.onAskUser?.("Which account?", ["Work", "Home"]);
     runs.get(b.runId)?.opts.onAskUser?.("Send it?");
     request("b", "wrong-answer", "answer", { text: "Work" }, a.runId);
@@ -329,6 +334,36 @@ describe("Bridge client ownership", () => {
     expect((await response("b-status")).result).toMatchObject({
       state: "question",
       question: "Send it?",
+    });
+  });
+
+  it("rejects a second answer when the panel already claimed the question", async () => {
+    new Bridge().start();
+    const a = await begin("a");
+    markRunningTab(a.runId, 70, 1);
+    runs.get(a.runId)?.opts.onAskUser?.("Which account?");
+    const launch = vi.fn(() => {
+      clearPendingQuestion(a.conversationId);
+    });
+    expect(
+      submitRun({
+        id: "panel-reply",
+        owner: "panel",
+        ownerId: "panel",
+        conversationId: a.conversationId,
+        task: "Work account",
+        questionRunId: a.runId,
+        launch,
+      }),
+    ).toMatchObject({ queued: 1 });
+    request("a", "second-answer", "answer", { text: "Other account" }, a.runId);
+    expect((await response("second-answer")).error?.code).toBe("no-question");
+    await finish(a.runId);
+    expect(launch).toHaveBeenCalledOnce();
+    request("a", "panel-answered", "sync");
+    expect((await response("panel-answered")).result).toMatchObject({
+      state: "done",
+      question: null,
     });
   });
 
@@ -404,12 +439,20 @@ describe("Bridge client ownership", () => {
     first.start();
     const a = await begin("a");
     await finish(a.runId);
+    const { promise, resolve } = Promise.withResolvers<void>();
+    new Bridge(undefined, promise).start();
+    request("a", "status-reconnected", "sync");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      sent.some(
+        (message) => message.type === "response" && message.requestId === "status-reconnected",
+      ),
+    ).toBe(false);
     parkedChats.add(a.conversationId);
     restorePendingQuestions([
       { conversationId: a.conversationId, runId: a.runId, tabId: 70, question: "Which name?" },
     ]);
-    new Bridge().start();
-    request("a", "status-reconnected", "sync");
+    resolve();
     expect((await response("status-reconnected")).result).toMatchObject({
       state: "question",
       runId: a.runId,
@@ -633,6 +676,33 @@ describe("Bridge broker leases", () => {
     expect((await response("drained-direct")).ok).toBe(true);
     request("a", "close-recovered", "closeClient");
     expect((await response("close-recovered")).ok).toBe(true);
+  });
+
+  it("waits for the active task even if saving a queued cancellation fails", async () => {
+    new Bridge().start();
+    const a = await begin("a");
+    const queued = await begin("a", "queued-before-close");
+    const save = vi
+      .spyOn(conversations, "cancelQueuedTask")
+      .mockImplementationOnce(async (entry) => {
+        cancelQueued(entry.id);
+        throw new Error("storage write failed");
+      });
+    try {
+      request("a", "close-after-storage-failure", "closeClient");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(save).toHaveBeenCalledWith(expect.objectContaining({ id: queued.runId }));
+      expect(
+        sent.some(
+          (event) => event.type === "response" && event.requestId === "close-after-storage-failure",
+        ),
+      ).toBe(false);
+      expect(getOwnerRun("bridge", "a")?.id).toBe(a.runId);
+      await finish(a.runId);
+      expect((await response("close-after-storage-failure")).ok).toBe(true);
+    } finally {
+      save.mockRestore();
+    }
   });
 
   it("expires only missing bridge owners and sends close receipt after their drain", async () => {
