@@ -6,12 +6,12 @@ import { providerDisplayName } from "@/modules/providers/presets";
 import { credentialStatus, isOAuthProvider } from "@/modules/providers/status";
 import type { BridgeActive } from "@/shared/protocol";
 import { BridgeClient, BridgeError } from "./client";
+import { BRIDGE_LEASE_MS } from "./config";
 import { BRIDGE_PROTOCOL_VERSION } from "./protocol";
 import type { BridgeProviderInfo, BridgeRequest, DaemonMessage } from "./protocol";
 import { BridgeSocket } from "./ws-client";
 
 const log = createLogger("bridge");
-const LEASE_MS = 60_000;
 
 /** Routes the broker's MCP sessions without sharing their status, controls or browser work. */
 export class Bridge {
@@ -32,6 +32,7 @@ export class Bridge {
       (message) => this.onMessage(message),
       () => this.onOpen(),
       () => this.onDisconnect(),
+      () => this.activity.length > 0,
     );
     this.socket.start();
     onBoardChanged((board) => {
@@ -149,7 +150,7 @@ export class Bridge {
         void this.drainClient(clientId).catch((error: unknown) =>
           log.warn("client cleanup failed", String(error)),
         );
-      }, LEASE_MS),
+      }, BRIDGE_LEASE_MS),
     );
   }
 

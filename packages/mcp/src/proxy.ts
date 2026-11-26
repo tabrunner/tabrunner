@@ -3,11 +3,14 @@ import {
   StreamableHTTPClientTransport,
   StreamableHTTPError,
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { config } from "./config";
 import { discoverBroker, type BrokerMetadata } from "./runtime";
+import { BridgeLink } from "./link";
+import { createBridgeServer } from "./server";
 
 interface Upstream {
   client: Client;
@@ -20,12 +23,24 @@ const SESSION_RESET =
 
 /** The SDK owns both MCP hops. Lost calls are failed, never replayed. */
 export async function runProxy(): Promise<void> {
-  const initialMetadata = await discoverBroker();
   const server = new Server(
     { name: "tabrunner", version: config.version },
     { capabilities: { tools: {} } },
   );
   let upstream: Upstream | null = null;
+  let offline: Promise<Client> | undefined;
+  const offlineLink = new BridgeLink();
+
+  function offlineClient(error: unknown): Promise<Client> {
+    offlineLink.problem = error instanceof Error ? error.message : String(error);
+    return (offline ??= (async () => {
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      const local = new Client({ name: "tabrunner-local", version: config.version });
+      await createBridgeServer(offlineLink.createClient("offline")).connect(serverTransport);
+      await local.connect(clientTransport);
+      return local;
+    })());
+  }
   let connecting: Promise<Upstream> | null = null;
   let connectingTransport: StreamableHTTPClientTransport | null = null;
   let pingTimer: ReturnType<typeof setInterval> | null = null;
@@ -46,7 +61,7 @@ export async function runProxy(): Promise<void> {
     if (connecting) return connecting;
     if (upstream && !needsDiscovery) return Promise.resolve(upstream);
     connecting = (async () => {
-      const metadata = needsDiscovery ? await discoverBroker() : initialMetadata;
+      const metadata = await discoverBroker();
       if (closing) throw new Error("This MCP client is closing.");
       if (
         upstream &&
@@ -119,14 +134,24 @@ export async function runProxy(): Promise<void> {
     pingTimer = setInterval(() => void ping(), config.pingMs);
     void ping();
   };
-  server.setRequestHandler(ListToolsRequestSchema, async (request, extra) =>
-    (await client()).client.listTools(request.params, { signal: extra.signal }),
-  );
+  server.setRequestHandler(ListToolsRequestSchema, async (request, extra) => {
+    let current: Upstream | undefined;
+    try {
+      current = await client();
+      return await current.client.listTools(request.params, { signal: extra.signal });
+    } catch (error) {
+      if (current) failed(current, error);
+      return (await offlineClient(error)).listTools(request.params, { signal: extra.signal });
+    }
+  });
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     let current: Upstream;
     try {
       current = await client();
     } catch (error) {
+      if (request.params.name === "health") {
+        return (await offlineClient(error)).callTool(request.params);
+      }
       return {
         isError: true,
         content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
@@ -155,6 +180,13 @@ export async function runProxy(): Promise<void> {
       return result;
     } catch (error) {
       failed(current, error);
+      if (request.params.name === "health") {
+        return (
+          await offlineClient(
+            "The local TabRunner bridge stopped answering. Call health again to reconnect.",
+          )
+        ).callTool(request.params);
+      }
       return {
         isError: true,
         content: [
@@ -182,6 +214,7 @@ export async function runProxy(): Promise<void> {
       }
       await upstream.client.close();
     }
+    await (await offline)?.close();
     await server.close();
   }
 

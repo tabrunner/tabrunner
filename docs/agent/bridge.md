@@ -18,13 +18,11 @@ MCP client B → stdio proxy B ─┘                                 │
                                                               └→ client B's task/tabs
 ```
 
-- The fixed WebSocket bind elects the broker. Losing starters use the winner; they never
-  stop an existing listener. An unknown port owner produces an error with a port-change fix.
+- Discovery checks for a compatible broker across four consecutive ports before starting one. A short lock in the private runtime directory serializes election across the range. The broker holds it until it publishes the address it bound. A busy port remains untouched.
 - The broker publishes its random HTTP address, bearer token, version, protocol version
   and pid under `~/.tabrunner/mcp/<port>.json`. The folder is private (0700), the file is
   private (0600), and readers reject unsafe ownership, permissions or non-local URLs.
-- Proxy and broker package versions and protocol versions must match. A mismatch leaves
-  the running broker alone and asks the user to update all clients and reconnect.
+- Proxy and broker must use the same protocol, not the same package version. Incompatible brokers are skipped. If none can start, the stdio server still lists tools and `health` reports the startup error.
 - Every initialized stdio connection gets a fresh opaque client id. A display name such as
   "Claude Code" labels history; it never identifies the owner. Two clients with the same
   name still have separate state. A fresh client launch is not a continuation of an old one.
@@ -157,9 +155,7 @@ labelled as the last known status, with a safe retry instead of a claim the old 
 
 `BridgeSocket.start()` stays synchronous so MV3 registers its alarm listeners in the first
 worker turn. One reconcile path arms a 30s alarm when enabled and clears it when disabled.
-The bridge ships disabled. A refused connection waits for the alarm; only a connection
-that actually opened earns the 2s fast retry. `bridgeConnected` mirrors open/close state
-through storage for UI contexts. Config remains in `bridge/config.ts`, not the socket.
+The bridge ships disabled. When enabled, Chrome tries each candidate until a broker confirms the protocol. It keeps that socket until it drops or the bridge is disabled. Only a confirmed connection earns the 2s fast retry; unsatisfied probes wait for the alarm. `bridgeConnected` reports an accepted socket, not just an open one.
 
 The protocol is declared twice on purpose: `apps/extension/src/modules/bridge/protocol.ts` is the source
 of truth; `packages/mcp/src/protocol.ts` is its standalone-package copy. Change both together.

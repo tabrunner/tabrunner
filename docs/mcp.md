@@ -31,9 +31,7 @@ Each client starts a small local process. Those processes share one broker, the 
 process that routes their requests to the extension. You do not need separate ports for
 each client. The extension dials out because its background worker cannot listen on a socket.
 
-The extension uses one known WebSocket port, `17836` by default. The broker asks the operating
-system for a free HTTP port and saves that address and its access token in a private local file.
-Clients read that file automatically. Agents do not guess ports or scan a range.
+The extension and MCP clients try the same four local ports, starting at `17836`. If an old or unrelated process uses one, they can meet on another without stopping it. The broker asks the operating system for a free HTTP port and saves that address and its access token in a private local file. MCP clients read that file automatically.
 
 ## Setup
 
@@ -112,13 +110,11 @@ watch its log, use `bun run bridge` from the repository root.
 
 | Variable                                 | Default                            | What it does                                                                                                                                              |
 | ---------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TABRUNNER_BRIDGE_PORT`                  | `17836`                            | The shared local WebSocket port. Settings → MCP in the extension must match. All clients using this port must use the same MCP package version.           |
+| `TABRUNNER_BRIDGE_PORT`                  | `17836`                            | The first of up to four local WebSocket ports. Settings → MCP in the extension must match if you change this. Leave it alone for normal use.              |
 | `TABRUNNER_BRIDGE_EXPECTED_EXTENSION_ID` | `ilnohobdcigbmlikjbkdpbkhciephdle` | The extension id accepted by the WebSocket handshake. Store, website zip and normal dev builds share this id. Set your custom build's id when it differs. |
 | `TABRUNNER_BRIDGE_RUNTIME_DIR`           | `~/.tabrunner/mcp`                 | The private folder for local broker discovery and its access token. Keep it owned by your user and unreadable by other users.                             |
 
-Clients sharing a broker must use the same package and bridge protocol versions. A mismatch
-asks you to update the clients and reconnect. It does not stop the existing broker or another
-program that owns the port.
+Clients share a broker when their bridge protocol matches. Their package versions can differ. If all four ports are blocked, the MCP server still starts and `health` explains what to do. TabRunner does not stop another broker or program to free a port.
 
 ## The tools
 

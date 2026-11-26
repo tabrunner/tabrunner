@@ -36,6 +36,8 @@
   "devDependencies": {
     "@modelcontextprotocol/sdk": "catalog:",
     "@types/bun": "catalog:",
+    "@types/proper-lockfile": "catalog:",
+    "proper-lockfile": "catalog:",
     "typescript": "catalog:",
     "zod": "catalog:"
   }

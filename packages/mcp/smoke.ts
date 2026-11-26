@@ -2,7 +2,7 @@
 /** Shared-broker integration check. Uses private temp files and no real browser. */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -10,6 +10,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   BRIDGE_PROTOCOL_VERSION,
+  bridgePorts,
   emptyStatus,
   type BridgeProviderInfo,
   type BridgeRequest,
@@ -68,7 +69,7 @@ globalThis.fetch = Object.assign(async (input, init) => {
 );
 const reserved = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() });
 const port = reserved.port;
-assert(port);
+assert(port && bridgePorts(port).length === 4);
 await reserved.stop(true);
 const extensionId = "bridge-check-extension";
 const entry = resolve(import.meta.dir, process.env.TABRUNNER_SMOKE_ENTRY ?? "src/index.ts");
@@ -209,8 +210,12 @@ async function call(
     .join("\n");
 }
 
-async function connectExtension(protocolVersion = BRIDGE_PROTOCOL_VERSION): Promise<WebSocket> {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+let readyPort: number | undefined;
+async function connectExtension(
+  protocolVersion = BRIDGE_PROTOCOL_VERSION,
+  bridgePort = port,
+): Promise<WebSocket> {
+  const ws = new WebSocket(`ws://127.0.0.1:${bridgePort}/ws`, {
     headers: { origin: `chrome-extension://${extensionId}` },
   });
   await new Promise<void>((resolve, reject) => {
@@ -219,6 +224,10 @@ async function connectExtension(protocolVersion = BRIDGE_PROTOCOL_VERSION): Prom
   });
   ws.onmessage = (event) => {
     const msg = JSON.parse(String(event.data)) as DaemonMessage;
+    if (msg.type === "ready") {
+      if (msg.protocolVersion === protocolVersion) readyPort = bridgePort;
+      return;
+    }
     if (msg.type === "ping") {
       heartbeatClients = msg.clientIds;
       ws.send(JSON.stringify({ type: "pong" } satisfies ExtensionMessage));
@@ -868,19 +877,6 @@ try {
   check("lease expiry drains only the expired session", !closedClients.includes(bRequest.clientId));
   await expired.close();
 
-  // A live mismatched broker must never be killed or replaced.
-  const original = await readFile(join(runtimeDir, `${port}.json`), "utf8");
-  const wrongVersion = JSON.stringify({ ...metadata, version: "other-version" });
-  await Bun.write(join(runtimeDir, `${port}.json`), wrongVersion);
-  const incompatible = startClient("wrong-version-check");
-  await assert.rejects(incompatible.connected);
-  await incompatible.client.close();
-  check(
-    "live version mismatch leaves the broker untouched",
-    (await fetch(new URL("/health", base), { headers: auth })).ok,
-  );
-  await Bun.write(join(runtimeDir, `${port}.json`), original);
-
   const beforeRestart = call(second.client, "browser_start", { goal: "broker restart check" });
   const beforeRestartRequest = await request("browserStart");
   reply(beforeRestartRequest, {
@@ -962,25 +958,113 @@ try {
   }, "idle broker exit");
   brokerExited = true;
   check("broker exits after all clients and cleanup are gone", true);
-  const unrelated = Bun.serve({
-    port,
+  // Exercise upgrade with a legacy broker and no usable port, then free one
+  // alternate without restarting either stdio client.
+  const ports = bridgePorts(port);
+  const [preferred, alternate, ...lastPorts] = ports;
+  assert(preferred && alternate);
+  const occupied = new Map(
+    ports.map((candidate) => [
+      candidate,
+      Bun.serve({
+        port: candidate,
+        hostname: "127.0.0.1",
+        fetch: () => new Response("test-owned listener"),
+      }),
+    ]),
+  );
+  const oldBrokers: BrokerMetadata[] = [];
+  const legacyHttp = Bun.serve({
+    port: 0,
     hostname: "127.0.0.1",
-    fetch: () => new Response("test-owned unrelated listener"),
+    fetch: (req) => {
+      const broker = oldBrokers.find(
+        (item) => req.headers.get("authorization") === `Bearer ${item.token}`,
+      );
+      return broker ? Response.json(broker) : new Response(null, { status: 401 });
+    },
   });
   try {
-    const loser = Bun.spawn([process.execPath, entry, "--broker"], {
-      env,
-      stdout: "ignore",
-      stderr: "inherit",
+    const legacy = {
+      url: `http://127.0.0.1:${legacyHttp.port}/mcp`,
+      token: crypto.randomUUID() + crypto.randomUUID(),
+      version: "0.17.6",
+      protocolVersion: BRIDGE_PROTOCOL_VERSION - 1,
+      port: preferred,
+      pid: process.pid,
+    };
+    const oldAlternate = lastPorts[0];
+    assert(oldAlternate);
+    oldBrokers.push(legacy, {
+      ...legacy,
+      port: oldAlternate,
+      token: crypto.randomUUID() + crypto.randomUUID(),
+      version: "0.18.0",
+      protocolVersion: BRIDGE_PROTOCOL_VERSION,
     });
+    await Promise.all(
+      oldBrokers.map((broker) =>
+        writeFile(join(runtimeDir, `${broker.port}.json`), JSON.stringify(broker), { mode: 0o600 }),
+      ),
+    );
+    const upgradeA = startClient("upgrade one");
+    const upgradeB = startClient("upgrade two");
+    await Promise.all([upgradeA.connected, upgradeB.connected]);
     check(
-      "a competing broker exits without replacing an unrelated listener",
-      (await loser.exited) === 0 &&
-        (await (await fetch(`http://127.0.0.1:${port}`)).text()) ===
-          "test-owned unrelated listener",
+      "blocked ports do not crash MCP or hide health",
+      (await upgradeA.client.listTools()).tools.some((tool) => tool.name === "health") &&
+        (await call(upgradeA.client, "health")).includes("none of its local ports"),
+    );
+    await occupied.get(alternate)?.stop(true);
+    occupied.delete(alternate);
+    metadata = await until(async () => {
+      const file = join(runtimeDir, `${alternate}.json`);
+      return existsSync(file)
+        ? (JSON.parse(await readFile(file, "utf8")) as BrokerMetadata)
+        : undefined;
+    }, "automatic fallback broker");
+    brokerExited = false;
+    socket = await connectExtension(BRIDGE_PROTOCOL_VERSION, alternate);
+    await until(() => (readyPort === alternate ? true : undefined), "fallback protocol confirmed");
+    const reports = await Promise.all([
+      call(upgradeA.client, "health"),
+      call(upgradeB.client, "health"),
+    ]);
+    check(
+      "new clients share the fallback without killing the older broker",
+      reports.every(
+        (report) => report.includes("connected: true") && report.includes(`port: ${alternate}`),
+      ) &&
+        (await (await fetch(`http://127.0.0.1:${preferred}`)).text()) === "test-owned listener" &&
+        (
+          await fetch(new URL("/health", legacy.url), {
+            headers: { authorization: `Bearer ${legacy.token}` },
+          })
+        ).ok,
+    );
+    await occupied.get(preferred)?.stop(true);
+    occupied.delete(preferred);
+    await legacyHttp.stop(true);
+    for (const candidate of lastPorts) {
+      await occupied.get(candidate)?.stop(true);
+      occupied.delete(candidate);
+    }
+    // An unrelated broken slot must not mask an authenticated, healthy broker.
+    const brokenPath = join(runtimeDir, `${ports.at(-1)}.json`);
+    await writeFile(brokenPath, "invalid", { mode: 0o600 });
+    const later = startClient("late upgrade");
+    await later.connected;
+    check(
+      "new clients reuse the connected fallback after the preferred port frees",
+      (await call(later.client, "health")).includes(`port: ${alternate}`),
+    );
+    check(
+      "skipping broken metadata never overwrites it",
+      (await readFile(brokenPath, "utf8")) === "invalid",
     );
   } finally {
-    await unrelated.stop(true);
+    await Promise.all([...occupied.values()].map((listener) => listener.stop(true)));
+    await legacyHttp.stop(true);
   }
   console.log("All shared bridge checks passed");
 } finally {

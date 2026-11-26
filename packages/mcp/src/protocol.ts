@@ -8,6 +8,11 @@
  */
 
 export const BRIDGE_PROTOCOL_VERSION = 3;
+export const DEFAULT_BRIDGE_PORT = 17_836;
+
+export function bridgePorts(preferred: number): number[] {
+  return Array.from({ length: Math.min(4, 65_536 - preferred) }, (_, i) => preferred + i);
+}
 
 // ── Extension → daemon ──────────────────────────────────────────────
 
@@ -57,7 +62,10 @@ export interface BridgeRequest {
   params: Record<string, unknown>;
 }
 
-export type DaemonMessage = BridgePing | BridgeRequest;
+export type DaemonMessage =
+  | BridgePing
+  | BridgeRequest
+  | { type: "ready"; protocolVersion: typeof BRIDGE_PROTOCOL_VERSION };
 
 // ── Run events and status ───────────────────────────────────────────
 
